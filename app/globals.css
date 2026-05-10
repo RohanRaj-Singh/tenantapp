@@ -1,18 +1,139 @@
 @import "tailwindcss";
 
-/* Custom styles */
+html {
+  scroll-behavior: smooth;
+}
+
 body {
-  font-family: 'Inter', system-ui, sans-serif;
+  font-family: var(--tenant-font-family, 'Inter', system-ui, sans-serif);
+  background: var(--tenant-page-gradient, #f8fafc);
+  color: #0f172a;
 }
 
 @layer base {
   :root {
     --tenant-primary: #f58220;
+    --tenant-primary-hover: #de731e;
     --tenant-secondary: #f37820;
+    --tenant-secondary-hover: #d86e1d;
+    --tenant-on-primary: #ffffff;
+    --tenant-on-secondary: #ffffff;
+    --tenant-link: #b45309;
+    --tenant-link-hover: #92400e;
+    --tenant-font-family: "Inter", system-ui, sans-serif;
+    --tenant-primary-soft: rgba(245, 130, 32, 0.12);
+    --tenant-primary-soft-strong: rgba(245, 130, 32, 0.18);
+    --tenant-primary-border: rgba(245, 130, 32, 0.26);
+    --tenant-primary-surface: rgba(245, 130, 32, 0.06);
+    --tenant-primary-surface-strong: rgba(245, 130, 32, 0.11);
+    --tenant-brand-gradient: linear-gradient(135deg, #f58220 0%, #f37820 100%);
+    --tenant-header-gradient: linear-gradient(135deg, rgba(245, 130, 32, 0.15) 0%, rgba(243, 120, 32, 0.12) 100%);
+    --tenant-page-gradient: linear-gradient(180deg, rgba(245, 130, 32, 0.06) 0%, #f8fafc 38%, #ffffff 100%);
+    --tenant-dashboard-gradient: linear-gradient(180deg, rgba(245, 130, 32, 0.08) 0%, #f1f5f9 24%, #f8fafc 100%);
+    --tenant-card-gradient: linear-gradient(135deg, rgba(245, 130, 32, 0.06) 0%, #ffffff 42%, rgba(243, 120, 32, 0.06) 100%);
+    --tenant-chart-grid: #e2e8f0;
+    --tenant-chart-text: #475569;
+    --tenant-chart-1: #f58220;
+    --tenant-chart-2: #f37820;
+    --tenant-chart-3: #2563eb;
+    --tenant-chart-4: #10b981;
+    --tenant-chart-5: #d97706;
+    --tenant-chart-6: #dc2626;
   }
 }
 
-/* Radio button styles */
+.tenant-page-shell {
+  background: var(--tenant-page-gradient);
+}
+
+.tenant-dashboard-shell {
+  background: var(--tenant-dashboard-gradient);
+}
+
+.tenant-card-surface {
+  background: var(--tenant-card-gradient);
+}
+
+.tenant-brand-text {
+  color: var(--tenant-link);
+}
+
+.tenant-brand-text:hover {
+  color: var(--tenant-link-hover);
+}
+
+.tenant-button,
+.btn-primary {
+  background-color: var(--tenant-primary);
+  color: var(--tenant-on-primary);
+  transition:
+    background-color 0.2s ease,
+    box-shadow 0.2s ease,
+    transform 0.2s ease;
+}
+
+.tenant-button:hover:not(:disabled),
+.btn-primary:hover:not(:disabled) {
+  background-color: var(--tenant-primary-hover);
+  box-shadow: 0 20px 38px -24px var(--tenant-primary-soft-strong);
+}
+
+.tenant-button:disabled,
+.btn-primary:disabled {
+  background-color: #cbd5e1;
+  color: #64748b;
+  cursor: not-allowed;
+}
+
+.tenant-button-soft {
+  background-color: var(--tenant-primary-soft);
+  color: var(--tenant-link);
+  transition:
+    background-color 0.2s ease,
+    color 0.2s ease;
+}
+
+.tenant-button-soft:hover:not(:disabled) {
+  background-color: var(--tenant-primary-soft-strong);
+  color: var(--tenant-link-hover);
+}
+
+.tenant-chip {
+  border: 1px solid var(--tenant-primary-border);
+  background-color: var(--tenant-primary-soft);
+  color: var(--tenant-link);
+}
+
+.tenant-outline-chip {
+  border: 1px solid var(--tenant-primary-border);
+  background-color: #ffffff;
+  color: var(--tenant-link);
+}
+
+.tenant-field {
+  border: 1px solid #e2e8f0;
+  background-color: #ffffff;
+  color: #1e293b;
+  transition:
+    border-color 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+.tenant-field:hover {
+  border-color: #cbd5e1;
+}
+
+.tenant-field:focus {
+  border-color: var(--tenant-primary);
+  box-shadow: 0 0 0 4px var(--tenant-primary-soft);
+  outline: none;
+}
+
+.tenant-soft-panel {
+  border-color: var(--tenant-primary-border);
+  background-color: var(--tenant-primary-surface);
+}
+
 .radio {
   appearance: none;
   width: 18px;
@@ -24,8 +145,8 @@ body {
 }
 
 .radio:checked {
-  border-color: #0f766e;
-  background-color: #0f766e;
+  border-color: var(--tenant-primary);
+  background-color: var(--tenant-primary);
 }
 
 .radio:checked::after {
@@ -39,28 +160,15 @@ body {
   background-color: white;
 }
 
-/* Button styles */
 .btn-primary {
-  background-color: #0f766e;
-  color: white;
   padding: 0.75rem 1.5rem;
   border-radius: 0.5rem;
   font-weight: 500;
   cursor: pointer;
   border: none;
-  transition: background-color 0.2s;
+  border: none;
 }
 
-.btn-primary:hover:not(:disabled) {
-  background-color: #115e59;
-}
-
-.btn-primary:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-/* Fade-in animation for cascading dropdowns */
 @keyframes fadeIn {
   from {
     opacity: 0;

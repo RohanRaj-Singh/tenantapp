@@ -2,8 +2,8 @@ import { AggregationOutput } from '../contracts/aggregation';
 
 export const mockAggregation: AggregationOutput = {
   aggregationId: 'agg-demo-001',
-  tenantId: 'tenant-demo-001',
-  scannerVersionId: 'scanner-v1',
+  tenantId: 'tenant-remedygcc-a',
+  scannerVersionId: '3f9ec4f0-219c-4e5e-9640-9d6f2aa90101',
   computedAt: new Date().toISOString(),
   period: {
     from: '2024-01-01T00:00:00.000Z',
@@ -16,7 +16,7 @@ export const mockAggregation: AggregationOutput = {
   },
   categoryMetrics: [
     {
-      categoryId: 'cat-1',
+      categoryId: '1af0c4c9-a711-4c06-b688-4e78014e1001',
       categoryLabel: 'Satisfaction & Engagement',
       averageScore: 72,
       riskScore: 28,
@@ -25,7 +25,7 @@ export const mockAggregation: AggregationOutput = {
       participantCount: 145,
     },
     {
-      categoryId: 'cat-2',
+      categoryId: '1af0c4c9-a711-4c06-b688-4e78014e1002',
       categoryLabel: 'Clinical Risk Index',
       averageScore: 58,
       riskScore: 42,

@@ -1,29 +1,12 @@
 "use client";
 
-import { useRuntimeConfig } from '../hooks/useRuntimeConfig';
-import {
-  getPrimaryColor,
-  getSecondaryColor,
-  getLogoUrl,
-  getTenantName,
-  getFontFamily,
-  getFaviconUrl,
-} from './themeUtils';
+import { useContext, useMemo } from "react";
+import { RuntimeContext } from "../context/RuntimeContext";
+import { getResolvedTheme } from "./themeUtils";
 
 export function useTheme() {
-  let config = null;
-  try {
-    config = useRuntimeConfig();
-  } catch {
-    config = null;
-  }
+  const context = useContext(RuntimeContext);
+  const config = context?.config ?? null;
 
-  return {
-    primaryColor: getPrimaryColor(config),
-    secondaryColor: getSecondaryColor(config),
-    logoUrl: getLogoUrl(config),
-    tenantName: getTenantName(config),
-    fontFamily: getFontFamily(config),
-    faviconUrl: getFaviconUrl(config),
-  };
+  return useMemo(() => getResolvedTheme(config), [config]);
 }

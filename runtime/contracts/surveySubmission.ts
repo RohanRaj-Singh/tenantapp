@@ -1,24 +1,29 @@
+export interface SurveySubmissionAttributes {
+  stream: string;
+  location: string;
+  function: string;
+  department: string;
+  gender: string;
+  age: string;
+  seniority: string;
+}
+
+export interface SurveySubmissionResponse {
+  questionId: string;
+  answerId: string;
+  answerScore: number;
+  answeredAt: string;
+  timeSpentMs?: number;
+}
+
 export interface SurveySubmission {
   tenantId: string;
   scannerVersionId: string;
   inviteToken?: string;
-  attributes: {
-    streamId: string;
-    locationId: string;
-    functionId: string;
-    departmentId: string;
-    gender: 'male' | 'female' | 'other';
-    ageGroup: '18-24' | '25-34' | '35-44' | '45-54' | '55+';
-    seniorityLevel: 'senior' | 'manager' | 'employee';
-  };
-  responses: Array<{
-    questionId: string;
-    answerIndex: number;
-    answeredAt: string;
-    timeSpentMs?: number;
-  }>;
+  attributes: SurveySubmissionAttributes;
+  responses: SurveySubmissionResponse[];
   completionState: {
-    status: 'in-progress' | 'completed';
+    status: "in-progress" | "completed";
     completedAt?: string;
     totalQuestions: number;
     answeredQuestions: number;

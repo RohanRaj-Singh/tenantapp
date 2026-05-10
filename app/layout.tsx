@@ -1,5 +1,5 @@
 import './globals.css';
-import { RuntimeConfigProvider } from '../runtime';
+import { RuntimeConfigProvider } from '../runtime/providers/RuntimeConfigProvider';
 import Header from '@/components/layout/Header';
 
 export default function RootLayout({
@@ -9,7 +9,7 @@ export default function RootLayout({
 }>) {
   return (
     <html lang="en" suppressHydrationWarning>
-      <body className="antialiased min-h-screen bg-gray-50" suppressHydrationWarning>
+      <body className="min-h-screen antialiased text-slate-900" suppressHydrationWarning>
         <RuntimeConfigProvider>
           <Header />
           {children}

@@ -1,41 +1,64 @@
 "use client";
 
+import Image from "next/image";
 import Link from "next/link";
-import { useContext, useState } from "react";
-import { RuntimeContext } from "@/runtime/context/RuntimeContext";
+import { useState } from "react";
 import { Menu, X } from "lucide-react";
 import { useTheme } from "@/runtime/theme/useTheme";
 
+const navigationLinks = [
+  { href: "/", label: "Home" },
+  { href: "/about", label: "About" },
+  { href: "/survey", label: "Survey" },
+  { href: "/contact", label: "Contact Us" },
+];
+
 export default function Header() {
-  const context = useContext(RuntimeContext);
-  const config = context?.config ?? null;
-  const { logoUrl, tenantName, primaryColor } = useTheme();
+  const theme = useTheme();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
 
   const toggleMenu = () => {
-    setIsMenuOpen(!isMenuOpen);
+    setIsMenuOpen((current) => !current);
   };
 
   return (
     <header className="bg-white">
-      <nav className="fixed top-0 right-0 left-0 z-50 px-4 py-4 sm:px-6">
-        <div className="mx-auto flex max-w-7xl items-center justify-between rounded-full bg-white/80 px-4 py-3 shadow-sm backdrop-blur-sm sm:px-8 sm:py-4">
-          {/* Logo */}
-          <Link href="/">
-            <div className="flex items-center gap-2">
-              <div className="flex h-6 w-6 items-center justify-center rounded-md bg-gradient-to-br from-[#f37820] to-[#f37820]">
-                {/* Using Heart icon as fallback since we don't have the actual logo yet */}
-                <span className="h-4 w-4 text-white">❤</span>
+      <nav className="fixed inset-x-0 top-0 z-50 px-4 py-4 sm:px-6">
+        <div
+          className="mx-auto flex max-w-7xl items-center justify-between rounded-full border bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm sm:px-8 sm:py-4"
+          style={{ borderColor: theme.borderAccent, boxShadow: `0 20px 40px -32px ${theme.strongAccent}` }}
+        >
+          <Link href="/" className="min-w-0">
+            <div className="flex min-w-0 items-center gap-3">
+              <div
+                className={`relative flex h-9 w-9 shrink-0 items-center justify-center overflow-hidden ${
+                  theme.logoUrl ? "bg-transparent" : "rounded-xl"
+                }`}
+                style={theme.logoUrl ? undefined : { background: theme.brandGradient, color: theme.onPrimaryColor }}
+              >
+                {theme.logoUrl ? (
+                  <Image
+                    src={theme.logoUrl}
+                    alt={`${theme.tenantName} logo`}
+                    fill
+                    sizes="36px"
+                    className="object-contain"
+                  />
+                ) : (
+                  <span className="text-sm font-semibold">{theme.tenantName.charAt(0)}</span>
+                )}
               </div>
-              <span className="text-lg font-semibold text-[#1a1a1a]">{tenantName}</span>
+              <span className="max-w-[12rem] truncate text-base font-semibold text-slate-900 sm:max-w-[20rem]">
+                {theme.tenantName}
+              </span>
             </div>
           </Link>
 
-          {/* Hamburger Button for Mobile */}
           <button
-            className="text-[#f58220] focus:outline-none sm:hidden"
+            className="sm:hidden"
             onClick={toggleMenu}
             aria-label="Toggle menu"
+            style={{ color: theme.linkColor }}
           >
             {isMenuOpen ? (
               <X className="h-6 w-6 cursor-pointer" />
@@ -44,70 +67,38 @@ export default function Header() {
             )}
           </button>
 
-          {/* Navigation Links - Desktop */}
           <div className="hidden items-center gap-8 sm:flex">
-            <Link
-              href="/"
-              className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-            >
-              Home
-            </Link>
-            <Link
-              href="/about"
-              className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-            >
-              About
-            </Link>
-            <Link
-              href="/survey"
-              className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-            >
-              Survey
-            </Link>
-            <Link
-              href="/contact"
-              className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-            >
-              Contact Us
-            </Link>
+            {navigationLinks.map((item) => (
+              <Link
+                key={item.href}
+                href={item.href}
+                className="tenant-brand-text text-sm font-medium transition-colors"
+              >
+                {item.label}
+              </Link>
+            ))}
           </div>
         </div>
 
-        {/* Mobile Menu */}
-        {isMenuOpen && (
-          <div className="mt-2 rounded-lg bg-[#f58220]/10 px-4 py-4 shadow-sm backdrop-blur-sm sm:hidden">
+        {isMenuOpen ? (
+          <div
+            className="mt-2 rounded-2xl border px-4 py-4 shadow-sm backdrop-blur-sm sm:hidden"
+            style={{ backgroundColor: theme.surfaceAccentStrong, borderColor: theme.borderAccent }}
+          >
             <div className="flex flex-col gap-4">
-              <Link
-                href="/"
-                className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f17305]"
-                onClick={toggleMenu}
-              >
-                Home
-              </Link>
-              <Link
-                href="/about"
-                className="text-sm font-medium text-[#f37820] transition-colors hover:text-[#f58220]"
-                onClick={toggleMenu}
-              >
-                About
-              </Link>
-              <Link
-                href="/survey"
-                className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-                onClick={toggleMenu}
-              >
-                Survey
-              </Link>
-              <Link
-                href="/contact"
-                className="text-sm font-medium text-[#f58220] transition-colors hover:text-[#f58220]"
-                onClick={toggleMenu}
-              >
-                Contact Us
-              </Link>
+              {navigationLinks.map((item) => (
+                <Link
+                  key={item.href}
+                  href={item.href}
+                  className="tenant-brand-text text-sm font-medium transition-colors"
+                  onClick={toggleMenu}
+                >
+                  {item.label}
+                </Link>
+              ))}
             </div>
           </div>
-        )}
+        ) : null}
       </nav>
     </header>
   );

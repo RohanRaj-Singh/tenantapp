@@ -1,12 +1,15 @@
 "use client";
 
-import { useContext } from 'react';
-import { RuntimeContext } from '../context/RuntimeContext';
+import { useTheme } from "../theme/useTheme";
 
 export function useBranding() {
-  const { config } = useContext(RuntimeContext);
-  if (!config) {
-    throw new Error('Runtime config not loaded');
-  }
-  return config.branding;
+  const theme = useTheme();
+
+  return {
+    logoUrl: theme.logoUrl,
+    primaryColor: theme.primaryColor,
+    secondaryColor: theme.secondaryColor,
+    fontFamily: theme.fontFamily,
+    faviconUrl: theme.faviconUrl,
+  };
 }

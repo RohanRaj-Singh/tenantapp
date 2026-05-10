@@ -1,16 +1,22 @@
 "use client";
 
-import { useState, useMemo, useContext } from 'react';
-import { RuntimeContext } from '../../runtime/context/RuntimeContext';
-import { TenantRuntimeConfig } from '../../runtime/contracts/runtime';
-import { QuestionRenderer } from './QuestionRenderer';
-
-type Question = TenantRuntimeConfig['scannerVersion']['categories'][0]['subdomains'][0]['questions'][0];
-type FollowUpRule = TenantRuntimeConfig['scannerVersion']['categories'][0]['subdomains'][0]['followUpRules'][0];
+import { useState, useMemo, useContext } from "react";
+import { EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS } from "@/runtime/attributes/attributeTemplateUtils";
+import { readRuntimeSurveySession } from "@/runtime/attributes/surveySession";
+import { RuntimeContext } from "../../runtime/context/RuntimeContext";
+import { QuestionRenderer } from "./QuestionRenderer";
+import { useTheme } from "@/runtime/theme/useTheme";
+import { submitSurvey } from "@/runtime/providers/surveyService";
+import {
+  auditScannerVersion,
+  buildSurveyQuestionSequence,
+  type ScannerResponseMap,
+  toSurveySubmissionResponses,
+} from "@/runtime/scanner/scannerUtils";
 
 function LoadingState() {
   return (
-    <div className="max-w-3xl mx-auto p-6">
+    <div className="mx-auto max-w-3xl p-6">
       <p className="text-lg">Loading survey...</p>
     </div>
   );
@@ -18,8 +24,8 @@ function LoadingState() {
 
 function ThankYouState() {
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <h1 className="text-2xl font-bold mb-4">Thank You!</h1>
+    <div className="mx-auto max-w-3xl p-6">
+      <h1 className="mb-4 text-2xl font-bold">Thank You!</h1>
       <p className="text-gray-600">Your survey has been submitted successfully.</p>
     </div>
   );
@@ -27,151 +33,119 @@ function ThankYouState() {
 
 export function SurveyContainer() {
   const { config, loading } = useContext(RuntimeContext);
-  const [responses, setResponses] = useState<Record<string, number>>({});
+  const theme = useTheme();
+  const [responses, setResponses] = useState<ScannerResponseMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
 
-  // Loading or no config - show loading view
-  if (loading || !config) {
+  const scannerAudit = useMemo(
+    () => (config ? auditScannerVersion(config.scannerVersion) : null),
+    [config],
+  );
+  const visibleQuestions = useMemo(
+    () => (scannerAudit ? buildSurveyQuestionSequence(scannerAudit, responses) : []),
+    [scannerAudit, responses],
+  );
+
+  if (loading || !config || !scannerAudit) {
     return <LoadingState />;
   }
 
-  // Submitted - show thank you view
   if (submitted) {
     return <ThankYouState />;
   }
 
-  const allQuestions = useMemo(() => {
-    const questions: Question[] = [];
-    const followUpRules: FollowUpRule[] = [];
-    
-    config.scannerVersion.categories.forEach(category => {
-      category.subdomains.forEach(subdomain => {
-        questions.push(...subdomain.questions);
-        followUpRules.push(...subdomain.followUpRules);
-      });
-    });
-    
-    return { questions, followUpRules };
-  }, [config]);
-
-  const visibleQuestionIds = useMemo(() => {
-    const visible = new Set<string>();
-    const triggerMap = new Map<string, FollowUpRule[]>();
-    
-    allQuestions.followUpRules.forEach(rule => {
-      if (!triggerMap.has(rule.triggerQuestionId)) {
-        triggerMap.set(rule.triggerQuestionId, []);
-      }
-      triggerMap.get(rule.triggerQuestionId)!.push(rule);
-    });
-
-    allQuestions.questions.forEach(q => {
-      if (!q.isFollowUp) {
-        visible.add(q.id);
-      }
-    });
-
-    const triggerQuestionIds = Array.from(triggerMap.keys());
-    triggerQuestionIds.forEach(qid => {
-      const answer = responses[qid];
-      if (answer !== undefined) {
-        const rules = triggerMap.get(qid) || [];
-        rules.forEach(rule => {
-          if (answer === rule.triggerAnswerIndex) {
-            rule.followUpQuestionIds.forEach(fqid => visible.add(fqid));
-          }
-        });
-      }
-    });
-
-    return visible;
-  }, [allQuestions, responses]);
-
-  const handleAnswer = (questionId: string, answerIndex: number) => {
-    setResponses(prev => ({ ...prev, [questionId]: answerIndex }));
+  const handleAnswer = (questionId: string, answerId: string, answerScore: number) => {
+    setResponses((previous) => ({
+      ...previous,
+      [questionId]: {
+        answerId,
+        answerScore,
+        answeredAt: new Date().toISOString(),
+      },
+    }));
   };
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+
     try {
-      const submission = {
+      const surveySession = readRuntimeSurveySession(config.tenant.id, config.tenant.slug, config.scannerVersion.id);
+      const submissionResponses = toSurveySubmissionResponses(visibleQuestions, responses);
+
+      await submitSurvey({
         tenantId: config.tenant.id,
         scannerVersionId: config.scannerVersion.id,
-        responses: Object.entries(responses).map(([questionId, answerIndex]) => ({
-          questionId,
-          answerIndex,
-          answeredAt: new Date().toISOString(),
-        })),
+        attributes: surveySession?.attributes ?? EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS,
+        responses: submissionResponses,
         completionState: {
-          status: 'completed' as const,
+          status: "completed",
           completedAt: new Date().toISOString(),
-          totalQuestions: allQuestions.questions.length,
-          answeredQuestions: Object.keys(responses).length,
+          totalQuestions: visibleQuestions.length,
+          answeredQuestions: submissionResponses.length,
         },
         metadata: {
           userAgent: navigator.userAgent,
-          ipAddress: 'client-ip',
+          ipAddress: "client-ip",
           sessionId: crypto.randomUUID(),
         },
-      };
-      
-      await fetch('/api/survey/submit', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(submission),
       });
-      
+
       setSubmitted(true);
-    } catch (err) {
-      console.error('Submission failed:', err);
+    } catch (error) {
+      console.error("Submission failed:", error);
     } finally {
       setIsSubmitting(false);
     }
   };
 
   const answeredCount = Object.keys(responses).length;
-  const totalCount = allQuestions.questions.length;
+  const totalCount = visibleQuestions.length;
 
   return (
-    <div className="max-w-3xl mx-auto p-6">
-      <div className="flex justify-between items-center mb-6">
-        <h1 className="text-2xl font-bold">{config.tenant.name} Survey</h1>
+    <div className="mx-auto max-w-3xl p-6">
+      <div className="mb-4 flex justify-between gap-3">
+        <h1 className="text-2xl font-bold">{theme.tenantName} Survey</h1>
         <span className="text-sm text-gray-500">
           {answeredCount} / {totalCount} answered
         </span>
       </div>
-      
-      {config.scannerVersion.categories.map(category => (
-        <div key={category.id} className="mb-8">
-          <h2 className="text-xl font-semibold mb-4">{category.label}</h2>
-          
-          {category.subdomains.map(subdomain => (
-            <div key={subdomain.id} className="mb-6">
-              <h3 className="text-lg font-medium mb-3">{subdomain.label}</h3>
-              
-              {subdomain.questions
-                .filter(q => visibleQuestionIds.has(q.id))
-                .map(question => (
-                  <div key={question.id} className="mb-4 p-4 border rounded">
-                    <QuestionRenderer
-                      question={question}
-                      selectedAnswer={responses[question.id] ?? null}
-                      onSelect={(idx) => handleAnswer(question.id, idx)}
-                    />
-                  </div>
-                ))}
-            </div>
-          ))}
+
+      {scannerAudit.configurationIssues.length > 0 ? (
+        <div className="mb-6 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
+          <p className="font-medium">Scanner configuration issues were filtered safely.</p>
+          <p className="mt-1">{scannerAudit.configurationIssues[0]}</p>
+        </div>
+      ) : null}
+
+      {visibleQuestions.map((item) => (
+        <div
+          key={item.question.id}
+          className="mb-4 rounded border bg-white p-4"
+          style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
+        >
+          <div className="mb-3 flex flex-wrap gap-2 text-xs font-medium uppercase tracking-[0.16em] text-slate-500">
+            <span>{item.category.label}</span>
+            <span>&middot;</span>
+            <span>{item.subdomain.label}</span>
+            <span>&middot;</span>
+            <span>{item.question.kind === "follow-up" ? "Follow-up" : "Primary"}</span>
+          </div>
+
+          <QuestionRenderer
+            question={item.question}
+            selectedAnswerId={responses[item.question.id]?.answerId ?? null}
+            onSelect={(answerId, answerScore) => handleAnswer(item.question.id, answerId, answerScore)}
+          />
         </div>
       ))}
 
       <button
-        onClick={handleSubmit}
-        disabled={isSubmitting || answeredCount === 0}
+        onClick={() => void handleSubmit()}
+        disabled={isSubmitting || totalCount === 0 || answeredCount < totalCount}
         className="btn-primary mt-6"
       >
-        {isSubmitting ? 'Submitting...' : 'Submit Survey'}
+        {isSubmitting ? "Submitting..." : "Submit Survey"}
       </button>
     </div>
   );
