@@ -633,7 +633,28 @@ export function getDomainMetric(data: DashboardMockData, domainName: string): Me
   const metric = data.mentalHealthMetrics.find((item) => item.domain === domainName);
 
   if (!metric) {
-    throw new Error(`Unknown dashboard domain: ${domainName}`);
+    console.warn(
+      `Dashboard domain "${domainName}" not found in data. Available domains:`,
+      data.mentalHealthMetrics.map((m) => m.domain),
+    );
+    const fallbackMetric = getDashboardMockData("Unknown Tenant").mentalHealthMetrics[0];
+    return {
+      ...fallbackMetric,
+      domain: domainName,
+      participants: 0,
+      riskScore: 0,
+      satisfiedScore: 0,
+      riskStatus: "no-risk" as const,
+      satisfactionStatus: "no-risk" as const,
+      highRiskSurveyCount: 0,
+      nonHighRiskSurveyCount: 0,
+      dashboardDomainAverage: {
+        averageRiskScore: 0,
+        averageRiskStatus: "no-risk" as const,
+        averageSatisfactionScore: 0,
+        averageSatisfactionStatus: "no-risk" as const,
+      },
+    };
   }
 
   return metric;

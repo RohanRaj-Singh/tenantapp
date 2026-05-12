@@ -13,6 +13,7 @@ import {
   type ScannerResponseMap,
   toSurveySubmissionResponses,
 } from "@/runtime/scanner/scannerUtils";
+import { generateUUID } from "@/lib/utils";
 
 function LoadingState() {
   return (
@@ -92,11 +93,11 @@ export function SurveyContainer() {
           totalQuestions: visibleQuestions.length,
           answeredQuestions: submissionResponses.length,
         },
-        metadata: {
-          userAgent: navigator.userAgent,
-          ipAddress: "client-ip",
-          sessionId: crypto.randomUUID(),
-        },
+metadata: {
+           userAgent: navigator.userAgent,
+           ipAddress: "client-ip",
+           sessionId: generateUUID(),
+         },
       });
 
       setSubmitted(true);

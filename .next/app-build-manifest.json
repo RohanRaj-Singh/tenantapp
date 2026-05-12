@@ -31,6 +31,11 @@
       "static/chunks/main-app.js",
       "static/chunks/app/survey-questions/page.js"
     ],
+    "/api/survey/submit/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/survey/submit/route.js"
+    ],
     "/dashboard/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
@@ -55,6 +60,26 @@
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
       "static/chunks/app/dashboard/psychological-safety/page.js"
+    ],
+    "/dashboard/workload-efficiency/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/workload-efficiency/page.js"
+    ],
+    "/dashboard/leadership-alignment/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/leadership-alignment/page.js"
+    ],
+    "/dashboard/satisfaction-engagement/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/satisfaction-engagement/page.js"
+    ],
+    "/dashboard/email-invitations/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/email-invitations/page.js"
     ]
   }
 }

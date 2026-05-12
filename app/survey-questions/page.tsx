@@ -14,6 +14,7 @@ import {
   toSurveySubmissionResponses,
 } from "@/runtime/scanner/scannerUtils";
 import { useTheme } from "@/runtime/theme/useTheme";
+import { generateUUID } from "@/lib/utils";
 
 export default function SurveyQuestionsPage() {
   const context = useContext(RuntimeContext);
@@ -119,7 +120,7 @@ export default function SurveyQuestionsPage() {
         metadata: {
           userAgent: navigator.userAgent,
           ipAddress: "client-ip",
-          sessionId: crypto.randomUUID(),
+          sessionId: generateUUID(),
         },
       };
 
@@ -149,6 +150,14 @@ export default function SurveyQuestionsPage() {
 
     await handleSubmit();
   };
+
+  const handleBack = () => {
+    if (currentQuestionIndex > 0) {
+      setCurrentQuestionIndex((previousIndex) => previousIndex - 1);
+    }
+  };
+
+  const isFirstQuestion = currentQuestionIndex === 0;
 
   if (!config || !hasLoadedSession) {
     return (
@@ -451,16 +460,30 @@ export default function SurveyQuestionsPage() {
                   {submissionError ? <p className="text-sm text-red-600">{submissionError}</p> : null}
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => void handleNext()}
-                  disabled={!currentResponse || isSubmitting}
-                  className="tenant-button inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
-                  style={currentResponse ? { boxShadow: `0 24px 50px -32px ${theme.strongAccent}` } : undefined}
-                >
-                  {isSubmitting ? "Submitting..." : isLastQuestion ? "Submit survey" : "Next question"}
-                  <ArrowRight className="h-4 w-4" />
-                </button>
+                <div className="flex gap-2">
+                  {!isFirstQuestion ? (
+                    <button
+                      type="button"
+                      onClick={handleBack}
+                      disabled={isSubmitting}
+                      className="inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full border px-5 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+                      style={{ borderColor: theme.borderAccent }}
+                    >
+                      Back
+                    </button>
+                  ) : null}
+
+                  <button
+                    type="button"
+                    onClick={() => void handleNext()}
+                    disabled={!currentResponse || isSubmitting}
+                    className="tenant-button inline-flex w-full shrink-0 items-center justify-center gap-2 rounded-full px-5 py-3 text-sm font-semibold transition-all duration-200 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
+                    style={currentResponse ? { boxShadow: `0 24px 50px -32px ${theme.strongAccent}` } : undefined}
+                  >
+                    {isSubmitting ? "Submitting..." : isLastQuestion ? "Submit survey" : "Next question"}
+                    <ArrowRight className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             </div>
           </div>

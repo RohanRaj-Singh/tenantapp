@@ -1,21 +1,27 @@
 # Attribute Template System
 
+## Canonical Hierarchy
+
+**Stream → Location → Function → Department**
+
+```
+Stream
+  └── (filters) → Location
+                   └── (filters) → Function
+                                └── (filters) → Department
+```
+
 ## Source Files
 
 - `tenantapp/runtime/contracts/runtime.ts`
 - `tenantapp/runtime/attributes/attributeTemplateUtils.ts`
 - `tenantapp/runtime/attributes/surveySession.ts`
-- `tenantapp/runtime/hooks/useAttributeTemplate.ts`
 - `tenantapp/runtime/hooks/useRuntimeAttributeForm.ts`
 - `tenantapp/runtime/mocks/mockRuntimeConfig.ts`
-- `tenantapp/runtime/mocks/mockTenantRegistry.ts`
 - `tenantapp/app/survey/page.tsx`
-- `tenantapp/app/survey-questions/page.tsx`
 - `tenantapp/components/dashboard/filter/DashboardFilters.tsx`
 
 ## Runtime Contract Shape
-
-`tenantapp` now resolves attribute templates through a centralized runtime layer.
 
 ```ts
 attributeTemplate: {
@@ -24,26 +30,19 @@ attributeTemplate: {
     id: string;
     label: string;
     value: string;
-    streamIds?: string[];
+    streamId: string;  // Links location to stream
   }>;
   functions: Array<{
     id: string;
     label: string;
     value: string;
-    streamId?: string;
-    streamIds?: string[];
-    departmentIds?: string[];
-    locationIds?: string[];
+    locationId: string;  // Links function to location
   }>;
   departments: Array<{
     id: string;
     label: string;
     value: string;
-    streamId?: string;
-    streamIds?: string[];
-    functionId?: string;
-    functionIds?: string[];
-    locationIds?: string[];
+    functionId: string;  // Links department to function
   }>;
   genders?: string[];
   ageGroups?: string[];
@@ -61,126 +60,90 @@ attributeTemplate: {
 
 `tenantapp/runtime/attributes/attributeTemplateUtils.ts` is the active source of truth for:
 
-- template normalization
-- duplicate filtering
-- broken-reference filtering
-- field visibility
-- hierarchical option filtering
-- parent-change resets
-- required-field validation
-- blocking empty-state detection
+- Template normalization and deduplication
+- Broken-reference filtering
+- Hierarchical option filtering
+- Parent-change reset behavior
+- Required-field validation
+- Blocking empty-state detection
 
 `tenantapp/runtime/hooks/useRuntimeAttributeForm.ts` owns the live form state for `/survey`.
 
 ## Active Runtime Flow
 
-1. `RuntimeConfigProvider` loads the selected mock tenant config.
-2. `/survey` resolves `config.attributeTemplate` through `useRuntimeAttributeForm()`.
+1. `RuntimeConfigProvider` loads the tenant config
+2. `/survey` resolves `config.attributeTemplate` through `useRuntimeAttributeForm()`
 3. The runtime layer exposes:
-   - `fields`
-   - `validation`
-   - `configurationIssues`
-   - `selections`
-   - `updateSelection()`
-4. Valid selections are persisted to `sessionStorage` through `surveySession.ts`.
-5. `/survey-questions` reads the saved runtime attribute session and includes it in the final submission payload.
+   - `fields` - Computed field states with visibility/disabled status
+   - `validation` - Blocking issues and submit capability
+   - `configurationIssues` - Template mapping warnings
+   - `selections` - Current user selections
+   - `updateSelection()` - Handler for user changes
+4. Valid selections persist to `sessionStorage` via `surveySession.ts`
+5. `/survey-questions` reads the session and includes it in the final submission payload
 
-## Implemented Hierarchy Behavior
+## Cascading Filter Behavior
 
-The mounted runtime path now supports:
+### Stream Selection
+- `selectedStream` → filters available `locations` via `getLocationsForStream(template, streamId)`
+- Changing stream resets `location`, `function`, and `department`
 
-- `stream` as the root hierarchy field
-- stream-filtered locations when `location.streamIds` exists
-- stream-filtered departments
-- department-filtered functions
-- function-filtered departments
-- optional location-based narrowing for both departments and functions
+### Location Selection
+- After stream selection, selected location filters available `functions` via `getFunctionsForLocation(template, locationId)`
+- Changing location resets `function` and `department`
 
-Reset behavior:
+### Function Selection
+- After location selection, selected function filters available `departments` via `getDepartmentsForFunction(template, functionId)`
+- Changing function resets `department`
 
-- changing `stream` clears `location`, `department`, and `function`
-- changing `location` clears `department` and `function`
-- changing `department` clears `function` when the selected function is no longer valid
-- changing `function` clears `department` when the selected department is no longer valid
+### Department Selection
+- Final leaf node in the hierarchy, no further filtering
+
+## Reset Behavior
+
+```ts
+// In applyRuntimeAttributeSelection():
+if (field === "stream") {
+  nextSelections.location = "";
+  nextSelections.function = "";
+  nextSelections.department = "";
+}
+if (field === "location") {
+  nextSelections.function = "";
+  nextSelections.department = "";
+}
+if (field === "function") {
+  nextSelections.department = "";
+}
+```
 
 ## Fixed Attributes
 
-Implemented fixed attributes:
-
-- `location`
-- `gender`
-- `age`
-- `seniority`
-
-Runtime rules:
-
-- if an option array exists, the field is enabled by default
-- enabled fields are required by default
-- `fixedAttributes.*` can override `enabled`, `required`, labels, and placeholders
-- if a fixed attribute is disabled, the runtime clears any stale selection
-- if a fixed attribute is enabled but has no options, the UI stays safe and the survey is blocked with an explicit empty state
-
-## Mock Tenant Coverage
-
-### `tenant-a`
-
-- full hierarchy
-- full demographics
-- single-parent `streamId` and `functionId` mappings
-
-### `tenant-b`
-
-- different stream/location/function/department structure
-- many-to-many `functionIds` and `departmentIds`
-- stream-scoped locations
-- `seniority` disabled through `fixedAttributes`
-- renamed `location` label and placeholder
-
-### `tenant-c`
-
-- partial hierarchy
-- invalid function and department references
-- broken mappings filtered out during normalization
-- one stream path remains valid and another intentionally resolves to empty departments
-- `seniority` disabled
-
-### `tenant-d`
-
-- no streams
-- empty hierarchy
-- demographics still present
-- survey safely blocks with a stream empty state
+- `location`, `gender`, `age`, `seniority`
+- Enabled when option arrays exist
+- Required by default when enabled
+- Disabled fields clear stale selections
 
 ## Session Payload Shape
-
-The saved runtime attribute session and active submit payload use canonical `value` strings:
 
 ```json
 {
   "attributes": {
-    "stream": "clinical_services",
-    "location": "central_campus",
-    "department": "patient_services",
-    "function": "care_delivery",
+    "stream": "commercial",
+    "location": "commercial_hq",
+    "function": "business_development",
+    "department": "strategic_partnerships",
     "gender": "female",
     "age": "25-34",
-    "seniority": ""
+    "seniority": "senior"
   }
 }
 ```
 
-Empty strings are allowed for disabled optional attributes.
+## Safe-Handling Rules
 
-## Current Safe-Handling Rules
-
-- duplicate values are ignored
-- invalid stream/function/department/location references are ignored
-- missing demographic arrays do not crash the form
-- missing tenant attribute sessions block `/survey-questions` with a recovery state
-- invalid stored sessions are cleared from `sessionStorage`
-
-## Current Mismatches Still Present
-
-- `tenantapp/components/dashboard/filter/DashboardFilters.tsx` still contains a separate hardcoded attribute hierarchy.
-- The active survey route does not activate `followUpRules`.
-- Legacy backend survey contracts still use different field names and enums than the runtime payload.
+- Duplicate values are ignored during normalization
+- Invalid stream/location/function/department references are filtered out
+- Missing demographic arrays do not crash the form
+- Invalid stored sessions are cleared from `sessionStorage`
+- Surveys with incomplete hierarchy show explicit blocking messages
