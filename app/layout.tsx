@@ -1,6 +1,6 @@
-import './globals.css';
-import { RuntimeConfigProvider } from '../runtime/providers/RuntimeConfigProvider';
-import Header from '@/components/layout/Header';
+import "./globals.css";
+import RuntimeAppShell from "@/components/runtime/RuntimeAppShell";
+import { RuntimeConfigProvider } from "../runtime/providers/RuntimeConfigProvider";
 
 export default function RootLayout({
   children,
@@ -11,8 +11,7 @@ export default function RootLayout({
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen antialiased text-slate-900" suppressHydrationWarning>
         <RuntimeConfigProvider>
-          <Header />
-          {children}
+          <RuntimeAppShell>{children}</RuntimeAppShell>
         </RuntimeConfigProvider>
       </body>
     </html>

@@ -11,8 +11,8 @@ import type {
 export const RUNTIME_ATTRIBUTE_FIELDS = [
   "stream",
   "location",
-  "department",
   "function",
+  "department",
   "gender",
   "age",
   "seniority",
@@ -24,8 +24,8 @@ export type RuntimeSelectionField = RuntimeAttributeField;
 export interface RuntimeAttributeSelections {
   stream: string;
   location: string;
-  department: string;
   function: string;
+  department: string;
   gender: string;
   age: string;
   seniority: string;
@@ -76,8 +76,8 @@ export interface RuntimeAttributeFormState {
 export const EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS: RuntimeAttributeSelections = {
   stream: "",
   location: "",
-  department: "",
   function: "",
+  department: "",
   gender: "",
   age: "",
   seniority: "",
@@ -86,8 +86,8 @@ export const EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS: RuntimeAttributeSelections = {
 const DEFAULT_FIELD_LABELS: Record<RuntimeAttributeField, string> = {
   stream: "Stream",
   location: "Location",
-  department: "Department",
   function: "Function",
+  department: "Department",
   gender: "Gender",
   age: "Age Group",
   seniority: "Seniority Level",
@@ -96,8 +96,8 @@ const DEFAULT_FIELD_LABELS: Record<RuntimeAttributeField, string> = {
 const DEFAULT_FIELD_PLACEHOLDERS: Record<RuntimeAttributeField, string> = {
   stream: "Select your stream",
   location: "Select your location",
-  department: "Select your department",
   function: "Select your function",
+  department: "Select your department",
   gender: "Select your gender",
   age: "Select your age group",
   seniority: "Select your seniority level",
@@ -189,39 +189,6 @@ function normalizeValueList(values: string[] | undefined, issueLabel: string) {
   };
 }
 
-function normalizeReferenceIds(
-  directId: string | undefined,
-  collectionIds: string[] | undefined,
-  validIds: Set<string>,
-  itemLabel: string,
-  relationshipLabel: string,
-) {
-  const issues: string[] = [];
-  const ids = [...(directId ? [directId] : []), ...(collectionIds ?? [])].filter((id) =>
-    isNonEmptyString(id),
-  );
-
-  const seenIds = new Set<string>();
-  const normalizedIds: string[] = [];
-
-  ids.forEach((id) => {
-    const normalizedId = id.trim();
-    if (!validIds.has(normalizedId)) {
-      issues.push(`${itemLabel} references missing ${relationshipLabel} "${normalizedId}" and that link was ignored.`);
-      return;
-    }
-
-    if (seenIds.has(normalizedId)) {
-      return;
-    }
-
-    seenIds.add(normalizedId);
-    normalizedIds.push(normalizedId);
-  });
-
-  return { ids: normalizedIds, issues };
-}
-
 function resolveFixedAttributeConfig(
   field: RuntimeFixedAttributeKey,
   providedConfig: RuntimeFixedAttributeConfig | undefined,
@@ -241,148 +208,169 @@ function resolveFixedAttributeConfig(
   };
 }
 
+function getOptionByValue<T extends RuntimeAttributeOption>(items: T[], value: string) {
+  return items.find((item) => item.value === value) ?? null;
+}
+
+function getLocationById(template: ResolvedRuntimeAttributeTemplate, id: string) {
+  return template.locations.find((item) => item.id === id) ?? null;
+}
+
+function getFunctionById(template: ResolvedRuntimeAttributeTemplate, id: string) {
+  return template.functions.find((item) => item.id === id) ?? null;
+}
+
+function getLocationsForStream(
+  template: ResolvedRuntimeAttributeTemplate,
+  streamId: string,
+) {
+  return template.locations.filter((item) => item.streamId === streamId);
+}
+
+function getFunctionsForLocation(
+  template: ResolvedRuntimeAttributeTemplate,
+  locationId: string,
+) {
+  return template.functions.filter((item) => item.locationId === locationId);
+}
+
+function getDepartmentsForFunction(
+  template: ResolvedRuntimeAttributeTemplate,
+  functionId: string,
+) {
+  return template.departments.filter((item) => item.functionId === functionId);
+}
+
+function getDemographicOptions(
+  template: ResolvedRuntimeAttributeTemplate,
+  field: "gender" | "age" | "seniority",
+) {
+  if (field === "gender") {
+    return template.genders;
+  }
+
+  if (field === "age") {
+    return template.ageGroups;
+  }
+
+  return template.seniorityLevels;
+}
+
 export function resolveRuntimeAttributeTemplate(
   template: RuntimeAttributeTemplate | null | undefined,
 ): ResolvedRuntimeAttributeTemplate {
   const streamResult = normalizeOptions(template?.streams, "Stream option");
-  const locationResult = normalizeOptions(template?.locations, "Location option");
   const streamIds = new Set(streamResult.options.map((item) => item.id));
-  const locationIds = new Set(locationResult.options.map((item) => item.id));
-  const locationIssues = [...locationResult.issues];
 
+  const locationBaseResult = normalizeOptions(template?.locations, "Location option");
+  const locations: RuntimeLocationOption[] = [];
+  const locationIssues = [...locationBaseResult.issues];
+
+  locationBaseResult.options.forEach((item) => {
+    const streamId = isNonEmptyString(item.streamId) ? item.streamId.trim() : "";
+
+    if (!streamId) {
+      locationIssues.push(`Location "${item.label}" is missing a stream mapping and was ignored.`);
+      return;
+    }
+
+    if (!streamIds.has(streamId)) {
+      locationIssues.push(`Location "${item.label}" references missing stream "${streamId}" and was ignored.`);
+      return;
+    }
+
+    locations.push({
+      ...item,
+      streamId,
+    });
+  });
+
+  const locationIds = new Set(locations.map((item) => item.id));
   const functionBaseResult = normalizeOptions(template?.functions, "Function option");
-  const normalizedFunctions: RuntimeFunctionOption[] = [];
+  const functions: RuntimeFunctionOption[] = [];
   const functionIssues = [...functionBaseResult.issues];
 
   functionBaseResult.options.forEach((item) => {
-    const streamReference = normalizeReferenceIds(
-      item.streamId,
-      item.streamIds,
-      streamIds,
-      `Function "${item.label}"`,
-      "stream",
-    );
+    const locationId = isNonEmptyString(item.locationId) ? item.locationId.trim() : "";
 
-    if (!streamReference.ids.length) {
-      functionIssues.push(`Function "${item.label}" has no valid stream mapping and was ignored.`);
+    if (!locationId) {
+      functionIssues.push(`Function "${item.label}" is missing a location mapping and was ignored.`);
       return;
     }
 
-    const locationReference = normalizeReferenceIds(
-      undefined,
-      item.locationIds,
-      locationIds,
-      `Function "${item.label}"`,
-      "location",
-    );
+    if (!locationIds.has(locationId)) {
+      functionIssues.push(`Function "${item.label}" references missing location "${locationId}" and was ignored.`);
+      return;
+    }
 
-    normalizedFunctions.push({
+    functions.push({
       ...item,
-      streamId: undefined,
-      streamIds: streamReference.ids,
-      locationIds: locationReference.ids,
+      locationId,
     });
-    functionIssues.push(...streamReference.issues, ...locationReference.issues);
   });
 
-  const functionIds = new Set(normalizedFunctions.map((item) => item.id));
+  const functionIds = new Set(functions.map((item) => item.id));
   const departmentBaseResult = normalizeOptions(template?.departments, "Department option");
-  const normalizedDepartments: RuntimeDepartmentOption[] = [];
+  const departments: RuntimeDepartmentOption[] = [];
   const departmentIssues = [...departmentBaseResult.issues];
 
   departmentBaseResult.options.forEach((item) => {
-    const streamReference = normalizeReferenceIds(
-      item.streamId,
-      item.streamIds,
-      streamIds,
-      `Department "${item.label}"`,
-      "stream",
-    );
-    const functionReference = normalizeReferenceIds(
-      item.functionId,
-      item.functionIds,
-      functionIds,
-      `Department "${item.label}"`,
-      "function",
-    );
+    const functionId = isNonEmptyString(item.functionId) ? item.functionId.trim() : "";
 
-    if (!streamReference.ids.length || !functionReference.ids.length) {
-      departmentIssues.push(`Department "${item.label}" has incomplete hierarchy mappings and was ignored.`);
+    if (!functionId) {
+      departmentIssues.push(`Department "${item.label}" is missing a function mapping and was ignored.`);
       return;
     }
 
-    const locationReference = normalizeReferenceIds(
-      undefined,
-      item.locationIds,
-      locationIds,
-      `Department "${item.label}"`,
-      "location",
-    );
+    if (!functionIds.has(functionId)) {
+      departmentIssues.push(`Department "${item.label}" references missing function "${functionId}" and was ignored.`);
+      return;
+    }
 
-    normalizedDepartments.push({
+    departments.push({
       ...item,
-      streamId: undefined,
-      functionId: undefined,
-      streamIds: streamReference.ids,
-      functionIds: functionReference.ids,
-      locationIds: locationReference.ids,
+      functionId,
     });
-    departmentIssues.push(...streamReference.issues, ...functionReference.issues, ...locationReference.issues);
   });
 
-  const departmentIds = new Set(normalizedDepartments.map((item) => item.id));
-  const finalFunctions = normalizedFunctions.map((item) => {
-    const departmentReference = normalizeReferenceIds(
-      undefined,
-      item.departmentIds,
-      departmentIds,
-      `Function "${item.label}"`,
-      "department",
-    );
-
-    functionIssues.push(...departmentReference.issues);
-
-    return {
-      ...item,
-      departmentIds: departmentReference.ids,
-    };
+  streamResult.options.forEach((stream) => {
+    if (!locations.some((item) => item.streamId === stream.id)) {
+      locationIssues.push(`Stream "${stream.label}" has no linked locations.`);
+    }
   });
 
-  const finalLocations = locationResult.options.map((item) => {
-    const streamReference = normalizeReferenceIds(
-      undefined,
-      item.streamIds,
-      streamIds,
-      `Location "${item.label}"`,
-      "stream",
-    );
+  locations.forEach((location) => {
+    if (!functions.some((item) => item.locationId === location.id)) {
+      functionIssues.push(`Location "${location.label}" has no linked functions.`);
+    }
+  });
 
-    locationIssues.push(...streamReference.issues);
-
-    return {
-      ...item,
-      streamIds: streamReference.ids,
-    };
+  functions.forEach((func) => {
+    if (!departments.some((item) => item.functionId === func.id)) {
+      departmentIssues.push(`Function "${func.label}" has no linked departments.`);
+    }
   });
 
   const genderResult = normalizeValueList(template?.genders, "Gender option");
   const ageGroupResult = normalizeValueList(template?.ageGroups, "Age option");
   const seniorityResult = normalizeValueList(template?.seniorityLevels, "Seniority option");
+  const locationCount = locations.length;
+  const providedLocationConfig = template?.fixedAttributes?.location;
 
   return {
     streams: streamResult.options,
-    locations: finalLocations,
-    functions: finalFunctions,
-    departments: normalizedDepartments,
+    locations,
+    functions,
+    departments,
     genders: genderResult.options,
     ageGroups: ageGroupResult.options,
     seniorityLevels: seniorityResult.options,
     fixedAttributes: {
-      location: resolveFixedAttributeConfig(
-        "location",
-        template?.fixedAttributes?.location,
-        finalLocations.length,
-      ),
+      location: {
+        ...resolveFixedAttributeConfig("location", providedLocationConfig, locationCount),
+        enabled: locationCount > 0 ? true : providedLocationConfig?.enabled ?? false,
+        required: locationCount > 0 ? true : providedLocationConfig?.required ?? false,
+      },
       gender: resolveFixedAttributeConfig(
         "gender",
         template?.fixedAttributes?.gender,
@@ -407,18 +395,6 @@ export function resolveRuntimeAttributeTemplate(
   };
 }
 
-function getOptionByValue<T extends RuntimeAttributeOption>(items: T[], value: string) {
-  return items.find((item) => item.value === value) ?? null;
-}
-
-function includesReference(referenceIds: string[] | undefined, id: string) {
-  if (!referenceIds?.length) {
-    return true;
-  }
-
-  return referenceIds.includes(id);
-}
-
 export function getAvailableLocations(
   template: ResolvedRuntimeAttributeTemplate,
   selections: RuntimeAttributeSelections,
@@ -429,67 +405,35 @@ export function getAvailableLocations(
     return [];
   }
 
-  return template.locations.filter((item) => includesReference(item.streamIds, selectedStream.id));
-}
-
-export function getAvailableDepartments(
-  template: ResolvedRuntimeAttributeTemplate,
-  selections: RuntimeAttributeSelections,
-) {
-  const selectedStream = getOptionByValue(template.streams, selections.stream);
-  const selectedFunction = getOptionByValue(template.functions, selections.function);
-  const selectedLocation = getOptionByValue(template.locations, selections.location);
-
-  if (!selectedStream) {
-    return [];
-  }
-
-  return template.departments.filter((item) => {
-    const matchesStream = includesReference(item.streamIds, selectedStream.id);
-    const matchesFunction = selectedFunction ? includesReference(item.functionIds, selectedFunction.id) : true;
-    const matchesLocation = selectedLocation ? includesReference(item.locationIds, selectedLocation.id) : true;
-
-    return matchesStream && matchesFunction && matchesLocation;
-  });
+  return getLocationsForStream(template, selectedStream.id);
 }
 
 export function getAvailableFunctions(
   template: ResolvedRuntimeAttributeTemplate,
   selections: RuntimeAttributeSelections,
 ) {
-  const selectedStream = getOptionByValue(template.streams, selections.stream);
-  const selectedDepartment = getOptionByValue(template.departments, selections.department);
-  const selectedLocation = getOptionByValue(template.locations, selections.location);
+  const availableLocations = getAvailableLocations(template, selections);
+  const selectedLocation = availableLocations.find((item) => item.value === selections.location) ?? null;
 
-  if (!selectedStream) {
+  if (!selectedLocation) {
     return [];
   }
 
-  return template.functions.filter((item) => {
-    const matchesStream = includesReference(item.streamIds, selectedStream.id);
-    const matchesDepartment = selectedDepartment
-      ? includesReference(selectedDepartment.functionIds, item.id) &&
-        includesReference(item.departmentIds, selectedDepartment.id)
-      : true;
-    const matchesLocation = selectedLocation ? includesReference(item.locationIds, selectedLocation.id) : true;
-
-    return matchesStream && matchesDepartment && matchesLocation;
-  });
+  return getFunctionsForLocation(template, selectedLocation.id);
 }
 
-function getDemographicOptions(
+export function getAvailableDepartments(
   template: ResolvedRuntimeAttributeTemplate,
-  field: "gender" | "age" | "seniority",
+  selections: RuntimeAttributeSelections,
 ) {
-  if (field === "gender") {
-    return template.genders;
+  const availableFunctions = getAvailableFunctions(template, selections);
+  const selectedFunction = availableFunctions.find((item) => item.value === selections.function) ?? null;
+
+  if (!selectedFunction) {
+    return [];
   }
 
-  if (field === "age") {
-    return template.ageGroups;
-  }
-
-  return template.seniorityLevels;
+  return getDepartmentsForFunction(template, selectedFunction.id);
 }
 
 export function sanitizeRuntimeAttributeSelections(
@@ -500,28 +444,32 @@ export function sanitizeRuntimeAttributeSelections(
   const selectedStream = getOptionByValue(template.streams, nextSelections.stream);
 
   if (!selectedStream) {
-    return { ...EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS, gender: nextSelections.gender, age: nextSelections.age, seniority: nextSelections.seniority };
-  }
-
-  const availableLocations = getAvailableLocations(template, nextSelections);
-  if (nextSelections.location && !availableLocations.some((item) => item.value === nextSelections.location)) {
+    nextSelections.stream = "";
     nextSelections.location = "";
-  }
-
-  const availableDepartments = getAvailableDepartments(template, {
-    ...nextSelections,
-    function: "",
-  });
-  if (
-    nextSelections.department &&
-    !availableDepartments.some((item) => item.value === nextSelections.department)
-  ) {
-    nextSelections.department = "";
-  }
-
-  const availableFunctions = getAvailableFunctions(template, nextSelections);
-  if (nextSelections.function && !availableFunctions.some((item) => item.value === nextSelections.function)) {
     nextSelections.function = "";
+    nextSelections.department = "";
+  } else {
+    const availableLocations = getLocationsForStream(template, selectedStream.id);
+    const selectedLocation = availableLocations.find((item) => item.value === nextSelections.location) ?? null;
+
+    if (!selectedLocation) {
+      nextSelections.location = "";
+      nextSelections.function = "";
+      nextSelections.department = "";
+    } else {
+      const availableFunctions = getFunctionsForLocation(template, selectedLocation.id);
+      const selectedFunction = availableFunctions.find((item) => item.value === nextSelections.function) ?? null;
+
+      if (!selectedFunction) {
+        nextSelections.function = "";
+        nextSelections.department = "";
+      } else {
+        const availableDepartments = getDepartmentsForFunction(template, selectedFunction.id);
+        if (!availableDepartments.some((item) => item.value === nextSelections.department)) {
+          nextSelections.department = "";
+        }
+      }
+    }
   }
 
   (["gender", "age", "seniority"] as const).forEach((field) => {
@@ -536,10 +484,6 @@ export function sanitizeRuntimeAttributeSelections(
       nextSelections[field] = "";
     }
   });
-
-  if (!template.fixedAttributes.location.enabled) {
-    nextSelections.location = "";
-  }
 
   return nextSelections;
 }
@@ -557,35 +501,17 @@ export function applyRuntimeAttributeSelection(
 
   if (field === "stream") {
     nextSelections.location = "";
-    nextSelections.department = "";
     nextSelections.function = "";
+    nextSelections.department = "";
   }
 
   if (field === "location") {
-    nextSelections.department = "";
     nextSelections.function = "";
-  }
-
-  if (field === "department") {
-    const departmentFunctionOptions = getAvailableFunctions(template, {
-      ...nextSelections,
-      function: "",
-    });
-
-    if (!departmentFunctionOptions.some((item) => item.value === nextSelections.function)) {
-      nextSelections.function = "";
-    }
+    nextSelections.department = "";
   }
 
   if (field === "function") {
-    const functionDepartmentOptions = getAvailableDepartments(template, {
-      ...nextSelections,
-      department: "",
-    });
-
-    if (!functionDepartmentOptions.some((item) => item.value === nextSelections.department)) {
-      nextSelections.department = "";
-    }
+    nextSelections.department = "";
   }
 
   return sanitizeRuntimeAttributeSelections(nextSelections, template);
@@ -626,8 +552,8 @@ export function buildRuntimeAttributeFormState(
   selections: RuntimeAttributeSelections,
 ): RuntimeAttributeFormState {
   const locationOptions = getAvailableLocations(template, selections);
-  const departmentOptions = getAvailableDepartments(template, selections);
   const functionOptions = getAvailableFunctions(template, selections);
+  const departmentOptions = getAvailableDepartments(template, selections);
 
   const locationConfig = template.fixedAttributes.location;
   const genderConfig = template.fixedAttributes.gender;
@@ -635,9 +561,8 @@ export function buildRuntimeAttributeFormState(
   const seniorityConfig = template.fixedAttributes.seniority;
 
   const hasStreamSelection = Boolean(selections.stream);
-  const locationBlocksHierarchy =
-    locationConfig.enabled && locationConfig.required && locationOptions.length > 0;
-  const hierarchyVisible = hasStreamSelection && (!locationBlocksHierarchy || Boolean(selections.location));
+  const hasLocationSelection = Boolean(selections.location);
+  const hasFunctionSelection = Boolean(selections.function);
 
   const fields: Record<RuntimeAttributeField, RuntimeAttributeFieldState> = {
     stream: createFieldState("stream", template.streams, {
@@ -656,22 +581,22 @@ export function buildRuntimeAttributeFormState(
           ? "No locations are available for the selected stream."
           : null,
     }),
-    department: createFieldState("department", departmentOptions, {
-      required: hierarchyVisible,
-      visible: hierarchyVisible,
-      disabled: departmentOptions.length === 0,
-      emptyMessage:
-        hierarchyVisible && departmentOptions.length === 0
-          ? "No departments match the current stream and location."
-          : null,
-    }),
     function: createFieldState("function", functionOptions, {
-      required: hierarchyVisible,
-      visible: hierarchyVisible,
+      required: hasLocationSelection,
+      visible: hasLocationSelection,
       disabled: functionOptions.length === 0,
       emptyMessage:
-        hierarchyVisible && functionOptions.length === 0
-          ? "No functions match the current stream, department, and location."
+        hasLocationSelection && functionOptions.length === 0
+          ? "No functions are available for the selected location."
+          : null,
+    }),
+    department: createFieldState("department", departmentOptions, {
+      required: hasFunctionSelection,
+      visible: hasFunctionSelection,
+      disabled: departmentOptions.length === 0,
+      emptyMessage:
+        hasFunctionSelection && departmentOptions.length === 0
+          ? "No departments are available for the selected function."
           : null,
     }),
     gender: createFieldState("gender", template.genders, {
@@ -728,13 +653,13 @@ export function buildRuntimeAttributeFormState(
   );
   appendBlockingIssue(
     blockingIssues,
-    fields.department.visible && fields.department.options.length === 0,
-    "The selected hierarchy does not expose any departments.",
+    fields.function.visible && fields.function.options.length === 0,
+    "The selected location has no function mappings.",
   );
   appendBlockingIssue(
     blockingIssues,
-    fields.function.visible && fields.function.options.length === 0,
-    "The selected hierarchy does not expose any functions.",
+    fields.department.visible && fields.department.options.length === 0,
+    "The selected function has no department mappings.",
   );
   appendBlockingIssue(
     blockingIssues,

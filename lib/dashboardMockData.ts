@@ -1,3 +1,5 @@
+import type { DashboardAggregationSnapshot } from "@/runtime/contracts/aggregation";
+
 export interface DashboardDomainAverage {
   averageRiskScore: number;
   averageRiskStatus: string;
@@ -457,6 +459,173 @@ export function getDashboardMockData(tenantName: string): DashboardMockData {
         completed: 24,
       },
     ],
+  };
+}
+
+function placeholderMetricLabel(label: string) {
+  return label || "No data";
+}
+
+function toPercent(value: number) {
+  return Number(value.toFixed(0));
+}
+
+function toCountFromRisk(participantCount: number, riskScore: number) {
+  return Math.max(0, Math.round(participantCount * (riskScore / 100)));
+}
+
+function ensureRows<T>(items: T[], fallbackItem: T) {
+  return items.length > 0 ? items : [fallbackItem];
+}
+
+export function buildDashboardDataFromSnapshot(
+  snapshot: DashboardAggregationSnapshot,
+  tenantName: string,
+): DashboardMockData {
+  const mentalHealthMetrics = snapshot.categoryMetrics.map((metric) => {
+    const highRiskSurveyCount = snapshot.subdomainMetrics
+      .filter((subdomainMetric) => subdomainMetric.categoryId === metric.categoryId)
+      .reduce((sum, subdomainMetric) => sum + subdomainMetric.riskDistribution.highRisk, 0);
+
+    return {
+      domain: metric.categoryLabel,
+      participants: metric.participantCount,
+      riskScore: toPercent(metric.riskScore),
+      satisfiedScore: toPercent(metric.satisfactionScore),
+      riskStatus: metric.riskStatus,
+      satisfactionStatus: metric.riskStatus,
+      highRiskSurveyCount,
+      nonHighRiskSurveyCount: Math.max(metric.participantCount - highRiskSurveyCount, 0),
+      dashboardDomainAverage: {
+        averageRiskScore: toPercent(metric.riskScore),
+        averageRiskStatus: metric.riskStatus,
+        averageSatisfactionScore: toPercent(metric.satisfactionScore),
+        averageSatisfactionStatus: metric.riskStatus,
+      },
+    };
+  });
+
+  const ageStats = ensureRows(
+    snapshot.demographicMetrics.byAge.map((row) => ({
+      ageGroup: placeholderMetricLabel(row.label),
+      people: row.participantCount,
+      peoplePercent: toPercent(row.percentage),
+      riskScore: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+    })),
+    {
+      ageGroup: "No data",
+      people: 0,
+      peoplePercent: 0,
+      riskScore: 0,
+      satisfactionScore: 0,
+    },
+  );
+  const genderStats = ensureRows(
+    snapshot.demographicMetrics.byGender.map((row) => ({
+      gender: placeholderMetricLabel(row.label),
+      people: row.participantCount,
+      peoplePercent: toPercent(row.percentage),
+      riskScore: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+    })),
+    {
+      gender: "No data",
+      people: 0,
+      peoplePercent: 0,
+      riskScore: 0,
+      satisfactionScore: 0,
+    },
+  );
+  const streamStats = ensureRows(
+    snapshot.demographicMetrics.byStream.map((row) => ({
+      stream: placeholderMetricLabel(row.label),
+      totalResponses: row.participantCount,
+      departmentPercent: toPercent(row.percentage),
+      avgRisk: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+    })),
+    {
+      stream: "No data",
+      totalResponses: 0,
+      departmentPercent: 0,
+      avgRisk: 0,
+      satisfactionScore: 0,
+      highRiskCount: 0,
+    },
+  );
+  const functionStats = ensureRows(
+    snapshot.demographicMetrics.byFunction.map((row) => ({
+      function: placeholderMetricLabel(row.label),
+      totalResponses: row.participantCount,
+      functionPercent: toPercent(row.percentage),
+      avgRisk: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+    })),
+    {
+      function: "No data",
+      totalResponses: 0,
+      functionPercent: 0,
+      avgRisk: 0,
+      satisfactionScore: 0,
+      highRiskCount: 0,
+    },
+  );
+  const departmentStats = ensureRows(
+    snapshot.demographicMetrics.byDepartment.map((row) => ({
+      department: placeholderMetricLabel(row.label),
+      totalResponses: row.participantCount,
+      departmentPercent: toPercent(row.percentage),
+      avgRisk: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+    })),
+    {
+      department: "No data",
+      totalResponses: 0,
+      departmentPercent: 0,
+      avgRisk: 0,
+      satisfactionScore: 0,
+      highRiskCount: 0,
+    },
+  );
+  const locationStats = ensureRows(
+    snapshot.demographicMetrics.byLocation.map((row) => ({
+      location: placeholderMetricLabel(row.label),
+      totalResponses: row.participantCount,
+      locationPercent: toPercent(row.percentage),
+      avgRisk: toPercent(row.averageRiskScore),
+      satisfactionScore: toPercent(row.satisfactionScore),
+    })),
+    {
+      location: "No data",
+      totalResponses: 0,
+      locationPercent: 0,
+      avgRisk: 0,
+      satisfactionScore: 0,
+    },
+  );
+  const fallbackData = getDashboardMockData(tenantName);
+
+  return {
+    mentalHealthMetrics,
+    ageStats,
+    genderStats,
+    streamStats,
+    functionStats,
+    departmentStats,
+    locationStats,
+    organization: {
+      name: tenantName,
+    },
+    totalParticipants: snapshot.overallMetrics.uniqueRespondents,
+    invitationOverview: {
+      ...fallbackData.invitationOverview,
+      completedResponses: snapshot.overallMetrics.totalResponses,
+    },
+    invitationCampaigns: fallbackData.invitationCampaigns,
   };
 }
 

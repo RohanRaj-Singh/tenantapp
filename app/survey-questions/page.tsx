@@ -99,8 +99,11 @@ export default function SurveyQuestionsPage() {
     try {
       const answeredAt = new Date().toISOString();
       const submission: SurveySubmission = {
+        runtimeConfigId: surveySession.runtimeConfigId,
         tenantId: config.tenant.id,
+        tenantSlug: config.tenant.slug,
         scannerVersionId: config.scannerVersion.id,
+        attributeTemplateVersionId: surveySession.attributeTemplateVersionId,
         attributes: surveySession.attributes,
         responses: submissionResponses.map((response) => ({
           ...response,
@@ -108,6 +111,7 @@ export default function SurveyQuestionsPage() {
         })),
         completionState: {
           status: "completed",
+          startedAt: surveySession.savedAt,
           completedAt: answeredAt,
           totalQuestions: surveyQuestions.length,
           answeredQuestions: submissionResponses.length,
@@ -122,8 +126,12 @@ export default function SurveyQuestionsPage() {
       await submitSurvey(submission);
       clearRuntimeSurveySession();
       setSubmitted(true);
-    } catch {
-      setSubmissionError("Unable to submit your survey right now. Please try again.");
+    } catch (error) {
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to submit your survey right now. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }

@@ -17,12 +17,12 @@ export function useDashboardFilters() {
 
       if (key === "stream") {
         updated.location = "";
-        updated.fn = "";
+        updated.function = "";
         updated.department = "";
       } else if (key === "location") {
-        updated.fn = "";
+        updated.function = "";
         updated.department = "";
-      } else if (key === "fn") {
+      } else if (key === "function") {
         updated.department = "";
       }
 
@@ -50,4 +50,3 @@ export function useDashboardFilters() {
     resetFilters,
   };
 }
-

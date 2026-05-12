@@ -3,9 +3,11 @@ import type { SurveySubmissionAttributes } from "../contracts/surveySubmission";
 export const RUNTIME_SURVEY_SESSION_STORAGE_KEY = "remedygcc-runtime-survey-session";
 
 export interface RuntimeSurveySession {
+  runtimeConfigId: string;
   tenantId: string;
   tenantSlug: string;
   scannerVersionId: string;
+  attributeTemplateVersionId: string;
   attributes: SurveySubmissionAttributes;
   savedAt: string;
 }
@@ -58,9 +60,11 @@ export function readRuntimeSurveySession(
   try {
     const parsedValue = JSON.parse(rawValue) as Partial<RuntimeSurveySession>;
     const sessionIsValid =
+      isNonEmptyString(parsedValue?.runtimeConfigId) &&
       isNonEmptyString(parsedValue?.tenantId) &&
       isNonEmptyString(parsedValue?.tenantSlug) &&
       isNonEmptyString(parsedValue?.scannerVersionId) &&
+      isNonEmptyString(parsedValue?.attributeTemplateVersionId) &&
       isNonEmptyString(parsedValue?.savedAt) &&
       isAttributeRecord(parsedValue?.attributes);
 
@@ -80,9 +84,11 @@ export function readRuntimeSurveySession(
     const session = parsedValue as RuntimeSurveySession;
 
     return {
+      runtimeConfigId: session.runtimeConfigId,
       tenantId: session.tenantId,
       tenantSlug: session.tenantSlug,
       scannerVersionId: session.scannerVersionId,
+      attributeTemplateVersionId: session.attributeTemplateVersionId,
       attributes: session.attributes,
       savedAt: session.savedAt,
     };

@@ -8,6 +8,13 @@ export interface TenantBrandingConfig {
   faviconUrl?: string;
 }
 
+export interface RuntimeVersionRefs {
+  scannerVersionId: string;
+  attributeTemplateVersionId: string;
+  calculationVersionId: string;
+  brandingVersionId: string;
+}
+
 export interface RuntimeAttributeOption {
   id: string;
   label: string;
@@ -15,22 +22,15 @@ export interface RuntimeAttributeOption {
 }
 
 export interface RuntimeLocationOption extends RuntimeAttributeOption {
-  streamIds?: string[];
+  streamId: string;
 }
 
 export interface RuntimeFunctionOption extends RuntimeAttributeOption {
-  streamId?: string;
-  streamIds?: string[];
-  departmentIds?: string[];
-  locationIds?: string[];
+  locationId: string;
 }
 
 export interface RuntimeDepartmentOption extends RuntimeAttributeOption {
-  streamId?: string;
-  streamIds?: string[];
-  functionId?: string;
-  functionIds?: string[];
-  locationIds?: string[];
+  functionId: string;
 }
 
 export type RuntimeFixedAttributeKey = "location" | "gender" | "age" | "seniority";
@@ -54,11 +54,14 @@ export interface RuntimeAttributeTemplate {
 }
 
 export interface TenantRuntimeConfig {
+  runtimeConfigId: string;
+  publishedAt: string;
+  versionRefs: RuntimeVersionRefs;
   tenant: {
     id: string;
     name: string;
     slug: string;
-    status: "active" | "inactive" | "suspended";
+    status: "active" | "inactive" | "suspended" | "disabled" | "archived";
     plan: "free" | "pro" | "enterprise";
     createdAt: string;
   };

@@ -14,23 +14,30 @@ export interface SurveySubmissionResponse {
   answerScore: number;
   answeredAt: string;
   timeSpentMs?: number;
+  questionKind?: "primary" | "follow-up";
+  triggerQuestionId?: string;
 }
 
 export interface SurveySubmission {
+  runtimeConfigId?: string;
   tenantId: string;
+  tenantSlug?: string;
   scannerVersionId: string;
+  attributeTemplateVersionId?: string;
   inviteToken?: string;
   attributes: SurveySubmissionAttributes;
   responses: SurveySubmissionResponse[];
   completionState: {
     status: "in-progress" | "completed";
+    startedAt?: string;
     completedAt?: string;
     totalQuestions: number;
     answeredQuestions: number;
   };
   metadata: {
-    userAgent: string;
-    ipAddress: string;
+    userAgent?: string;
+    ipAddress?: string;
     sessionId: string;
+    inviteToken?: string;
   };
 }

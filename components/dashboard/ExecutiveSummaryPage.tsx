@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { Filter, MapPinned, Users } from "lucide-react";
 import DashboardFilters, {
   checkHasActiveFilters,
@@ -8,13 +7,12 @@ import DashboardFilters, {
 import ExecutiveSummaryComponent from "@/components/dashboard/ExecutiveSummaryComponent";
 import { StatCard } from "@/components/dashboard/DashboardPrimitives";
 import { useDashboardFilters } from "@/components/dashboard/useDashboardFilters";
-import { getDashboardMockData } from "@/lib/dashboardMockData";
+import { useDashboardData } from "@/runtime/hooks/useDashboardData";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 export default function ExecutiveSummaryPage() {
   const theme = useTheme();
   const tenantName = theme.tenantName;
-  const data = useMemo(() => getDashboardMockData(tenantName), [tenantName]);
   const {
     filters,
     appliedFilters,
@@ -23,6 +21,7 @@ export default function ExecutiveSummaryPage() {
     handleApplyFilters,
     resetFilters,
   } = useDashboardFilters();
+  const { data, loading } = useDashboardData(tenantName, appliedFilters);
 
   const hasAppliedFilters = checkHasActiveFilters(appliedFilters);
 
@@ -63,7 +62,7 @@ export default function ExecutiveSummaryPage() {
         onFilterChange={handleFilterChange}
         onApply={handleApplyFilters}
         onReset={resetFilters}
-        isLoading={false}
+        isLoading={loading}
       />
 
       <ExecutiveSummaryComponent

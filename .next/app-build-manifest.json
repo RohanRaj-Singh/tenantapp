@@ -16,10 +16,10 @@
       "static/chunks/main-app.js",
       "static/chunks/app/page.js"
     ],
-    "/_not-found/page": [
+    "/api/runtime/current/route": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/_not-found/page.js"
+      "static/chunks/app/api/runtime/current/route.js"
     ],
     "/survey/page": [
       "static/chunks/webpack.js",
@@ -31,10 +31,30 @@
       "static/chunks/main-app.js",
       "static/chunks/app/survey-questions/page.js"
     ],
-    "/api/survey/submit/route": [
+    "/dashboard/layout": [
       "static/chunks/webpack.js",
       "static/chunks/main-app.js",
-      "static/chunks/app/api/survey/submit/route.js"
+      "static/chunks/app/dashboard/layout.js"
+    ],
+    "/dashboard/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/page.js"
+    ],
+    "/api/dashboard/metrics/route": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/api/dashboard/metrics/route.js"
+    ],
+    "/dashboard/clinical-risk-index/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/clinical-risk-index/page.js"
+    ],
+    "/dashboard/psychological-safety/page": [
+      "static/chunks/webpack.js",
+      "static/chunks/main-app.js",
+      "static/chunks/app/dashboard/psychological-safety/page.js"
     ]
   }
 }

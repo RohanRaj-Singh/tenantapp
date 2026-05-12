@@ -1,13 +1,21 @@
 "use client";
 
-import { createContext } from 'react';
-import { TenantRuntimeConfig } from '../contracts/runtime';
+import { createContext } from "react";
+import type { RuntimeTenantResolutionSource } from "../tenant/tenantResolution";
+import type { TenantRuntimeConfig } from "../contracts/runtime";
+
+export interface RuntimeContextError {
+  code: string;
+  message: string;
+  details?: Record<string, unknown>;
+}
 
 export interface RuntimeContextValue {
   config: TenantRuntimeConfig | null;
   loading: boolean;
-  error: string | null;
+  error: RuntimeContextError | null;
   tenantSlug: string | null;
+  tenantSource: RuntimeTenantResolutionSource | null;
 }
 
 export const RuntimeContext = createContext<RuntimeContextValue>({
@@ -15,4 +23,5 @@ export const RuntimeContext = createContext<RuntimeContextValue>({
   loading: true,
   error: null,
   tenantSlug: null,
+  tenantSource: null,
 });

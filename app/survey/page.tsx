@@ -11,7 +11,7 @@ import { useRuntimeAttributeForm } from "@/runtime/hooks/useRuntimeAttributeForm
 import { useRuntimeConfig } from "@/runtime/hooks/useRuntimeConfig";
 import { useTheme } from "@/runtime/theme/useTheme";
 
-const SELECT_FIELDS: RuntimeAttributeField[] = ["stream", "location", "department", "function"];
+const SELECT_FIELDS: RuntimeAttributeField[] = ["stream", "location", "function", "department"];
 const CHOICE_FIELDS: RuntimeAttributeField[] = ["gender", "age", "seniority"];
 
 export default function SurveyPage() {
@@ -39,14 +39,16 @@ export default function SurveyPage() {
     }
 
     saveRuntimeSurveySession({
+      runtimeConfigId: config.runtimeConfigId,
       tenantId: config.tenant.id,
       tenantSlug: config.tenant.slug,
       scannerVersionId: config.scannerVersion.id,
+      attributeTemplateVersionId: config.versionRefs.attributeTemplateVersionId,
       attributes: {
         stream: selections.stream,
         location: selections.location,
-        department: selections.department,
         function: selections.function,
+        department: selections.department,
         gender: selections.gender,
         age: selections.age,
         seniority: selections.seniority,

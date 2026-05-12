@@ -1,133 +1,30 @@
 "use client";
 
-import { useCallback, useState } from "react";
-import { ageOptions, genderOptions } from "@/data/survey";
-import { 
-  X, 
+import { useCallback, useContext, useMemo, useState } from "react";
+import {
+  EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS,
+  getAvailableDepartments,
+  getAvailableFunctions,
+  getAvailableLocations,
+  resolveRuntimeAttributeTemplate,
+  type RuntimeAttributeSelections,
+} from "@/runtime/attributes/attributeTemplateUtils";
+import { RuntimeContext } from "@/runtime/context/RuntimeContext";
+import {
+  X,
   Check,
   RotateCcw,
   Loader2,
   ChevronDown,
   ChevronUp,
-  SlidersHorizontal
+  SlidersHorizontal,
 } from "lucide-react";
 import { useTheme } from "@/runtime/theme/useTheme";
-
-interface StreamHierarchy {
-  [location: string]: {
-    [fn: string]: string[];
-  };
-}
-
-interface AttributeTemplate {
-  hierarchy: {
-    [stream: string]: StreamHierarchy;
-  };
-}
-
-const DEFAULT_ATTRIBUTE_TEMPLATE: AttributeTemplate = {
-  hierarchy: {
-    Commercial: {
-      headOffice: {
-        Business_Development: ["Business_Development", "Mergers_And_Acquisitions"],
-        Commercial: ["Commercial", "Economics_And_Planning"],
-        Exploration: ["Exploration", "Exploration_Operated_Assets", "Exploration_Study_Or_Growth_Team"],
-        Joint_Ventures: [
-          "Joint_Ventures_Integrated_Gas",
-          "Joint_Ventures",
-          "Joint_Ventures_Business",
-          "Joint_Ventures_Technical_Solution",
-        ],
-      },
-    },
-    Finance_And_Procurement: {
-      headOffice: {
-        Contract_And_Procurement: ["Contract_And_Procurement", "Contracts"],
-        Finance_And_Procurement: [
-          "BF_Non_Operated_Assets",
-          "BF_Operated_Assets",
-          "BF_Operated_Assets_Block_60_And_48",
-          "Finance_And_Procurement",
-          "Financial_Control",
-          "Financial_Planning_And_Analysis",
-          "Treasury",
-        ],
-      },
-      block60: {
-        Contract_And_Procurement: ["Material_Management"],
-      },
-    },
-    Legal: {
-      headOffice: {
-        Legal: ["Legal"],
-      },
-    },
-    Operated_Assets: {
-      block60: {
-        HSSE: ["HSE_Operated_Asset"],
-        Projects_Delivery: ["Engineering", "Project_Technical_Services"],
-        Subsurface_And_Operation_60_And_48: ["Operation_60_And_48_COE", "Subsurface", "Subsurface_And_Operation_60_And_48"],
-      },
-      msusundam: {
-        HSSE: ["HSE_Operated_Asset"],
-        Musandam_Cluster: ["Musandam_Cluster"],
-        Subsurface_And_Operation_60_And_48: ["Subsurface_And_Operation_60_And_48"],
-      },
-      headOffice: {
-        HSSE: ["HSE_Support", "HSSE", "OH_And_IH"],
-        Operated_Assets: ["Operated_Assets", "Technical_Services", "Well_Delivery"],
-        Projects_Delivery: ["Construction", "Major_Projects", "Off_Plot_Projects", "Projects_Delivery"],
-        Subsurface_And_Operation_60_And_48: ["Budget_And_Cost_Control", "Growth_And_Planning"],
-      },
-    },
-    OQ_Exploration_And_Production: {
-      headOffice: {
-        OQ_Exploration_And_Production: ["OQ_Exploration_And_Production"],
-      },
-    },
-    People_Technology_And_Culture: {
-      headOffice: {
-        Communications_And_Branding: ["Communications_And_Branding"],
-        Corporate_Support_Service: ["Corporate_Support_Service"],
-        IDS_And_CI: ["IDS", "IDS_And_CI"],
-        People_And_Strategy: ["People", "People_And_Strategy"],
-        People_Technology_And_Culture: ["People_Technology_And_Culture"],
-      },
-      block60: {
-        Corporate_Support_Service: ["Corporate_Support_Service"],
-        IDS_And_CI: ["IDS", "IDS_And_CI"],
-      },
-      msusundam: {
-        Corporate_Support_Service: ["Corporate_Support_Service"],
-        IDS_And_CI: ["IDS", "IDS_And_CI"],
-      },
-    },
-  },
-};
-
-function getStreams(): string[] {
-  return Object.keys(DEFAULT_ATTRIBUTE_TEMPLATE.hierarchy);
-}
-
-function getLocations(stream: string): string[] {
-  const hierarchy = DEFAULT_ATTRIBUTE_TEMPLATE.hierarchy[stream];
-  return hierarchy ? Object.keys(hierarchy) : [];
-}
-
-function getFunctions(stream: string, location: string): string[] {
-  const locationData = DEFAULT_ATTRIBUTE_TEMPLATE.hierarchy[stream]?.[location];
-  return locationData ? Object.keys(locationData) : [];
-}
-
-function getDepartments(stream: string, location: string, fn: string): string[] {
-  const functionData = DEFAULT_ATTRIBUTE_TEMPLATE.hierarchy[stream]?.[location]?.[fn];
-  return functionData || [];
-}
 
 export interface FilterState {
   stream: string;
   location: string;
-  fn: string;
+  function: string;
   department: string;
   age: string;
   gender: string;
@@ -145,21 +42,15 @@ interface DashboardFiltersProps {
 export const initialFilterState: FilterState = {
   stream: "",
   location: "",
-  fn: "",
+  function: "",
   department: "",
   age: "",
   gender: "",
 };
 
 export function checkHasActiveFilters(filters: FilterState): boolean {
-  return Object.values(filters).some((v) => v !== "");
+  return Object.values(filters).some((value) => value !== "");
 }
-
-const locationDisplayMap: Record<string, string> = {
-  block60: "B60",
-  msusundam: "Musandam",
-  headOffice: "Muscat",
-};
 
 interface FilterSelectProps {
   label?: string;
@@ -174,19 +65,19 @@ function FilterSelect({ label, value, onChange, options, placeholder = "Select" 
 
   return (
     <div className="relative">
-      {label && (
+      {label ? (
         <label className="mb-1 block text-xs font-medium text-slate-500">{label}</label>
-      )}
+      ) : null}
       <select
         value={value}
-        onChange={(e) => onChange(e.target.value)}
+        onChange={(event) => onChange(event.target.value)}
         className="tenant-field h-10 w-full appearance-none rounded-xl px-3 pr-8 text-sm transition-all duration-150"
         style={{ borderColor: theme.borderAccent }}
       >
         <option value="">{placeholder}</option>
-        {options.map((opt) => (
-          <option key={opt.value} value={opt.value}>
-            {opt.label}
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
           </option>
         ))}
       </select>
@@ -215,6 +106,22 @@ function FilterPill({ label, value, color, onRemove }: FilterPillProps) {
   );
 }
 
+function toHierarchySelections(filters: FilterState): RuntimeAttributeSelections {
+  return {
+    ...EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS,
+    stream: filters.stream,
+    location: filters.location,
+    function: filters.function,
+    department: filters.department,
+    age: filters.age,
+    gender: filters.gender,
+  };
+}
+
+function buildLabelMap(options: Array<{ label: string; value: string }>) {
+  return new Map(options.map((option) => [option.value, option.label]));
+}
+
 export default function DashboardFilters({
   filters,
   onFilterChange,
@@ -225,34 +132,99 @@ export default function DashboardFilters({
 }: DashboardFiltersProps) {
   const theme = useTheme();
   const [mobileExpanded, setMobileExpanded] = useState(false);
-  
-  const availableLocations = filters.stream ? getLocations(filters.stream) : [];
-  const availableFunctions = filters.stream && filters.location ? getFunctions(filters.stream, filters.location) : [];
-  const availableDepartments = filters.stream && filters.location && filters.fn 
-    ? getDepartments(filters.stream, filters.location, filters.fn)
-    : [];
+  const { config } = useContext(RuntimeContext);
+  const resolvedTemplate = useMemo(
+    () => resolveRuntimeAttributeTemplate(config?.attributeTemplate),
+    [config?.attributeTemplate],
+  );
+
+  const hierarchySelections = useMemo(
+    () => toHierarchySelections(filters),
+    [filters],
+  );
+
+  const streamOptions = useMemo(
+    () => resolvedTemplate.streams.map((item) => ({ label: item.label, value: item.value })),
+    [resolvedTemplate.streams],
+  );
+  const availableLocationOptions = useMemo(
+    () =>
+      getAvailableLocations(resolvedTemplate, hierarchySelections).map((item) => ({
+        label: item.label,
+        value: item.value,
+      })),
+    [hierarchySelections, resolvedTemplate],
+  );
+  const availableFunctionOptions = useMemo(
+    () =>
+      getAvailableFunctions(resolvedTemplate, hierarchySelections).map((item) => ({
+        label: item.label,
+        value: item.value,
+      })),
+    [hierarchySelections, resolvedTemplate],
+  );
+  const availableDepartmentOptions = useMemo(
+    () =>
+      getAvailableDepartments(resolvedTemplate, hierarchySelections).map((item) => ({
+        label: item.label,
+        value: item.value,
+      })),
+    [hierarchySelections, resolvedTemplate],
+  );
+  const ageOptions = useMemo(
+    () => resolvedTemplate.ageGroups.map((item) => ({ label: item.label, value: item.value })),
+    [resolvedTemplate.ageGroups],
+  );
+  const genderOptions = useMemo(
+    () => resolvedTemplate.genders.map((item) => ({ label: item.label, value: item.value })),
+    [resolvedTemplate.genders],
+  );
+
+  const streamLabelByValue = useMemo(() => buildLabelMap(streamOptions), [streamOptions]);
+  const locationLabelByValue = useMemo(
+    () =>
+      buildLabelMap(
+        resolvedTemplate.locations.map((item) => ({ label: item.label, value: item.value })),
+      ),
+    [resolvedTemplate.locations],
+  );
+  const functionLabelByValue = useMemo(
+    () =>
+      buildLabelMap(
+        resolvedTemplate.functions.map((item) => ({ label: item.label, value: item.value })),
+      ),
+    [resolvedTemplate.functions],
+  );
+  const departmentLabelByValue = useMemo(
+    () =>
+      buildLabelMap(
+        resolvedTemplate.departments.map((item) => ({ label: item.label, value: item.value })),
+      ),
+    [resolvedTemplate.departments],
+  );
+  const ageLabelByValue = useMemo(() => buildLabelMap(ageOptions), [ageOptions]);
+  const genderLabelByValue = useMemo(() => buildLabelMap(genderOptions), [genderOptions]);
 
   const handleFilterChange = useCallback((key: keyof FilterState, value: string) => {
     onFilterChange(key, value);
-    
+
     if (key === "stream") {
       onFilterChange("location", "");
-      onFilterChange("fn", "");
+      onFilterChange("function", "");
       onFilterChange("department", "");
     } else if (key === "location") {
-      onFilterChange("fn", "");
+      onFilterChange("function", "");
       onFilterChange("department", "");
-    } else if (key === "fn") {
+    } else if (key === "function") {
       onFilterChange("department", "");
     }
   }, [onFilterChange]);
 
   const isFilterActive = checkHasActiveFilters(filters);
-  const activeFilterCount = Object.values(filters).filter(v => v !== "").length;
+  const activeFilterCount = Object.values(filters).filter((value) => value !== "").length;
 
   return (
     <div className="overflow-hidden rounded-[1.5rem] border bg-white shadow-sm" style={{ borderColor: theme.borderAccent }}>
-      {/* Header with filter count - click to expand on mobile */}
       <button
         type="button"
         onClick={() => setMobileExpanded(!mobileExpanded)}
@@ -262,14 +234,14 @@ export default function DashboardFilters({
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-slate-500" />
           <span className="text-sm font-medium text-slate-700">Filters</span>
-          {activeFilterCount > 0 && (
+          {activeFilterCount > 0 ? (
             <span
               className="inline-flex h-[20px] min-w-[20px] items-center justify-center rounded-full px-1.5 text-xs font-semibold"
               style={{ backgroundColor: theme.primaryColor, color: theme.onPrimaryColor }}
             >
               {activeFilterCount}
             </span>
-          )}
+          ) : null}
         </div>
         {mobileExpanded ? (
           <ChevronUp className="h-4 w-4 text-slate-500" />
@@ -278,81 +250,72 @@ export default function DashboardFilters({
         )}
       </button>
 
-      {/* Mobile collapsible filter panel */}
-      {mobileExpanded && (
+      {mobileExpanded ? (
         <div className="space-y-3 bg-gradient-to-b from-white to-slate-50 p-4 lg:hidden">
           <div className="grid grid-cols-1 gap-3">
             <FilterSelect
               value={filters.stream}
               onChange={(value) => handleFilterChange("stream", value)}
-              options={getStreams().map((stream) => ({
-                label: stream.replace(/_/g, " "),
-                value: stream,
-              }))}
+              options={streamOptions}
               placeholder="Select Stream"
             />
 
-            {filters.stream && (
+            {filters.stream ? (
               <FilterSelect
                 value={filters.location}
                 onChange={(value) => handleFilterChange("location", value)}
-                options={availableLocations.map((loc) => ({
-                  label: locationDisplayMap[loc] || loc,
-                  value: loc,
-                }))}
+                options={availableLocationOptions}
                 placeholder="Select Location"
               />
-            )}
+            ) : null}
 
-            {filters.stream && filters.location && (
+            {filters.stream && filters.location ? (
               <FilterSelect
-                value={filters.fn}
-                onChange={(value) => handleFilterChange("fn", value)}
-                options={availableFunctions.map((func) => ({
-                  label: func.replace(/_/g, " "),
-                  value: func,
-                }))}
+                value={filters.function}
+                onChange={(value) => handleFilterChange("function", value)}
+                options={availableFunctionOptions}
                 placeholder="Select Function"
               />
-            )}
+            ) : null}
 
-            {filters.stream && filters.location && filters.fn && (
+            {filters.stream && filters.location && filters.function ? (
               <FilterSelect
                 value={filters.department}
                 onChange={(value) => handleFilterChange("department", value)}
-                options={availableDepartments.map((dept) => ({
-                  label: dept.replace(/_/g, " "),
-                  value: dept,
-                }))}
+                options={availableDepartmentOptions}
                 placeholder="Select Department"
               />
-            )}
+            ) : null}
 
-            <FilterSelect
-              value={filters.age}
-              onChange={(value) => handleFilterChange("age", value)}
-              options={[...ageOptions]}
-              placeholder="Select Age"
-            />
+            {ageOptions.length > 0 ? (
+              <FilterSelect
+                value={filters.age}
+                onChange={(value) => handleFilterChange("age", value)}
+                options={ageOptions}
+                placeholder="Select Age"
+              />
+            ) : null}
 
-            <FilterSelect
-              value={filters.gender}
-              onChange={(value) => handleFilterChange("gender", value)}
-              options={[...genderOptions]}
-              placeholder="Select Gender"
-            />
+            {genderOptions.length > 0 ? (
+              <FilterSelect
+                value={filters.gender}
+                onChange={(value) => handleFilterChange("gender", value)}
+                options={genderOptions}
+                placeholder="Select Gender"
+              />
+            ) : null}
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
             <div className="flex items-center gap-2">
-              {isLoading && (
-                  <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+              {isLoading ? (
+                <div className="inline-flex items-center gap-2 text-sm text-slate-500">
                   <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
-              )}
+              ) : null}
             </div>
             <div className="flex items-center gap-2">
-              {isFilterActive && !isLoading && (
+              {isFilterActive && !isLoading ? (
                 <>
                   <button
                     type="button"
@@ -371,91 +334,81 @@ export default function DashboardFilters({
                     Apply
                   </button>
                 </>
-              )}
+              ) : null}
             </div>
           </div>
         </div>
-      )}
+      ) : null}
 
-      {/* Horizontal filter bar - Desktop always visible / Mobile hidden */}
       <div className="hidden bg-gradient-to-r from-white to-slate-50 p-4 lg:block">
         <div className="flex flex-wrap items-center gap-4">
-          {/* Always show Stream - first in hierarchy */}
           <div className="w-48 min-w-[140px]">
             <FilterSelect
               value={filters.stream}
               onChange={(value) => handleFilterChange("stream", value)}
-              options={getStreams().map((stream) => ({
-                label: stream.replace(/_/g, " "),
-                value: stream,
-              }))}
+              options={streamOptions}
               placeholder="All Streams"
             />
           </div>
 
-          {filters.stream && (
-            <div className="w-36 min-w-[120px]">
+          {filters.stream ? (
+            <div className="w-40 min-w-[120px]">
               <FilterSelect
                 value={filters.location}
                 onChange={(value) => handleFilterChange("location", value)}
-                options={availableLocations.map((loc) => ({
-                  label: locationDisplayMap[loc] || loc,
-                  value: loc,
-                }))}
+                options={availableLocationOptions}
                 placeholder="All Locations"
               />
             </div>
-          )}
+          ) : null}
 
-          {filters.stream && filters.location && (
+          {filters.stream && filters.location ? (
             <div className="w-44 min-w-[140px]">
               <FilterSelect
-                value={filters.fn}
-                onChange={(value) => handleFilterChange("fn", value)}
-                options={availableFunctions.map((func) => ({
-                  label: func.replace(/_/g, " "),
-                  value: func,
-                }))}
+                value={filters.function}
+                onChange={(value) => handleFilterChange("function", value)}
+                options={availableFunctionOptions}
                 placeholder="All Functions"
               />
             </div>
-          )}
+          ) : null}
 
-          {filters.stream && filters.location && filters.fn && (
+          {filters.stream && filters.location && filters.function ? (
             <div className="w-48 min-w-[150px]">
               <FilterSelect
                 value={filters.department}
                 onChange={(value) => handleFilterChange("department", value)}
-                options={availableDepartments.map((dept) => ({
-                  label: dept.replace(/_/g, " "),
-                  value: dept,
-                }))}
+                options={availableDepartmentOptions}
                 placeholder="All Departments"
               />
             </div>
-          )}
+          ) : null}
 
-          <div className="w-32 min-w-[110px]">
-            <FilterSelect
-              value={filters.age}
-              onChange={(value) => handleFilterChange("age", value)}
-              options={[...ageOptions]}
-              placeholder="All Ages"
-            />
-          </div>
+          {ageOptions.length > 0 ? (
+            <div className="w-32 min-w-[110px]">
+              <FilterSelect
+                value={filters.age}
+                onChange={(value) => handleFilterChange("age", value)}
+                options={ageOptions}
+                placeholder="All Ages"
+              />
+            </div>
+          ) : null}
 
-          <div className="w-32 min-w-[110px]">
-            <FilterSelect
-              value={filters.gender}
-              onChange={(value) => handleFilterChange("gender", value)}
-              options={[...genderOptions]}
-              placeholder="All Genders"
-            />
-          </div>
+          {genderOptions.length > 0 ? (
+            <div className="w-32 min-w-[110px]">
+              <FilterSelect
+                value={filters.gender}
+                onChange={(value) => handleFilterChange("gender", value)}
+                options={genderOptions}
+                placeholder="All Genders"
+              />
+            </div>
+          ) : null}
 
-          <div className="flex items-center gap-2 ml-auto">
+          <div className="ml-auto flex items-center gap-2">
             {isLoading ? (
-                <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-slate-500">
+              <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
                 <span>Updating...</span>
               </div>
@@ -464,7 +417,7 @@ export default function DashboardFilters({
                 <button
                   type="button"
                   onClick={onReset}
-                    className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset
@@ -483,61 +436,60 @@ export default function DashboardFilters({
         </div>
       </div>
 
-      {/* Active Filter Pills - Desktop & Mobile */}
-      {showActiveFilters && isFilterActive && (
+      {showActiveFilters && isFilterActive ? (
         <div className="border-t border-slate-100 px-3 py-2">
           <div className="flex flex-wrap items-center gap-1.5">
-            {filters.stream && (
+            {filters.stream ? (
               <FilterPill
                 label="Stream"
-                value={filters.stream.replace(/_/g, " ")}
+                value={streamLabelByValue.get(filters.stream) ?? filters.stream}
                 color="bg-slate-100 text-slate-700"
                 onRemove={() => handleFilterChange("stream", "")}
               />
-            )}
-            {filters.location && (
+            ) : null}
+            {filters.location ? (
               <FilterPill
                 label="Location"
-                value={locationDisplayMap[filters.location] || filters.location}
+                value={locationLabelByValue.get(filters.location) ?? filters.location}
                 color="bg-stone-100 text-stone-700"
                 onRemove={() => handleFilterChange("location", "")}
               />
-            )}
-            {filters.fn && (
+            ) : null}
+            {filters.function ? (
               <FilterPill
                 label="Function"
-                value={filters.fn.replace(/_/g, " ")}
+                value={functionLabelByValue.get(filters.function) ?? filters.function}
                 color="bg-sky-100 text-sky-700"
-                onRemove={() => handleFilterChange("fn", "")}
+                onRemove={() => handleFilterChange("function", "")}
               />
-            )}
-            {filters.department && (
+            ) : null}
+            {filters.department ? (
               <FilterPill
                 label="Department"
-                value={filters.department.replace(/_/g, " ")}
+                value={departmentLabelByValue.get(filters.department) ?? filters.department}
                 color="bg-violet-100 text-violet-700"
                 onRemove={() => handleFilterChange("department", "")}
               />
-            )}
-            {filters.age && (
+            ) : null}
+            {filters.age ? (
               <FilterPill
                 label="Age"
-                value={filters.age}
+                value={ageLabelByValue.get(filters.age) ?? filters.age}
                 color="bg-emerald-100 text-emerald-700"
                 onRemove={() => handleFilterChange("age", "")}
               />
-            )}
-            {filters.gender && (
+            ) : null}
+            {filters.gender ? (
               <FilterPill
                 label="Gender"
-                value={filters.gender}
+                value={genderLabelByValue.get(filters.gender) ?? filters.gender}
                 color="bg-rose-100 text-rose-700"
                 onRemove={() => handleFilterChange("gender", "")}
               />
-            )}
+            ) : null}
           </div>
         </div>
-      )}
+      ) : null}
     </div>
   );
 }

@@ -37,6 +37,7 @@ export function SurveyContainer() {
   const [responses, setResponses] = useState<ScannerResponseMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
+  const [submissionError, setSubmissionError] = useState<string | null>(null);
 
   const scannerAudit = useMemo(
     () => (config ? auditScannerVersion(config.scannerVersion) : null),
@@ -68,18 +69,25 @@ export function SurveyContainer() {
 
   const handleSubmit = async () => {
     setIsSubmitting(true);
+    setSubmissionError(null);
 
     try {
       const surveySession = readRuntimeSurveySession(config.tenant.id, config.tenant.slug, config.scannerVersion.id);
       const submissionResponses = toSurveySubmissionResponses(visibleQuestions, responses);
 
       await submitSurvey({
+        runtimeConfigId: surveySession?.runtimeConfigId ?? config.runtimeConfigId,
         tenantId: config.tenant.id,
+        tenantSlug: config.tenant.slug,
         scannerVersionId: config.scannerVersion.id,
+        attributeTemplateVersionId:
+          surveySession?.attributeTemplateVersionId ??
+          config.versionRefs.attributeTemplateVersionId,
         attributes: surveySession?.attributes ?? EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS,
         responses: submissionResponses,
         completionState: {
           status: "completed",
+          startedAt: surveySession?.savedAt,
           completedAt: new Date().toISOString(),
           totalQuestions: visibleQuestions.length,
           answeredQuestions: submissionResponses.length,
@@ -94,6 +102,11 @@ export function SurveyContainer() {
       setSubmitted(true);
     } catch (error) {
       console.error("Submission failed:", error);
+      setSubmissionError(
+        error instanceof Error
+          ? error.message
+          : "Unable to submit your survey right now. Please try again.",
+      );
     } finally {
       setIsSubmitting(false);
     }
@@ -139,6 +152,12 @@ export function SurveyContainer() {
           />
         </div>
       ))}
+
+      {submissionError ? (
+        <div className="mt-4 rounded border border-red-200 bg-red-50 p-4 text-sm text-red-700">
+          {submissionError}
+        </div>
+      ) : null}
 
       <button
         onClick={() => void handleSubmit()}

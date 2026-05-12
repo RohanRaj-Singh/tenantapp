@@ -1,6 +1,5 @@
 "use client";
 
-import { useMemo } from "react";
 import { Activity, ShieldAlert, Sparkles, Users } from "lucide-react";
 import DashboardFilters from "@/components/dashboard/filter/DashboardFilters";
 import {
@@ -13,10 +12,10 @@ import {
 import { useDashboardFilters } from "@/components/dashboard/useDashboardFilters";
 import {
   formatLabel,
-  getDashboardMockData,
   getDomainMetric,
   getStatusTone,
 } from "@/lib/dashboardMockData";
+import { useDashboardData } from "@/runtime/hooks/useDashboardData";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 type DomainPageKey =
@@ -182,16 +181,17 @@ function clampScore(score: number) {
 export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey }) {
   const theme = useTheme();
   const tenantName = theme.tenantName;
-  const data = useMemo(() => getDashboardMockData(tenantName), [tenantName]);
   const config = PAGE_CONFIG[pageId];
-  const metric = getDomainMetric(data, config.domainName);
   const {
     filters,
+    appliedFilters,
     filterKey,
     handleFilterChange,
     handleApplyFilters,
     resetFilters,
   } = useDashboardFilters();
+  const { data, loading } = useDashboardData(tenantName, appliedFilters);
+  const metric = getDomainMetric(data, config.domainName);
 
   const toneColorMap: Record<DetailTone, string> = {
     primary: theme.chartColors.primary,
@@ -259,7 +259,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={false}
+          isLoading={loading}
         />
         <div className="grid gap-4 lg:grid-cols-2">
           <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
@@ -354,7 +354,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={false}
+          isLoading={loading}
         />
         <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
           <div className="rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
@@ -403,7 +403,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={false}
+          isLoading={loading}
         />
         <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
           <div className="space-y-4">
@@ -486,7 +486,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={false}
+          isLoading={loading}
         />
         <div className="grid gap-4 lg:grid-cols-2">
           <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
@@ -541,7 +541,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
         onFilterChange={handleFilterChange}
         onApply={handleApplyFilters}
         onReset={resetFilters}
-        isLoading={false}
+        isLoading={loading}
       />
       <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
         <MeterList items={subdomainItems} accentColor={theme.chartColors.success} />
