@@ -1,6 +1,7 @@
 import "./globals.css";
 import RuntimeAppShell from "@/components/runtime/RuntimeAppShell";
 import { RuntimeConfigProvider } from "../runtime/providers/RuntimeConfigProvider";
+import { Suspense } from "react";
 
 export default function RootLayout({
   children,
@@ -10,9 +11,11 @@ export default function RootLayout({
   return (
     <html lang="en" suppressHydrationWarning>
       <body className="min-h-screen antialiased text-slate-900" suppressHydrationWarning>
-        <RuntimeConfigProvider>
-          <RuntimeAppShell>{children}</RuntimeAppShell>
-        </RuntimeConfigProvider>
+        <Suspense fallback={null}>
+          <RuntimeConfigProvider>
+            <RuntimeAppShell>{children}</RuntimeAppShell>
+          </RuntimeConfigProvider>
+        </Suspense>
       </body>
     </html>
   );

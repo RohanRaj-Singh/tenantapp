@@ -1,14 +1,6 @@
 {
   "/api/runtime/current/route": "app/api/runtime/current/route.js",
-  "/api/dashboard/metrics/route": "app/api/dashboard/metrics/route.js",
   "/page": "app/page.js",
   "/survey/page": "app/survey/page.js",
-  "/survey-questions/page": "app/survey-questions/page.js",
-  "/dashboard/page": "app/dashboard/page.js",
-  "/dashboard/clinical-risk-index/page": "app/dashboard/clinical-risk-index/page.js",
-  "/dashboard/psychological-safety/page": "app/dashboard/psychological-safety/page.js",
-  "/dashboard/workload-efficiency/page": "app/dashboard/workload-efficiency/page.js",
-  "/dashboard/leadership-alignment/page": "app/dashboard/leadership-alignment/page.js",
-  "/dashboard/satisfaction-engagement/page": "app/dashboard/satisfaction-engagement/page.js",
-  "/dashboard/email-invitations/page": "app/dashboard/email-invitations/page.js"
+  "/survey-questions/page": "app/survey-questions/page.js"
 }

@@ -1,4 +1,4 @@
-// File: C:\Users\Rohan Raj Singh\Projects\RemedyGCC\oqep\tenantapp\app\api\runtime\current\route.ts
+// File: C:\Users\Rohan Raj Singh\Projects\RemedyGCC\tenantapp\app\api\runtime\current\route.ts
 import * as entry from '../../../../../../app/api/runtime/current/route.js'
 import type { NextRequest } from 'next/server.js'
 
