@@ -27,7 +27,13 @@ export function toApiError(error: unknown) {
   }
 
   if (error instanceof Error) {
-    return new ApiError(500, "INTERNAL_SERVER_ERROR", error.message);
+    return new ApiError(
+      500,
+      "INTERNAL_SERVER_ERROR",
+      process.env.NODE_ENV === "production"
+        ? "An unexpected server error occurred."
+        : error.message,
+    );
   }
 
   return new ApiError(500, "INTERNAL_SERVER_ERROR", "An unexpected error occurred.");

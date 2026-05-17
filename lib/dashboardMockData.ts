@@ -223,6 +223,8 @@ export const domainPageIds: DashboardPageId[] = [
   "satisfaction-engagement",
 ];
 
+const SHOULD_LOG_DEVELOPMENT_WARNINGS = process.env.NODE_ENV !== "production";
+
 const DASHBOARD_DOMAIN_NAMES = [
   "Clinical Risk Index",
   "Psychological Safety Index",
@@ -775,10 +777,12 @@ export function getDomainMetric(data: DashboardMockData, domainName: string): Me
   const metric = data.mentalHealthMetrics.find((item) => item.domain === domainName);
 
   if (!metric) {
-    console.warn(
-      `Dashboard domain "${domainName}" not found in data. Available domains:`,
-      data.mentalHealthMetrics.map((m) => m.domain),
-    );
+    if (SHOULD_LOG_DEVELOPMENT_WARNINGS) {
+      console.warn(
+        `Dashboard domain "${domainName}" not found in data. Available domains:`,
+        data.mentalHealthMetrics.map((m) => m.domain),
+      );
+    }
     return createZeroMentalHealthMetric(domainName);
   }
 

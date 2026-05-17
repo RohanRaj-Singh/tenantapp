@@ -21,6 +21,8 @@ interface UseDashboardDataResult {
 }
 
 const STALE_THRESHOLD_MS = 30 * 60 * 1000; // 30 minutes
+const SHOULD_USE_DEVELOPMENT_MOCKS = process.env.NODE_ENV !== "production";
+const SHOULD_LOG_DEVELOPMENT_WARNINGS = process.env.NODE_ENV !== "production";
 
 export function useDashboardData(tenantName: string, filters: FilterState): UseDashboardDataResult {
   const router = useRouter();
@@ -32,8 +34,20 @@ export function useDashboardData(tenantName: string, filters: FilterState): UseD
     const currentTenantSlug = tenantSlug;
     
     if (!currentTenantSlug) {
-      console.warn("Dashboard: tenantSlug is null or undefined", { tenantName });
-      setState({ status: "ready", snapshot: null, data: getDashboardMockData(tenantName) });
+      if (SHOULD_USE_DEVELOPMENT_MOCKS) {
+        if (SHOULD_LOG_DEVELOPMENT_WARNINGS) {
+          console.warn("Dashboard: tenantSlug is unavailable during local development", {
+            tenantName,
+          });
+        }
+        setState({ status: "ready", snapshot: null, data: getDashboardMockData(tenantName) });
+        return;
+      }
+
+      setState({
+        status: "error",
+        error: "Tenant dashboard context is unavailable.",
+      });
       return;
     }
 
@@ -85,8 +99,14 @@ export function useDashboardData(tenantName: string, filters: FilterState): UseD
       }
 
       if (payload.status === "pending_snapshot") {
-        console.info("Dashboard: snapshot pending, using mock data as fallback");
-        setState({ status: "ready", snapshot: null, data: getDashboardMockData(tenantName) });
+        if (SHOULD_LOG_DEVELOPMENT_WARNINGS) {
+          console.info("Dashboard: snapshot pending, returning zero-state metrics");
+        }
+        setState({
+          status: "ready",
+          snapshot: null,
+          data: createZeroDashboardData(tenantName),
+        });
         return;
       }
 
@@ -117,8 +137,19 @@ export function useDashboardData(tenantName: string, filters: FilterState): UseD
       if (fetchError instanceof DOMException && fetchError.name === "AbortError") {
         return;
       }
-      console.warn("Dashboard: API error, using mock data as fallback", fetchError);
-      setState({ status: "ready", snapshot: null, data: getDashboardMockData(tenantName) });
+
+      if (SHOULD_USE_DEVELOPMENT_MOCKS) {
+        if (SHOULD_LOG_DEVELOPMENT_WARNINGS) {
+          console.warn("Dashboard: API error, using mock data in development", fetchError);
+        }
+        setState({ status: "ready", snapshot: null, data: getDashboardMockData(tenantName) });
+        return;
+      }
+
+      setState({
+        status: "error",
+        error: "Dashboard data is temporarily unavailable.",
+      });
     }
   }, [tenantSlug, filters, pathname, router, tenantName]);
 

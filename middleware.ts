@@ -16,6 +16,7 @@ import {
   isTenantProtectedPath,
   isValidTenantSessionTokenFormat,
 } from "@/src/modules/tenant-auth/guards/route-protection";
+import { getTenantAuthCookieBaseOptions } from "@/src/modules/tenant-auth/cookies/options";
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -59,17 +60,11 @@ export function middleware(request: NextRequest) {
       { status: 307 },
     );
     response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
+      ...getTenantAuthCookieBaseOptions(),
       maxAge: 0,
     });
     response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
+      ...getTenantAuthCookieBaseOptions(),
       maxAge: 0,
     });
     return response;
@@ -83,17 +78,11 @@ export function middleware(request: NextRequest) {
 
   if (sessionCookie && !isValidTenantSessionTokenFormat(sessionCookie)) {
     response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
+      ...getTenantAuthCookieBaseOptions(),
       maxAge: 0,
     });
     response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
-      httpOnly: true,
-      sameSite: "lax",
-      secure: process.env.NODE_ENV === "production",
-      path: "/",
+      ...getTenantAuthCookieBaseOptions(),
       maxAge: 0,
     });
   }

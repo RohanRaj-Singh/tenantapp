@@ -44,6 +44,21 @@ export interface RuntimeTenantRequestResolution {
   failureReason: RuntimeTenantResolutionFailureReason | null;
 }
 
+function inferRootDomainFromHostname(hostname?: string | null) {
+  const normalizedHostname = normalizeHostname(hostname);
+
+  if (!normalizedHostname || isLocalHostname(normalizedHostname)) {
+    return null;
+  }
+
+  const labels = normalizedHostname.split(".");
+  if (labels.length < 2) {
+    return null;
+  }
+
+  return labels.slice(-2).join(".");
+}
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -72,13 +87,17 @@ export function normalizeHostname(hostname?: string | null) {
   return stripPort(hostname.trim().toLowerCase()).replace(/\.$/, "");
 }
 
-export function resolveRootDomain(rootDomain?: string | null) {
+export function resolveRootDomain(rootDomain?: string | null, hostname?: string | null) {
   const configuredRootDomain =
     rootDomain ??
     process.env.NEXT_PUBLIC_ROOT_DOMAIN ??
-    DEFAULT_ROOT_DOMAIN;
+    process.env.ROOT_DOMAIN;
 
-  return normalizeHostname(configuredRootDomain) ?? DEFAULT_ROOT_DOMAIN;
+  return (
+    normalizeHostname(configuredRootDomain) ??
+    inferRootDomainFromHostname(hostname) ??
+    DEFAULT_ROOT_DOMAIN
+  );
 }
 
 export function isLocalHostname(hostname?: string | null) {
@@ -125,7 +144,7 @@ export function resolveHostnameTenant(
   rootDomain?: string | null,
 ): HostnameTenantResolutionResult {
   const normalizedHostname = normalizeHostname(hostname);
-  const normalizedRootDomain = resolveRootDomain(rootDomain);
+  const normalizedRootDomain = resolveRootDomain(rootDomain, normalizedHostname);
 
   if (!normalizedHostname) {
     return {

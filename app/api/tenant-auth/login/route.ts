@@ -92,7 +92,12 @@ export async function POST(request: NextRequest) {
     return NextResponse.json(
       {
         success: false,
-        error: error instanceof Error ? error.message : "Tenant login failed.",
+        error:
+          process.env.NODE_ENV === "production"
+            ? "Tenant login failed."
+            : error instanceof Error
+              ? error.message
+              : "Tenant login failed.",
       },
       { status: 500 },
     );
