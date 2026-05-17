@@ -8,8 +8,11 @@ import {
   Flame,
   Mail,
   Menu,
+  Settings,
   Shield,
+  ShieldCheck,
   Smile,
+  FileText,
   TrendingUp,
   Users,
   X,
@@ -18,11 +21,17 @@ import {
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import { cn } from "@/lib/utils";
-import { dashboardNavigation, type DashboardPageId } from "@/lib/dashboardMockData";
+import {
+  dashboardNavigation,
+  tenantAccessNavigation,
+  type TenantSurfacePageId,
+} from "@/lib/dashboardMockData";
 import { hexToRgba } from "@/runtime/theme/themeUtils";
 import { useTheme } from "@/runtime/theme/useTheme";
+import type { TenantUserProfile } from "@/src/modules/tenant-auth/contracts/types";
+import { TenantLogoutButton } from "@/src/modules/tenant-auth/components/TenantLogoutButton";
 
-const iconMap: Record<DashboardPageId, LucideIcon> = {
+const iconMap: Record<TenantSurfacePageId, LucideIcon> = {
   "executive-summary": BarChart3,
   "clinical-risk-index": Flame,
   "psychological-safety": TrendingUp,
@@ -30,9 +39,74 @@ const iconMap: Record<DashboardPageId, LucideIcon> = {
   "leadership-alignment": Users,
   "satisfaction-engagement": Smile,
   "email-invitations": Mail,
+  analytics: ShieldCheck,
+  reports: FileText,
+  settings: Settings,
+  "change-password": Shield,
 };
 
-export default function OrganizationSidebar() {
+interface OrganizationSidebarProps {
+  user: TenantUserProfile;
+}
+
+function renderNavSection(
+  pathname: string,
+  expanded: boolean,
+  closeMobileSidebar: () => void,
+  theme: ReturnType<typeof useTheme>,
+  items: typeof dashboardNavigation,
+) {
+  return items.map((item) => {
+    const Icon = iconMap[item.id];
+    const isActive =
+      item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        title={item.name}
+        onClick={closeMobileSidebar}
+        className={cn(
+          "group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-all",
+          expanded ? "justify-start" : "justify-center",
+          isActive ? "text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
+        )}
+        style={
+          isActive
+            ? {
+                backgroundColor: theme.primaryColor,
+                color: theme.onPrimaryColor,
+                boxShadow: `0 20px 36px -28px ${theme.strongAccent}`,
+              }
+            : undefined
+        }
+      >
+        <div
+          className={cn(
+            "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition-colors",
+            isActive
+              ? "text-white"
+              : "bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-900",
+          )}
+          style={
+            isActive
+              ? {
+                  backgroundColor: hexToRgba(theme.onPrimaryColor, 0.14),
+                  color: theme.onPrimaryColor,
+                }
+              : undefined
+          }
+        >
+          <Icon className="h-4 w-4" />
+        </div>
+        {expanded ? <span className="truncate font-medium">{item.name}</span> : null}
+      </Link>
+    );
+  });
+}
+
+export default function OrganizationSidebar({ user }: OrganizationSidebarProps) {
   const pathname = usePathname();
   const theme = useTheme();
   const [isDesktop, setIsDesktop] = useState(false);
@@ -136,51 +210,38 @@ export default function OrganizationSidebar() {
           </div>
         </div>
 
-        <nav className="flex-1 space-y-1 overflow-y-auto p-3">
-          {dashboardNavigation.map((item) => {
-            const Icon = iconMap[item.id];
-            const isActive =
-              item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+        <nav className="flex-1 overflow-y-auto p-3">
+          <div className="space-y-1">
+            {renderNavSection(pathname, expanded, closeMobileSidebar, theme, dashboardNavigation)}
+          </div>
 
-            return (
-              <Link
-                key={item.id}
-                href={item.href}
-                title={item.name}
-                onClick={closeMobileSidebar}
-                className={cn(
-                  "group flex items-center gap-3 rounded-2xl px-3 py-3 text-sm transition-all",
-                  expanded ? "justify-start" : "justify-center",
-                  isActive ? "text-white" : "text-slate-600 hover:bg-slate-100 hover:text-slate-900",
-                )}
-                style={isActive
-                  ? {
-                      backgroundColor: theme.primaryColor,
-                      color: theme.onPrimaryColor,
-                      boxShadow: `0 20px 36px -28px ${theme.strongAccent}`,
-                    }
-                  : undefined}
-              >
-                <div
-                  className={cn(
-                    "flex h-9 w-9 shrink-0 items-center justify-center rounded-2xl transition-colors",
-                    isActive
-                      ? "text-white"
-                      : "bg-slate-100 text-slate-500 group-hover:bg-white group-hover:text-slate-900",
-                  )}
-                  style={isActive
-                    ? { backgroundColor: hexToRgba(theme.onPrimaryColor, 0.14), color: theme.onPrimaryColor }
-                    : undefined}
-                >
-                  <Icon className="h-4 w-4" />
-                </div>
-                {expanded ? <span className="truncate font-medium">{item.name}</span> : null}
-              </Link>
-            );
-          })}
+          <div className="mt-5 border-t pt-4" style={{ borderColor: theme.borderAccent }}>
+            {expanded ? (
+              <p className="mb-2 px-3 text-[11px] font-semibold uppercase tracking-[0.2em] text-slate-400">
+                Access
+              </p>
+            ) : null}
+            <div className="space-y-1">
+              {renderNavSection(pathname, expanded, closeMobileSidebar, theme, tenantAccessNavigation)}
+            </div>
+          </div>
         </nav>
 
         <div className="border-t p-3" style={{ borderColor: theme.borderAccent }}>
+          {expanded ? (
+            <div className="mb-3 rounded-2xl border border-slate-200 bg-slate-50 px-3 py-3">
+              <p className="truncate text-xs font-semibold uppercase tracking-[0.16em] text-slate-500">
+                Signed In
+              </p>
+              <p className="mt-2 truncate text-sm font-semibold text-slate-900">{user.username}</p>
+              <p className="truncate text-xs text-slate-500">{user.email}</p>
+            </div>
+          ) : null}
+          {expanded ? (
+            <TenantLogoutButton
+              className="mb-3 inline-flex h-10 w-full items-center justify-center gap-2 rounded-2xl border border-slate-200 bg-white text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
+            />
+          ) : null}
           <button
             type="button"
             onClick={() => (isDesktop ? setIsCollapsed((current) => !current) : closeMobileSidebar())}

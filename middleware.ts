@@ -10,8 +10,15 @@ import {
   RUNTIME_TENANT_QUERY_PARAM,
   resolveRuntimeTenantRequest,
 } from "@/runtime/tenant/tenantResolution";
+import { TENANT_AUTH_CONFIG } from "@/src/modules/tenant-auth/contracts/types";
+import {
+  buildTenantLoginRedirectPath,
+  isTenantProtectedPath,
+  isValidTenantSessionTokenFormat,
+} from "@/src/modules/tenant-auth/guards/route-protection";
 
 export function middleware(request: NextRequest) {
+  const pathname = request.nextUrl.pathname;
   const tenantResolution = resolveRuntimeTenantRequest({
     hostname:
       request.headers.get("x-forwarded-host") ??
@@ -43,11 +50,55 @@ export function middleware(request: NextRequest) {
     tenantResolution.failureReason ?? "",
   );
 
-  return NextResponse.next({
+  const sessionCookie = request.cookies.get(TENANT_AUTH_CONFIG.sessionCookieName)?.value;
+  const nextPath = `${pathname}${request.nextUrl.search}`;
+
+  if (isTenantProtectedPath(pathname) && !isValidTenantSessionTokenFormat(sessionCookie)) {
+    const response = NextResponse.redirect(
+      new URL(buildTenantLoginRedirectPath(nextPath), request.url),
+      { status: 307 },
+    );
+    response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    return response;
+  }
+
+  const response = NextResponse.next({
     request: {
       headers: requestHeaders,
     },
   });
+
+  if (sessionCookie && !isValidTenantSessionTokenFormat(sessionCookie)) {
+    response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+    response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
+      httpOnly: true,
+      sameSite: "lax",
+      secure: process.env.NODE_ENV === "production",
+      path: "/",
+      maxAge: 0,
+    });
+  }
+
+  return response;
 }
 
 export const config = {

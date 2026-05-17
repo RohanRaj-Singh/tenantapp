@@ -1,6 +1,13 @@
 {
   "/api/runtime/current/route": "app/api/runtime/current/route.js",
+  "/api/tenant-auth/login/route": "app/api/tenant-auth/login/route.js",
+  "/api/dashboard/metrics/route": "app/api/dashboard/metrics/route.js",
+  "/login/page": "app/login/page.js",
   "/page": "app/page.js",
-  "/survey/page": "app/survey/page.js",
-  "/survey-questions/page": "app/survey-questions/page.js"
+  "/dashboard/page": "app/dashboard/page.js",
+  "/settings/page": "app/settings/page.js",
+  "/reports/page": "app/reports/page.js",
+  "/dashboard/clinical-risk-index/page": "app/dashboard/clinical-risk-index/page.js",
+  "/dashboard/workload-efficiency/page": "app/dashboard/workload-efficiency/page.js",
+  "/dashboard/psychological-safety/page": "app/dashboard/psychological-safety/page.js"
 }

@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { usePathname, useRouter } from "next/navigation";
 import type { DashboardMetricsApiResponse } from "@/runtime/contracts/aggregation";
 import { useTenantSlug } from "@/runtime/hooks/useRuntimeConfig";
 import type { FilterState } from "@/components/dashboard/filter/DashboardFilters";
@@ -11,6 +12,8 @@ import {
 } from "@/lib/dashboardMockData";
 
 export function useDashboardData(tenantName: string, filters: FilterState) {
+  const router = useRouter();
+  const pathname = usePathname();
   const tenantSlug = useTenantSlug();
   const [data, setData] = useState<DashboardMockData>(() => getDashboardMockData(tenantName));
   const [loading, setLoading] = useState(true);
@@ -60,11 +63,24 @@ export function useDashboardData(tenantName: string, filters: FilterState) {
       signal: controller.signal,
     })
       .then(async (response) => {
+        const payload = await response.json().catch(() => null);
+
+        if (response.status === 401) {
+          const next = encodeURIComponent(pathname || "/dashboard");
+          router.replace(`/login?message=${encodeURIComponent("Your session has expired. Please sign in again.")}&next=${next}`);
+          throw new Error("AUTH_REDIRECT");
+        }
+
+        if (response.status === 403 && payload?.redirectTo) {
+          router.replace(String(payload.redirectTo));
+          throw new Error("AUTH_REDIRECT");
+        }
+
         if (!response.ok) {
           throw new Error();
         }
 
-        return (await response.json()) as DashboardMetricsApiResponse;
+        return payload as DashboardMetricsApiResponse;
       })
       .then((payload) => {
         if (payload.status !== "ready") {
@@ -76,6 +92,10 @@ export function useDashboardData(tenantName: string, filters: FilterState) {
       })
       .catch((fetchError: unknown) => {
         if ((fetchError as Error).name === "AbortError") {
+          return;
+        }
+
+        if ((fetchError as Error).message === "AUTH_REDIRECT") {
           return;
         }
 
@@ -94,6 +114,8 @@ export function useDashboardData(tenantName: string, filters: FilterState) {
     filters.gender,
     filters.location,
     filters.stream,
+    pathname,
+    router,
     tenantName,
     tenantSlug,
   ]);

@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
-import DashboardShell from "@/components/layout/DashboardShell";
+import { TenantProtectedSurface } from "@/src/modules/tenant-auth/components/TenantProtectedSurface";
 
 export default function DashboardLayout({ children }: { children: ReactNode }) {
-  return <DashboardShell>{children}</DashboardShell>;
+  return <TenantProtectedSurface nextPath="/dashboard">{children}</TenantProtectedSurface>;
 }

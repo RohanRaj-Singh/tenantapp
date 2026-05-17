@@ -86,6 +86,18 @@ function readRuntimeTenantResolutionFromHeaders(
   };
 }
 
+export function resolveRuntimeTenantRequestFromHeaders(
+  headers: Headers,
+): RuntimeTenantRequestResolution {
+  return (
+    readRuntimeTenantResolutionFromHeaders(headers) ??
+    resolveRuntimeTenantRequest({
+      hostname: headers.get("x-forwarded-host") ?? headers.get("host"),
+      queryTenant: null,
+    })
+  );
+}
+
 export function resolveRuntimeTenantRequestFromRequest(
   request: Request,
 ): RuntimeTenantRequestResolution {

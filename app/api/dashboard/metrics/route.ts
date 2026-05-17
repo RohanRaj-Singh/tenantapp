@@ -1,29 +1,19 @@
 import { NextResponse } from "next/server";
-import { ApiError } from "@/src/server/api/errors";
 import { apiErrorResponse } from "@/src/server/api/responses";
-import { resolveRuntimeTenantRequestFromRequest } from "@/src/server/runtime/requestTenantResolution";
+import { requireTenantApiAuth } from "@/src/modules/tenant-auth/middleware/tenant-auth";
 import { loadDashboardMetrics } from "@/src/server/services/dashboardMetricsService";
 
 export async function GET(request: Request) {
+  const auth = await requireTenantApiAuth();
+  if (!auth.success) {
+    return auth.response;
+  }
+
   try {
     const url = new URL(request.url);
-    const requestTenant = resolveRuntimeTenantRequestFromRequest(request);
-
-    if (!requestTenant.tenantSlug) {
-      throw new ApiError(
-        404,
-        "TENANT_RESOLUTION_REQUIRED",
-        "This survey is currently unavailable.",
-        {
-          hostname: requestTenant.hostname,
-          rootDomain: requestTenant.rootDomain,
-          failureReason: requestTenant.failureReason,
-        },
-      );
-    }
 
     const response = await loadDashboardMetrics({
-      tenantSlug: requestTenant.tenantSlug,
+      tenantSlug: auth.context.tenant.slug,
       scannerVersionId: url.searchParams.get("scannerVersionId") ?? undefined,
       calculationVersionId: url.searchParams.get("calculationVersionId") ?? undefined,
       periodFrom: url.searchParams.get("periodFrom") ?? undefined,

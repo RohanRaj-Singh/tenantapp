@@ -6,6 +6,7 @@ import type {
   ScannerVersionDocument,
   TenantDocument,
 } from "@/src/server/db/documents";
+import type { TenantSession, TenantUser } from "@/src/modules/tenant-auth/contracts/types";
 
 interface MemoryStore {
   tenants: Map<string, TenantDocument>;
@@ -14,6 +15,8 @@ interface MemoryStore {
   attributeTemplateVersions: Map<string, AttributeTemplateVersionDocument>;
   rawResponses: RawResponseDocument[];
   aggregationSnapshots: AggregationSnapshotDocument[];
+  tenantDashboardUsers: Map<string, TenantUser>;
+  tenantDashboardSessions: Map<string, TenantSession>;
 }
 
 declare global {
@@ -28,6 +31,8 @@ function createMemoryStore(): MemoryStore {
     attributeTemplateVersions: new Map<string, AttributeTemplateVersionDocument>(),
     rawResponses: [],
     aggregationSnapshots: [],
+    tenantDashboardUsers: new Map<string, TenantUser>(),
+    tenantDashboardSessions: new Map<string, TenantSession>(),
   };
 }
 

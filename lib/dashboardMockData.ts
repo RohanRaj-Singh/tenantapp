@@ -111,8 +111,15 @@ export type DashboardPageId =
   | "satisfaction-engagement"
   | "email-invitations";
 
+export type TenantSurfacePageId =
+  | DashboardPageId
+  | "analytics"
+  | "reports"
+  | "settings"
+  | "change-password";
+
 export interface DashboardNavigationItem {
-  id: DashboardPageId;
+  id: TenantSurfacePageId;
   name: string;
   href: string;
   headerTitle?: string;
@@ -172,6 +179,42 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
   },
 ];
 
+export const tenantAccessNavigation: DashboardNavigationItem[] = [
+  {
+    id: "analytics",
+    name: "Analytics",
+    href: "/analytics",
+    description: "Protected organizational analytics and cross-domain insight summaries.",
+  },
+  {
+    id: "reports",
+    name: "Reports",
+    href: "/reports",
+    description: "Protected reporting surfaces for downloadable and review-ready summaries.",
+  },
+  {
+    id: "settings",
+    name: "Settings",
+    href: "/settings",
+    description: "Limited tenant settings for the single dashboard owner account.",
+  },
+];
+
+export const tenantAuxiliaryNavigation: DashboardNavigationItem[] = [
+  {
+    id: "change-password",
+    name: "Change Password",
+    href: "/change-password",
+    description: "Update the dashboard owner password before resuming access.",
+  },
+];
+
+export const tenantSurfaceNavigation: DashboardNavigationItem[] = [
+  ...dashboardNavigation,
+  ...tenantAccessNavigation,
+  ...tenantAuxiliaryNavigation,
+];
+
 export const domainPageIds: DashboardPageId[] = [
   "clinical-risk-index",
   "psychological-safety",
@@ -181,13 +224,15 @@ export const domainPageIds: DashboardPageId[] = [
 ];
 
 export function getDashboardMeta(pathname: string): DashboardNavigationItem {
-  const exactMatch = dashboardNavigation.find((item) => item.href === pathname);
+  const exactMatch = tenantSurfaceNavigation.find((item) => item.href === pathname);
   if (exactMatch) {
     return exactMatch;
   }
 
   return (
-    dashboardNavigation.find((item) => item.href !== "/dashboard" && pathname.startsWith(item.href)) ??
+    tenantSurfaceNavigation.find(
+      (item) => item.href !== "/dashboard" && pathname.startsWith(item.href),
+    ) ??
     dashboardNavigation[0]
   );
 }
