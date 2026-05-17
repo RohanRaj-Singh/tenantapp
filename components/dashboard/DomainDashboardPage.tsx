@@ -190,7 +190,40 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
     handleApplyFilters,
     resetFilters,
   } = useDashboardFilters();
-  const { data, loading } = useDashboardData(tenantName, appliedFilters);
+  const { state: dashboardState, isLoading, refetch } = useDashboardData(tenantName, appliedFilters);
+
+  // ---- Early-return guards: render only when a usable snapshot is available ----
+  if (isLoading) {
+    return (
+      <div className="space-y-6">
+        <p className="text-sm text-slate-500">Loading dashboard data...</p>
+      </div>
+    );
+  }
+
+  if (
+    (dashboardState.status !== "ready" && dashboardState.status !== "stale") ||
+    !dashboardState.data
+  ) {
+    return (
+      <div className="space-y-6">
+        <SectionCard title="Analytics Unavailable" description="The dashboard could not be loaded at this time.">
+          <p className="text-sm text-slate-500">Please try again in a moment.</p>
+        </SectionCard>
+             <SectionCard title="Retry">
+          <button
+            type="button"
+            onClick={refetch}
+            className="tenant-button inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium transition"
+          >
+            Retry
+          </button>
+        </SectionCard>
+      </div>
+    );
+  }
+
+  const data = dashboardState.data;
   const metric = getDomainMetric(data, config.domainName);
 
   const toneColorMap: Record<DetailTone, string> = {
@@ -204,8 +237,18 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
   };
 
   const status = getStatusTone(metric.dashboardDomainAverage.averageSatisfactionScore);
-  const topLocation = [...data.locationStats].sort((a, b) => b.satisfactionScore - a.satisfactionScore)[0];
-  const highestRiskDepartment = [...data.departmentStats].sort((a, b) => b.avgRisk - a.avgRisk)[0];
+  const locationStatsArray = [...data.locationStats];
+  const topLocation = locationStatsArray.sort((a, b) => b.satisfactionScore - a.satisfactionScore)[0] ?? { location: "N/A", satisfactionScore: 0, totalResponses: 0 };
+  const departmentStatsArray = [...data.departmentStats];
+  const highestRiskDepartment = departmentStatsArray.sort((a, b) => b.avgRisk - a.avgRisk)[0] ?? { department: "N/A", avgRisk: 0 };
+  const hasParticipantData = data.totalParticipants > 0;
+  const topLocationLabel = hasParticipantData && topLocation.totalResponses > 0 ? topLocation.location : "0";
+  const topLocationCaption = hasParticipantData
+    ? `${topLocation.satisfactionScore}% satisfaction with ${topLocation.totalResponses} responses.`
+    : "0 responses match the current filters.";
+  const highestRiskDepartmentDescription = hasParticipantData
+    ? `${highestRiskDepartment.department} is currently carrying the highest average risk score at ${highestRiskDepartment.avgRisk}%.`
+    : "0 responses match the current filters for this view.";
 
   const baseStats = (
     <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
@@ -233,8 +276,8 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
       />
       <StatCard
         title="Best Performing Location"
-        value={topLocation.location}
-        caption={`${topLocation.satisfactionScore}% satisfaction with ${topLocation.totalResponses} responses.`}
+        value={topLocationLabel}
+        caption={topLocationCaption}
         icon={<Activity className="h-4 w-4" />}
         accentColor={theme.chartColors.success}
       />
@@ -259,7 +302,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={loading}
+          isLoading={isLoading}
         />
         <div className="grid gap-4 lg:grid-cols-2">
           <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
@@ -307,7 +350,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
               })),
               {
                 title: "Most exposed department",
-                description: `${highestRiskDepartment.department} is currently carrying the highest average risk score at ${highestRiskDepartment.avgRisk}%.`,
+                description: highestRiskDepartmentDescription,
                 toneColor: theme.chartColors.primary,
               },
             ]}
@@ -318,7 +361,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
     );
   }
 
-  if (pageId === "psychological-safety") {
+   if (pageId === "psychological-safety") {
     const departmentItems = [...data.departmentStats]
       .sort((a, b) => b.satisfactionScore - a.satisfactionScore)
       .map((item) => ({
@@ -326,24 +369,6 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
         value: item.satisfactionScore,
         caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
       }));
-
-    const fearBuckets = [
-      {
-        label: "Low Pressure",
-        value: 78,
-        caption: "Teams with strong trust and healthy room for challenge.",
-      },
-      {
-        label: "Moderate Pressure",
-        value: 52,
-        caption: "Groups where candor may be uneven depending on context.",
-      },
-      {
-        label: "High Pressure",
-        value: 34,
-        caption: "Teams that may default to silence, blame, or hesitation.",
-      },
-    ];
 
     return (
       <div className="space-y-6">
@@ -354,7 +379,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={loading}
+          isLoading={isLoading}
         />
         <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
           <div className="rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
@@ -363,12 +388,15 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
             <p className="mt-2 text-sm text-slate-500">Across all departments in the current dataset.</p>
           </div>
         </SectionCard>
-        <div className="grid gap-4 lg:grid-cols-2">
+        <div className="grid gap-4 lg:grid-cols-1">
           <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
             <MeterList items={departmentItems} accentColor={theme.chartColors.info} />
           </SectionCard>
-          <SectionCard title={config.secondaryTitle} description={config.secondaryDescription}>
-            <MeterList items={fearBuckets} accentColor={theme.chartColors.secondary} />
+          <SectionCard title="Fear / Candor Pressure — Unavailable">
+            <p className="text-sm text-slate-500">
+              Fear/candor pressure breakdowns will appear here once the backend exposes
+              subdomain-level psychological safety scores. No fabricated values are displayed.
+            </p>
           </SectionCard>
         </div>
         <div className="grid gap-4 lg:grid-cols-2">
@@ -403,7 +431,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={loading}
+          isLoading={isLoading}
         />
         <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
           <div className="space-y-4">
@@ -486,7 +514,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
           onFilterChange={handleFilterChange}
           onApply={handleApplyFilters}
           onReset={resetFilters}
-          isLoading={loading}
+          isLoading={isLoading}
         />
         <div className="grid gap-4 lg:grid-cols-2">
           <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
@@ -525,12 +553,6 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
       value: item.satisfactionScore,
       caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
     }));
-  const baseScore = metric.dashboardDomainAverage.averageSatisfactionScore;
-  const subdomainItems = [
-    { label: "Coworker Relationships", value: clampScore(baseScore + 2), caption: "Team trust and day-to-day support." },
-    { label: "Personal Fulfillment", value: clampScore(baseScore - 1), caption: "Purpose, growth, and individual momentum." },
-    { label: "Workplace Environment", value: clampScore(baseScore + 1), caption: "The environment people work inside each day." },
-  ];
 
   return (
     <div className="space-y-6">
@@ -541,10 +563,13 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
         onFilterChange={handleFilterChange}
         onApply={handleApplyFilters}
         onReset={resetFilters}
-        isLoading={loading}
+        isLoading={isLoading}
       />
       <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-        <MeterList items={subdomainItems} accentColor={theme.chartColors.success} />
+        <p className="text-sm text-slate-500">
+          Subdomain satisfaction breakdowns will appear here once the backend exposes
+          per-subdomain satisfaction scores. No fabricated metric values are displayed.
+        </p>
       </SectionCard>
       <div className="grid gap-4 lg:grid-cols-2">
         <SectionCard title={config.secondaryTitle} description={config.secondaryDescription}>

@@ -75,7 +75,7 @@ export default function AgeGroupAnalysis({
     return (
       <EmptyState
         title="Age Group Analysis"
-        message={`No age group data is currently available for ${unitName} with sufficient participant count to maintain privacy.`}
+        message={`0 participants match the current filters for ${unitName}.`}
       />
     );
   }

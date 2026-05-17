@@ -369,9 +369,6 @@
   .mt-8 {
     margin-top: calc(var(--spacing) * 8);
   }
-  .mt-10 {
-    margin-top: calc(var(--spacing) * 10);
-  }
   .mt-12 {
     margin-top: calc(var(--spacing) * 12);
   }
@@ -404,9 +401,6 @@
   }
   .mb-12 {
     margin-bottom: calc(var(--spacing) * 12);
-  }
-  .ml-1 {
-    margin-left: calc(var(--spacing) * 1);
   }
   .ml-auto {
     margin-left: auto;
@@ -503,9 +497,6 @@
   }
   .min-h-\[400px\] {
     min-height: 400px;
-  }
-  .min-h-\[calc\(100vh-6rem\)\] {
-    min-height: calc(100vh - 6rem);
   }
   .min-h-\[calc\(100vh-7rem\)\] {
     min-height: calc(100vh - 7rem);
@@ -729,9 +720,6 @@
   .gap-8 {
     gap: calc(var(--spacing) * 8);
   }
-  .gap-10 {
-    gap: calc(var(--spacing) * 10);
-  }
   .space-y-1 {
     :where(& > :not(:last-child)) {
       --tw-space-y-reverse: 0;
@@ -765,13 +753,6 @@
       --tw-space-y-reverse: 0;
       margin-block-start: calc(calc(var(--spacing) * 4) * var(--tw-space-y-reverse));
       margin-block-end: calc(calc(var(--spacing) * 4) * calc(1 - var(--tw-space-y-reverse)));
-    }
-  }
-  .space-y-5 {
-    :where(& > :not(:last-child)) {
-      --tw-space-y-reverse: 0;
-      margin-block-start: calc(calc(var(--spacing) * 5) * var(--tw-space-y-reverse));
-      margin-block-end: calc(calc(var(--spacing) * 5) * calc(1 - var(--tw-space-y-reverse)));
     }
   }
   .space-y-6 {
@@ -830,12 +811,6 @@
   .rounded-\[1\.75rem\] {
     border-radius: 1.75rem;
   }
-  .rounded-\[2\.5rem\] {
-    border-radius: 2.5rem;
-  }
-  .rounded-\[2\.25rem\] {
-    border-radius: 2.25rem;
-  }
   .rounded-\[2rem\] {
     border-radius: 2rem;
   }
@@ -883,9 +858,6 @@
     border-bottom-style: var(--tw-border-style);
     border-bottom-width: 1px;
   }
-  .border-\[rgba\(15\,118\,110\,0\.12\)\] {
-    border-color: rgba(15,118,110,0.12);
-  }
   .border-amber-200 {
     border-color: var(--color-amber-200);
   }
@@ -912,12 +884,6 @@
   }
   .border-teal-100 {
     border-color: var(--color-teal-100);
-  }
-  .border-white\/10 {
-    border-color: color-mix(in srgb, #fff 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      border-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-    }
   }
   .bg-\[rgba\(2\,132\,199\,0\.1\)\] {
     background-color: rgba(2,132,199,0.1);
@@ -988,12 +954,6 @@
   .bg-white {
     background-color: var(--color-white);
   }
-  .bg-white\/10 {
-    background-color: color-mix(in srgb, #fff 10%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      background-color: color-mix(in oklab, var(--color-white) 10%, transparent);
-    }
-  }
   .bg-white\/80 {
     background-color: color-mix(in srgb, #fff 80%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
@@ -1019,12 +979,6 @@
   .bg-gradient-to-r {
     --tw-gradient-position: to right in oklab;
     background-image: linear-gradient(var(--tw-gradient-stops));
-  }
-  .bg-\[linear-gradient\(160deg\,\#0f766e_0\%\,\#0f3d44_100\%\)\] {
-    background-image: linear-gradient(160deg,#0f766e 0%,#0f3d44 100%);
-  }
-  .bg-\[radial-gradient\(circle_at_top\,\#dff7f0_0\%\,\#f7fafc_38\%\,\#ffffff_100\%\)\] {
-    background-image: radial-gradient(circle at top,#dff7f0 0%,#f7fafc 38%,#ffffff 100%);
   }
   .from-white {
     --tw-gradient-from: var(--color-white);
@@ -1097,9 +1051,6 @@
   .px-8 {
     padding-inline: calc(var(--spacing) * 8);
   }
-  .px-11 {
-    padding-inline: calc(var(--spacing) * 11);
-  }
   .py-1 {
     padding-block: calc(var(--spacing) * 1);
   }
@@ -1115,14 +1066,14 @@
   .py-3 {
     padding-block: calc(var(--spacing) * 3);
   }
-  .py-3\.5 {
-    padding-block: calc(var(--spacing) * 3.5);
-  }
   .py-4 {
     padding-block: calc(var(--spacing) * 4);
   }
   .py-5 {
     padding-block: calc(var(--spacing) * 5);
+  }
+  .py-6 {
+    padding-block: calc(var(--spacing) * 6);
   }
   .py-8 {
     padding-block: calc(var(--spacing) * 8);
@@ -1174,9 +1125,6 @@
   }
   .pl-3 {
     padding-left: calc(var(--spacing) * 3);
-  }
-  .pl-4 {
-    padding-left: calc(var(--spacing) * 4);
   }
   .pl-10 {
     padding-left: calc(var(--spacing) * 10);
@@ -1280,10 +1228,6 @@
     --tw-tracking: 0.18em;
     letter-spacing: 0.18em;
   }
-  .tracking-\[0\.22em\] {
-    --tw-tracking: 0.22em;
-    letter-spacing: 0.22em;
-  }
   .tracking-\[0\.24em\] {
     --tw-tracking: 0.24em;
     letter-spacing: 0.24em;
@@ -1368,21 +1312,6 @@
   .text-stone-700 {
     color: var(--color-stone-700);
   }
-  .text-teal-50\/80 {
-    color: color-mix(in srgb, oklch(98.4% 0.014 180.72) 80%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      color: color-mix(in oklab, var(--color-teal-50) 80%, transparent);
-    }
-  }
-  .text-teal-50\/90 {
-    color: color-mix(in srgb, oklch(98.4% 0.014 180.72) 90%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      color: color-mix(in oklab, var(--color-teal-50) 90%, transparent);
-    }
-  }
-  .text-teal-100 {
-    color: var(--color-teal-100);
-  }
   .text-teal-700 {
     color: var(--color-teal-700);
   }
@@ -1462,12 +1391,6 @@
     --tw-shadow-color: color-mix(in srgb, #000 4%, transparent);
     @supports (color: color-mix(in lab, red, red)) {
       --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-black) 4%, transparent) var(--tw-shadow-alpha), transparent);
-    }
-  }
-  .shadow-slate-200\/60 {
-    --tw-shadow-color: color-mix(in srgb, oklch(92.9% 0.013 255.508) 60%, transparent);
-    @supports (color: color-mix(in lab, red, red)) {
-      --tw-shadow-color: color-mix(in oklab, color-mix(in oklab, var(--color-slate-200) 60%, transparent) var(--tw-shadow-alpha), transparent);
     }
   }
   .outline {
@@ -1969,6 +1892,11 @@
       min-height: calc(var(--spacing) * 0);
     }
   }
+  .lg\:grid-cols-1 {
+    @media (width >= 64rem) {
+      grid-template-columns: repeat(1, minmax(0, 1fr));
+    }
+  }
   .lg\:grid-cols-2 {
     @media (width >= 64rem) {
       grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -1977,11 +1905,6 @@
   .lg\:grid-cols-3 {
     @media (width >= 64rem) {
       grid-template-columns: repeat(3, minmax(0, 1fr));
-    }
-  }
-  .lg\:grid-cols-\[1\.1fr_0\.9fr\] {
-    @media (width >= 64rem) {
-      grid-template-columns: 1.1fr 0.9fr;
     }
   }
   .lg\:grid-cols-\[1\.2fr_0\.8fr\] {

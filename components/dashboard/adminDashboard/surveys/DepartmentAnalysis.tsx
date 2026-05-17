@@ -80,7 +80,7 @@ export default function DepartmentAnalysis({
     return (
       <EmptyState
         title={title}
-        message={`No department data is currently available for ${unitName} with sufficient participant count to maintain privacy.`}
+        message={`0 participants match the current filters for ${unitName}.`}
       />
     );
   }

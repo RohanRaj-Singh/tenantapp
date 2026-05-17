@@ -98,8 +98,8 @@ export interface DashboardMockData {
   locationStats: LocationStat[];
   organization: { name: string };
   totalParticipants: number;
-  invitationOverview: EmailInvitationOverview;
-  invitationCampaigns: EmailInvitationCampaign[];
+  invitationOverview: EmailInvitationOverview | null;
+  invitationCampaigns: EmailInvitationCampaign[] | null;
 }
 
 export type DashboardPageId =
@@ -223,6 +223,16 @@ export const domainPageIds: DashboardPageId[] = [
   "satisfaction-engagement",
 ];
 
+const DASHBOARD_DOMAIN_NAMES = [
+  "Clinical Risk Index",
+  "Psychological Safety Index",
+  "Workload & Efficiency",
+  "Leadership & Alignment",
+  "Satisfaction & Engagement",
+] as const;
+
+const ZERO_STATE_LABEL = "Current View";
+
 export function getDashboardMeta(pathname: string): DashboardNavigationItem {
   const exactMatch = tenantSurfaceNavigation.find((item) => item.href === pathname);
   if (exactMatch) {
@@ -235,6 +245,94 @@ export function getDashboardMeta(pathname: string): DashboardNavigationItem {
     ) ??
     dashboardNavigation[0]
   );
+}
+
+function createZeroMentalHealthMetric(domain: string): MentalHealthMetric {
+  return {
+    domain,
+    participants: 0,
+    riskScore: 0,
+    satisfiedScore: 0,
+    riskStatus: "no-risk",
+    satisfactionStatus: "no-risk",
+    highRiskSurveyCount: 0,
+    nonHighRiskSurveyCount: 0,
+    dashboardDomainAverage: {
+      averageRiskScore: 0,
+      averageRiskStatus: "no-risk",
+      averageSatisfactionScore: 0,
+      averageSatisfactionStatus: "no-risk",
+    },
+  };
+}
+
+export function createZeroDashboardData(tenantName: string): DashboardMockData {
+  return {
+    mentalHealthMetrics: DASHBOARD_DOMAIN_NAMES.map((domain) => createZeroMentalHealthMetric(domain)),
+    ageStats: [
+      {
+        ageGroup: ZERO_STATE_LABEL,
+        people: 0,
+        peoplePercent: 0,
+        riskScore: 0,
+        satisfactionScore: 0,
+      },
+    ],
+    genderStats: [
+      {
+        gender: ZERO_STATE_LABEL,
+        people: 0,
+        peoplePercent: 0,
+        riskScore: 0,
+        satisfactionScore: 0,
+      },
+    ],
+    streamStats: [
+      {
+        stream: ZERO_STATE_LABEL,
+        totalResponses: 0,
+        departmentPercent: 0,
+        avgRisk: 0,
+        satisfactionScore: 0,
+        highRiskCount: 0,
+      },
+    ],
+    functionStats: [
+      {
+        function: ZERO_STATE_LABEL,
+        totalResponses: 0,
+        functionPercent: 0,
+        avgRisk: 0,
+        satisfactionScore: 0,
+        highRiskCount: 0,
+      },
+    ],
+    departmentStats: [
+      {
+        department: ZERO_STATE_LABEL,
+        totalResponses: 0,
+        departmentPercent: 0,
+        avgRisk: 0,
+        satisfactionScore: 0,
+        highRiskCount: 0,
+      },
+    ],
+    locationStats: [
+      {
+        location: ZERO_STATE_LABEL,
+        totalResponses: 0,
+        locationPercent: 0,
+        avgRisk: 0,
+        satisfactionScore: 0,
+      },
+    ],
+    organization: {
+      name: tenantName,
+    },
+    totalParticipants: 0,
+    invitationOverview: null,
+    invitationCampaigns: null,
+  };
 }
 
 export function getDashboardMockData(tenantName: string): DashboardMockData {
@@ -508,15 +606,11 @@ export function getDashboardMockData(tenantName: string): DashboardMockData {
 }
 
 function placeholderMetricLabel(label: string) {
-  return label || "No data";
+  return label || ZERO_STATE_LABEL;
 }
 
 function toPercent(value: number) {
   return Number(value.toFixed(0));
-}
-
-function toCountFromRisk(participantCount: number, riskScore: number) {
-  return Math.max(0, Math.round(participantCount * (riskScore / 100)));
 }
 
 function ensureRows<T>(items: T[], fallbackItem: T) {
@@ -527,6 +621,13 @@ export function buildDashboardDataFromSnapshot(
   snapshot: DashboardAggregationSnapshot,
   tenantName: string,
 ): DashboardMockData {
+  if (
+    snapshot.overallMetrics.totalResponses <= 0 ||
+    snapshot.overallMetrics.uniqueRespondents <= 0
+  ) {
+    return createZeroDashboardData(tenantName);
+  }
+
   const mentalHealthMetrics = snapshot.categoryMetrics.map((metric) => {
     const highRiskSurveyCount = snapshot.subdomainMetrics
       .filter((subdomainMetric) => subdomainMetric.categoryId === metric.categoryId)
@@ -559,7 +660,7 @@ export function buildDashboardDataFromSnapshot(
       satisfactionScore: toPercent(row.satisfactionScore),
     })),
     {
-      ageGroup: "No data",
+      ageGroup: ZERO_STATE_LABEL,
       people: 0,
       peoplePercent: 0,
       riskScore: 0,
@@ -572,10 +673,10 @@ export function buildDashboardDataFromSnapshot(
       people: row.participantCount,
       peoplePercent: toPercent(row.percentage),
       riskScore: toPercent(row.averageRiskScore),
-      satisfactionScore: toPercent(row.satisfactionScore),
+        satisfactionScore: toPercent(row.satisfactionScore),
     })),
     {
-      gender: "No data",
+      gender: ZERO_STATE_LABEL,
       people: 0,
       peoplePercent: 0,
       riskScore: 0,
@@ -589,10 +690,10 @@ export function buildDashboardDataFromSnapshot(
       departmentPercent: toPercent(row.percentage),
       avgRisk: toPercent(row.averageRiskScore),
       satisfactionScore: toPercent(row.satisfactionScore),
-      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+        highRiskCount: 0,
     })),
     {
-      stream: "No data",
+      stream: ZERO_STATE_LABEL,
       totalResponses: 0,
       departmentPercent: 0,
       avgRisk: 0,
@@ -607,10 +708,10 @@ export function buildDashboardDataFromSnapshot(
       functionPercent: toPercent(row.percentage),
       avgRisk: toPercent(row.averageRiskScore),
       satisfactionScore: toPercent(row.satisfactionScore),
-      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+      highRiskCount: 0,
     })),
     {
-      function: "No data",
+      function: ZERO_STATE_LABEL,
       totalResponses: 0,
       functionPercent: 0,
       avgRisk: 0,
@@ -625,10 +726,10 @@ export function buildDashboardDataFromSnapshot(
       departmentPercent: toPercent(row.percentage),
       avgRisk: toPercent(row.averageRiskScore),
       satisfactionScore: toPercent(row.satisfactionScore),
-      highRiskCount: toCountFromRisk(row.participantCount, row.averageRiskScore),
+      highRiskCount: 0,
     })),
     {
-      department: "No data",
+      department: ZERO_STATE_LABEL,
       totalResponses: 0,
       departmentPercent: 0,
       avgRisk: 0,
@@ -645,14 +746,13 @@ export function buildDashboardDataFromSnapshot(
       satisfactionScore: toPercent(row.satisfactionScore),
     })),
     {
-      location: "No data",
+      location: ZERO_STATE_LABEL,
       totalResponses: 0,
       locationPercent: 0,
       avgRisk: 0,
       satisfactionScore: 0,
     },
   );
-  const fallbackData = getDashboardMockData(tenantName);
 
   return {
     mentalHealthMetrics,
@@ -666,11 +766,8 @@ export function buildDashboardDataFromSnapshot(
       name: tenantName,
     },
     totalParticipants: snapshot.overallMetrics.uniqueRespondents,
-    invitationOverview: {
-      ...fallbackData.invitationOverview,
-      completedResponses: snapshot.overallMetrics.totalResponses,
-    },
-    invitationCampaigns: fallbackData.invitationCampaigns,
+    invitationOverview: null,
+    invitationCampaigns: null,
   };
 }
 
@@ -682,24 +779,7 @@ export function getDomainMetric(data: DashboardMockData, domainName: string): Me
       `Dashboard domain "${domainName}" not found in data. Available domains:`,
       data.mentalHealthMetrics.map((m) => m.domain),
     );
-    const fallbackMetric = getDashboardMockData("Unknown Tenant").mentalHealthMetrics[0];
-    return {
-      ...fallbackMetric,
-      domain: domainName,
-      participants: 0,
-      riskScore: 0,
-      satisfiedScore: 0,
-      riskStatus: "no-risk" as const,
-      satisfactionStatus: "no-risk" as const,
-      highRiskSurveyCount: 0,
-      nonHighRiskSurveyCount: 0,
-      dashboardDomainAverage: {
-        averageRiskScore: 0,
-        averageRiskStatus: "no-risk" as const,
-        averageSatisfactionScore: 0,
-        averageSatisfactionStatus: "no-risk" as const,
-      },
-    };
+    return createZeroMentalHealthMetric(domainName);
   }
 
   return metric;

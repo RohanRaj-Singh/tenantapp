@@ -3,7 +3,6 @@
 import { useMemo, useState } from "react";
 import { CheckCircle2, Lock, Mail, Send, ShieldCheck, Upload, Users } from "lucide-react";
 import { SectionCard, StatCard } from "@/components/dashboard/DashboardPrimitives";
-import { getDashboardMockData } from "@/lib/dashboardMockData";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 type InvitationTab = "upload" | "send" | "monitor";
@@ -11,7 +10,6 @@ type InvitationTab = "upload" | "send" | "monitor";
 export default function EmailInvitationsPage() {
   const theme = useTheme();
   const tenantName = theme.tenantName;
-  const data = useMemo(() => getDashboardMockData(tenantName), [tenantName]);
   const [tab, setTab] = useState<InvitationTab>("upload");
   const [userName, setUserName] = useState("");
   const [password, setPassword] = useState("");
@@ -72,55 +70,19 @@ export default function EmailInvitationsPage() {
 
   return (
     <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-        <StatCard
-          title="Uploaded Employees"
-          value={String(data.invitationOverview.uploadedEmployees)}
-          caption="People currently staged for invitation workflows."
-          icon={<Users className="h-4 w-4" />}
-          accentColor={theme.chartColors.info}
-        />
-        <StatCard
-          title="Queued Invitations"
-          value={String(data.invitationOverview.invitationsQueued)}
-          caption="Invite records prepared for sending."
-          icon={<Upload className="h-4 w-4" />}
-          accentColor={theme.chartColors.secondary}
-        />
-        <StatCard
-          title="Sent"
-          value={String(data.invitationOverview.invitationsSent)}
-          caption="Invitations already pushed to recipients."
-          icon={<Send className="h-4 w-4" />}
-          accentColor={theme.chartColors.primary}
-        />
-        <StatCard
-          title="Completed Responses"
-          value={String(data.invitationOverview.completedResponses)}
-          caption="Completed survey responses attributed to email campaigns."
-          icon={<CheckCircle2 className="h-4 w-4" />}
-          accentColor={theme.chartColors.success}
-        />
-      </div>
-
       <SectionCard
-        title="Section Access Control Enabled"
-        description="Use the same upload, send, and monitor options as the source dashboard, with a lighter interface."
+        title="Invitation Analytics Coming Soon"
+        description="Email invitation tracking is not yet connected to the live analytics backend."
       >
-        <div className="flex flex-wrap items-center justify-between gap-3">
-          <div className="rounded-2xl px-4 py-3 text-sm text-slate-500" style={{ backgroundColor: theme.surfaceAccent }}>
-            {data.invitationOverview.securedUsers} secured users - last password rotation{" "}
-            {data.invitationOverview.lastPasswordRotation}
-          </div>
-          <button
-            type="button"
-            onClick={() => setIsUnlocked(false)}
-            className="tenant-button-soft inline-flex items-center gap-2 rounded-2xl border px-4 py-3 text-sm font-medium transition"
-            style={{ borderColor: theme.borderAccent }}
-          >
-            <Lock className="h-4 w-4" />
-            Lock Section
-          </button>
+        <div className="flex flex-col items-center gap-3 py-6 text-center">
+          <Users className="h-10 w-10 text-slate-400" />
+          <p className="text-sm text-slate-500">
+            Invitation send rates, open rates, and campaign completion metrics will appear here
+            once the invitation tracking backend is active for <strong>{tenantName}</strong>.
+          </p>
+          <span className="tenant-outline-chip rounded-full px-3 py-1 text-xs font-medium shadow-sm">
+            Future Feature
+          </span>
         </div>
       </SectionCard>
 
@@ -151,71 +113,29 @@ export default function EmailInvitationsPage() {
       </div>
 
       {tab === "upload" ? (
-        <SectionCard title="Upload Employee List" description="Prepare the audience before invitations are dispatched.">
-          <div className="grid gap-4 md:grid-cols-3">
-            {[
-              "Validate spreadsheet columns",
-              "Review duplicate or inactive records",
-              "Assign campaign labels before send",
-            ].map((step) => (
-              <div key={step} className="rounded-[1.25rem] p-4 text-sm text-slate-600" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-                {step}
-              </div>
-            ))}
-          </div>
+        <SectionCard title="Upload Employee List" description="The upload workflow will be available once the invitation backend is active.">
+          <p className="text-sm text-slate-500">
+            Connection to the invitation delivery system is pending. All uploaded data is held locally and
+            is not yet transmitted. No analytics will appear until the backend endpoint is live.
+          </p>
         </SectionCard>
       ) : null}
 
       {tab === "send" ? (
-        <SectionCard title="Send Survey Invitations" description="Manage active and scheduled email campaigns.">
-          <div className="space-y-3">
-            {data.invitationCampaigns.map((campaign) => (
-              <div
-                key={campaign.name}
-                className="rounded-[1.25rem] border px-4 py-4"
-                style={{ borderColor: theme.borderAccent, backgroundColor: theme.surfaceAccentStrong }}
-              >
-                <div className="flex flex-col gap-3 md:flex-row md:items-center md:justify-between">
-                  <div>
-                    <p className="text-sm font-medium text-slate-900">{campaign.name}</p>
-                    <p className="mt-1 text-xs text-slate-500">
-                      {campaign.recipients} recipients - scheduled for {campaign.scheduledFor}
-                    </p>
-                  </div>
-                  <span className="tenant-outline-chip rounded-full px-3 py-1 text-xs font-medium shadow-sm">
-                    {campaign.status}
-                  </span>
-                </div>
-              </div>
-            ))}
-          </div>
+        <SectionCard title="Send Survey Invitations" description="Campaign management will be available after the invitation backend is activated.">
+          <p className="text-sm text-slate-500">
+            Campaign create, schedule, and send controls are not yet wired to backend services.
+            Any campaign interactions are placeholders only.
+          </p>
         </SectionCard>
       ) : null}
 
       {tab === "monitor" ? (
-        <SectionCard title="Monitor Completion Status" description="Track engagement after invitations are delivered.">
-          <div className="space-y-4">
-            {data.invitationCampaigns.map((campaign) => (
-              <div key={campaign.name} className="space-y-2 rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-                <div className="flex items-center justify-between gap-3">
-                  <p className="text-sm font-medium text-slate-900">{campaign.name}</p>
-                  <p className="text-xs font-medium text-slate-500">{campaign.completed} completed</p>
-                </div>
-                <div className="h-2 rounded-full bg-slate-200">
-                  <div
-                    className="h-2 rounded-full"
-                    style={{
-                      width: `${Math.min((campaign.completed / campaign.recipients) * 100, 100)}%`,
-                      backgroundColor: theme.primaryColor,
-                    }}
-                  />
-                </div>
-                <p className="text-xs text-slate-500">
-                  {campaign.opened} opened out of {campaign.recipients} recipients.
-                </p>
-              </div>
-            ))}
-          </div>
+        <SectionCard title="Monitor Completion Status" description="Real-time completion tracking will appear here after backend activation.">
+          <p className="text-sm text-slate-500">
+            Completion rates, open rates, and per-campaign progress bars require a live invitation
+            tracking backend. No fabricated data is displayed.
+          </p>
         </SectionCard>
       ) : null}
     </div>
