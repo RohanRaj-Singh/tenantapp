@@ -2,12 +2,14 @@
 
 html {
   scroll-behavior: smooth;
+  overflow-x: hidden;
 }
 
 body {
   font-family: var(--tenant-font-family, 'Inter', system-ui, sans-serif);
   background: var(--tenant-page-gradient, #f8fafc);
   color: #0f172a;
+  overflow-x: hidden;
 }
 
 @layer base {

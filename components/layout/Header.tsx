@@ -23,9 +23,9 @@ export default function Header() {
 
   return (
     <header className="bg-white">
-      <nav className="fixed inset-x-0 top-0 z-50 px-4 py-4 sm:px-6">
+      <nav className="fixed inset-x-0 top-0 z-50 px-3 py-3 sm:px-6 sm:py-4">
         <div
-          className="mx-auto flex max-w-7xl items-center justify-between rounded-full border bg-white/90 px-4 py-3 shadow-sm backdrop-blur-sm sm:px-8 sm:py-4"
+          className="mx-auto flex max-w-7xl items-center justify-between rounded-[1.75rem] border bg-white/90 px-3 py-3 shadow-sm backdrop-blur-sm sm:rounded-full sm:px-8 sm:py-4"
           style={{ borderColor: theme.borderAccent, boxShadow: `0 20px 40px -32px ${theme.strongAccent}` }}
         >
           <Link href="/" className="min-w-0">
@@ -48,14 +48,14 @@ export default function Header() {
                   <span className="text-sm font-semibold">{theme.tenantName.charAt(0)}</span>
                 )}
               </div>
-              <span className="max-w-[12rem] truncate text-base font-semibold text-slate-900 sm:max-w-[20rem]">
+              <span className="max-w-[8rem] truncate text-sm font-semibold text-slate-900 sm:max-w-[20rem] sm:text-base">
                 {theme.tenantName}
               </span>
             </div>
           </Link>
 
           <button
-            className="sm:hidden"
+            className="inline-flex h-10 w-10 items-center justify-center rounded-xl sm:hidden"
             onClick={toggleMenu}
             aria-label="Toggle menu"
             style={{ color: theme.linkColor }}
@@ -82,7 +82,7 @@ export default function Header() {
 
         {isMenuOpen ? (
           <div
-            className="mt-2 rounded-2xl border px-4 py-4 shadow-sm backdrop-blur-sm sm:hidden"
+            className="mt-2 rounded-[1.5rem] border px-4 py-4 shadow-sm backdrop-blur-sm sm:hidden"
             style={{ backgroundColor: theme.surfaceAccentStrong, borderColor: theme.borderAccent }}
           >
             <div className="flex flex-col gap-4">

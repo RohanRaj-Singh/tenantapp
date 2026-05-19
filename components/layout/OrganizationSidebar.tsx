@@ -137,7 +137,7 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
         <button
           type="button"
           onClick={() => setIsMobileOpen(true)}
-          className="fixed left-4 top-28 z-40 inline-flex h-11 w-11 items-center justify-center rounded-2xl border bg-white text-slate-700 shadow-sm"
+          className="fixed left-3 top-28 z-40 inline-flex h-11 w-11 items-center justify-center rounded-2xl border bg-white text-slate-700 shadow-sm sm:left-4"
           aria-label="Open dashboard navigation"
           style={{ borderColor: theme.borderAccent }}
         >
@@ -156,15 +156,15 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
 
       <aside
         className={cn(
-          "z-40 flex h-[calc(100vh-7rem)] shrink-0 flex-col overflow-hidden rounded-[2rem] border bg-white shadow-[0_18px_50px_-36px_rgba(15,23,42,0.3)] transition-all duration-300",
+          "z-40 flex h-[calc(100dvh-7rem)] shrink-0 flex-col overflow-hidden rounded-[2rem] border bg-white shadow-[0_18px_50px_-36px_rgba(15,23,42,0.3)] transition-all duration-300",
           isDesktop
             ? expanded
               ? "sticky top-24 w-[17rem]"
               : "sticky top-24 w-[5.5rem]"
             : cn(
-                "fixed left-4 top-24",
+                "fixed left-3 top-24 max-w-[calc(100vw-1.5rem)] sm:left-4 sm:max-w-[calc(100vw-2rem)]",
                 isMobileOpen
-                  ? "w-[17rem] translate-x-0 opacity-100"
+                  ? "w-[min(17rem,calc(100vw-1.5rem))] translate-x-0 opacity-100 sm:w-[min(17rem,calc(100vw-2rem))]"
                   : "pointer-events-none w-0 -translate-x-4 opacity-0",
               ),
         )}

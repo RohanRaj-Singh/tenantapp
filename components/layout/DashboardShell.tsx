@@ -21,15 +21,15 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
 
   return (
     <div className="tenant-dashboard-shell min-h-screen pt-24">
-      <div className="mx-auto flex max-w-[1440px] gap-4 px-4 pb-6 sm:px-6 lg:gap-6 lg:px-8">
+      <div className="mx-auto flex max-w-[1440px] gap-3 px-3 pb-4 sm:px-6 sm:pb-6 lg:gap-6 lg:px-8">
         <OrganizationSidebar user={user} />
 
         <div
-          className="flex min-h-[calc(100vh-7rem)] min-w-0 flex-1 flex-col overflow-hidden rounded-[2rem] border bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.35)]"
+          className="flex min-h-[calc(100dvh-7rem)] min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.35)] sm:rounded-[2rem]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
           <header
-            className="border-b px-6 py-5 lg:px-8"
+            className="border-b px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
             style={{ borderColor: theme.borderAccent, background: theme.headerGradient }}
           >
             <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
@@ -44,7 +44,7 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
                   <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
                     {theme.tenantName}
                   </p>
-                  <h1 className="mt-2 text-2xl font-semibold tracking-tight text-slate-900">
+                  <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
                     {activePage.headerTitle ?? activePage.name}
                   </h1>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
@@ -76,7 +76,7 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
           </header>
 
           <main
-            className="flex-1 overflow-y-auto p-4 md:p-6 lg:p-8"
+            className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8"
             style={{ background: theme.cardGradient }}
           >
             <div className="mx-auto max-w-7xl">{children}</div>

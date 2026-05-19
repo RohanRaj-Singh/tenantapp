@@ -119,7 +119,7 @@ export default function SurveyPage() {
               key={option.id}
               type="button"
               onClick={() => updateSelection(field.key, option.value)}
-              className="rounded-lg border px-4 py-2 text-center"
+              className="min-h-11 flex-1 rounded-xl border px-4 py-2.5 text-center text-sm font-medium sm:flex-none sm:text-base"
               style={
                 selections[field.key] === option.value
                   ? selectedChoiceStyle
@@ -136,16 +136,19 @@ export default function SurveyPage() {
   };
 
   return (
-    <div className="tenant-page-shell flex min-h-screen w-full flex-col items-center justify-center p-4 pt-20">
-      <div className="mb-6 flex w-full items-center justify-between">
-        <Link href="/" className="tenant-brand-text z-10 flex items-center justify-center text-gray-700">
-          <MoveLeft className="mx-2 h-4 w-4" />
+    <div className="tenant-page-shell flex min-h-screen w-full flex-col items-center px-4 pb-10 pt-24 sm:px-6 sm:pt-28">
+      <div className="mb-6 flex w-full max-w-2xl items-center justify-between">
+        <Link
+          href="/"
+          className="tenant-brand-text z-10 inline-flex items-center justify-center text-sm text-gray-700"
+        >
+          <MoveLeft className="mr-2 h-4 w-4" />
           Back to Home
         </Link>
       </div>
 
       <form
-        className="my-4 w-full max-w-2xl space-y-6 rounded-xl border bg-white p-6 shadow-lg"
+        className="w-full max-w-2xl space-y-6 rounded-[28px] border bg-white p-5 shadow-lg sm:p-6"
         style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         onSubmit={handleSubmit}
       >
@@ -153,7 +156,9 @@ export default function SurveyPage() {
           <span className="tenant-chip inline-flex rounded-full px-4 py-1.5 text-sm font-medium">
             {theme.tenantName}
           </span>
-          <h1 className="break-words text-2xl font-bold text-gray-800">{theme.tenantName} Wellbeing Survey</h1>
+          <h1 className="break-words text-2xl font-bold text-gray-800 sm:text-3xl">
+            {theme.tenantName} Wellbeing Survey
+          </h1>
         </div>
 
         {configurationIssues.length > 0 ? (
@@ -181,7 +186,7 @@ export default function SurveyPage() {
           <button
             type="submit"
             disabled={!validation.canSubmit}
-            className="tenant-button rounded-full px-6 py-2 font-medium transition-opacity hover:opacity-90 disabled:cursor-not-allowed disabled:opacity-60"
+            className="tenant-button w-full rounded-full px-6 py-3 font-medium transition-opacity hover:opacity-90 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
           >
             Start Survey
           </button>

@@ -8,13 +8,13 @@ export default function Home() {
   const theme = useTheme();
 
   return (
-    <section className="tenant-page-shell relative flex min-h-screen items-center justify-center">
+    <section className="tenant-page-shell relative flex min-h-screen items-center justify-center overflow-hidden">
       <Image
         src="/images/Ellipse.png"
         alt="Wellbeing Survey Banner"
         width={1600}
         height={1600}
-        className="absolute inset-0 top-0 z-10 h-64 w-full"
+        className="absolute inset-0 top-0 z-10 h-48 w-full sm:h-64"
         priority
       />
       <div className="absolute inset-0 z-0">
@@ -29,23 +29,23 @@ export default function Home() {
         <div className="absolute inset-0" style={{ background: theme.headerGradient }} />
       </div>
 
-      <div className="relative z-10 mx-auto max-w-3xl px-6 text-center">
+      <div className="relative z-10 mx-auto max-w-3xl px-4 pb-14 pt-28 text-center sm:px-6 sm:pb-20 sm:pt-32">
         <span className="tenant-chip mb-4 inline-flex max-w-full rounded-full px-4 py-1.5 text-sm font-medium">
           <span className="truncate">{theme.tenantName}</span>
         </span>
         <h1
-          className="mb-6 bg-clip-text pt-20 text-4xl font-bold text-transparent md:text-6xl"
+          className="mb-5 bg-clip-text text-3xl font-bold text-transparent sm:text-5xl md:text-6xl"
           style={{ backgroundImage: theme.heroGradient }}
         >
           Employee Wellbeing Survey
         </h1>
-        <p className="mx-auto mb-8 max-w-2xl text-base leading-relaxed text-[#6b7280]">
+        <p className="mx-auto mb-8 max-w-2xl text-sm leading-7 text-[#6b7280] sm:text-base">
           Your organization cares about your wellbeing. Take this anonymous survey to help us understand and improve
           your work experience.
         </p>
         <Link
           href="/survey"
-          className="tenant-button inline-block rounded-full px-8 py-3 text-lg font-medium transition-all duration-300 hover:scale-105"
+          className="tenant-button inline-flex w-full items-center justify-center rounded-full px-8 py-3 text-base font-medium transition-all duration-300 sm:w-auto sm:text-lg sm:hover:scale-105"
         >
           Start Survey
         </Link>
