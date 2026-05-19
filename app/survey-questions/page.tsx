@@ -18,6 +18,7 @@ import { useTheme } from "@/runtime/theme/useTheme";
 import { generateUUID } from "@/lib/utils";
 
 export default function SurveyQuestionsPage() {
+  const pageTopSpacing = "pt-24 sm:pt-28";
   const context = useContext(RuntimeContext);
   const config = context?.config ?? null;
   const loading = context?.loading ?? true;
@@ -169,7 +170,7 @@ export default function SurveyQuestionsPage() {
 
   if (loading) {
     return (
-      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-20">
+      <div className={`tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 ${pageTopSpacing}`}>
         <div
           className="rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
@@ -186,7 +187,7 @@ export default function SurveyQuestionsPage() {
 
   if (!hasLoadedSession) {
     return (
-      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-20">
+      <div className={`tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 ${pageTopSpacing}`}>
         <div
           className="rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
@@ -199,7 +200,7 @@ export default function SurveyQuestionsPage() {
 
   if (!surveySession) {
     return (
-      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-20">
+      <div className={`tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 ${pageTopSpacing}`}>
         <div
           className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
@@ -222,7 +223,7 @@ export default function SurveyQuestionsPage() {
 
   if (submitted) {
     return (
-      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-20">
+      <div className={`tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 ${pageTopSpacing}`}>
         <div
           className="w-full max-w-xl rounded-[32px] border bg-white p-8 text-center shadow-[0_32px_80px_-48px_rgba(15,23,42,0.35)] sm:p-12"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
@@ -244,7 +245,7 @@ export default function SurveyQuestionsPage() {
 
   if (!scannerAudit || !surveyQuestions.length || !currentQuestion) {
     return (
-      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-20">
+      <div className={`tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 ${pageTopSpacing}`}>
         <div
           className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
@@ -263,11 +264,11 @@ export default function SurveyQuestionsPage() {
   }
 
   return (
-    <div className="tenant-page-shell min-h-screen px-4 pb-32 pt-4 sm:px-6 sm:pb-36 sm:pt-6">
-      <div className="mx-auto flex min-h-[calc(100dvh-2rem)] max-w-4xl flex-col sm:min-h-[calc(100dvh-3rem)]">
+    <div className={`tenant-page-shell min-h-screen px-4 pb-32 ${pageTopSpacing} sm:px-6 sm:pb-36`}>
+      <div className="mx-auto flex min-h-[calc(100dvh-8rem)] max-w-4xl flex-col sm:min-h-[calc(100dvh-10rem)]">
         <main className="flex flex-1 items-start py-2 sm:items-center sm:py-4">
           <section
-            className="flex min-h-[calc(100dvh-10.5rem)] w-full flex-col overflow-hidden rounded-[28px] border bg-white/95 shadow-[0_32px_80px_-48px_rgba(15,23,42,0.35)] sm:min-h-[calc(100dvh-13rem)] sm:rounded-[32px]"
+            className="flex min-h-[calc(100dvh-16rem)] w-full flex-col overflow-hidden rounded-[28px] border bg-white/95 shadow-[0_32px_80px_-48px_rgba(15,23,42,0.35)] sm:min-h-[calc(100dvh-19rem)] sm:rounded-[32px]"
             style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
           >
             <div className="border-b px-5 py-5 sm:px-8 sm:py-6" style={{ borderColor: theme.borderAccent }}>

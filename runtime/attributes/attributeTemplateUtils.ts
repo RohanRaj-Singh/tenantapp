@@ -194,14 +194,12 @@ function normalizeValueList(values: string[] | undefined, issueLabel: string) {
 function normalizeGenderValueList(values: string[] | undefined) {
   const normalized = normalizeValueList(values, "Gender option");
   const filteredOptions: RuntimeAttributeOption[] = [];
-  const filteredIssues = [...normalized.issues];
 
   normalized.options.forEach((option) => {
-    // Filter retired gender values so legacy runtime snapshots do not surface them in the survey UI.
+    // Filter retired gender values silently so legacy runtime snapshots stay usable without showing a false mapping warning.
     const normalizedValue = option.value.trim().toLowerCase().replace(/[\s-]+/g, "_");
 
     if (DISALLOWED_GENDER_OPTION_VALUES.has(normalizedValue)) {
-      filteredIssues.push(`Gender option "${option.label}" is no longer supported and was ignored.`);
       return;
     }
 
@@ -210,7 +208,7 @@ function normalizeGenderValueList(values: string[] | undefined) {
 
   return {
     options: filteredOptions,
-    issues: filteredIssues,
+    issues: normalized.issues,
   };
 }
 
