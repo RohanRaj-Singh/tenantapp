@@ -36,6 +36,7 @@ export interface TenantDocument extends TimestampFields {
   tenantId: string;
   name: string;
   slug: string;
+  subdomain?: string;
   status: TenantRuntimeConfig["tenant"]["status"];
   plan: TenantRuntimeConfig["tenant"]["plan"];
   branding: TenantBrandingConfig;
@@ -48,6 +49,7 @@ export interface RuntimeConfigDocument extends TimestampFields {
   runtimeConfigId: string;
   tenantId: string;
   tenantSlug: string;
+  tenantSubdomain?: string;
   publishedAt: string;
   isActive: boolean;
   versionRefs: RuntimeVersionRefs;

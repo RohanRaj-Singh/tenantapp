@@ -103,6 +103,8 @@ const DEFAULT_FIELD_PLACEHOLDERS: Record<RuntimeAttributeField, string> = {
   seniority: "Select your seniority level",
 };
 
+const DISALLOWED_GENDER_OPTION_VALUES = new Set(["other", "prefer_not_to_say"]);
+
 function isNonEmptyString(value: unknown): value is string {
   return typeof value === "string" && value.trim().length > 0;
 }
@@ -186,6 +188,29 @@ function normalizeValueList(values: string[] | undefined, issueLabel: string) {
   return {
     options: deduped,
     issues: [...issues, ...duplicateIssues],
+  };
+}
+
+function normalizeGenderValueList(values: string[] | undefined) {
+  const normalized = normalizeValueList(values, "Gender option");
+  const filteredOptions: RuntimeAttributeOption[] = [];
+  const filteredIssues = [...normalized.issues];
+
+  normalized.options.forEach((option) => {
+    // Filter retired gender values so legacy runtime snapshots do not surface them in the survey UI.
+    const normalizedValue = option.value.trim().toLowerCase().replace(/[\s-]+/g, "_");
+
+    if (DISALLOWED_GENDER_OPTION_VALUES.has(normalizedValue)) {
+      filteredIssues.push(`Gender option "${option.label}" is no longer supported and was ignored.`);
+      return;
+    }
+
+    filteredOptions.push(option);
+  });
+
+  return {
+    options: filteredOptions,
+    issues: filteredIssues,
   };
 }
 
@@ -351,7 +376,7 @@ export function resolveRuntimeAttributeTemplate(
     }
   });
 
-  const genderResult = normalizeValueList(template?.genders, "Gender option");
+  const genderResult = normalizeGenderValueList(template?.genders);
   const ageGroupResult = normalizeValueList(template?.ageGroups, "Age option");
   const seniorityResult = normalizeValueList(template?.seniorityLevels, "Seniority option");
   const locationCount = locations.length;

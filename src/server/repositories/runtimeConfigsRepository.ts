@@ -34,7 +34,13 @@ export class RuntimeConfigsRepository implements RuntimeConfigsRepositoryContrac
   }
 
   async findActiveByTenantSlug(tenantSlug: string) {
-    return this.collection().findOne({ tenantSlug, isActive: true });
+    return this.collection().findOne({
+      isActive: true,
+      $or: [
+        { tenantSlug },
+        { tenantSubdomain: tenantSlug },
+      ],
+    });
   }
 
   async findActiveByTenantId(tenantId: string) {

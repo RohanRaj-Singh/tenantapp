@@ -57,7 +57,9 @@ class MemoryTenantsRepository implements TenantsRepositoryContract {
 
   async findBySlug(slug: string) {
     return (
-      Array.from(this.store.tenants.values()).find((tenant) => tenant.slug === slug) ?? null
+      Array.from(this.store.tenants.values()).find(
+        (tenant) => tenant.slug === slug || tenant.subdomain === slug,
+      ) ?? null
     );
   }
 
@@ -78,7 +80,12 @@ class MemoryRuntimeConfigsRepository implements RuntimeConfigsRepositoryContract
   async findActiveByTenantSlug(tenantSlug: string) {
     return (
       Array.from(this.store.runtimeConfigs.values()).find(
-        (runtimeConfig) => runtimeConfig.tenantSlug === tenantSlug && runtimeConfig.isActive,
+        (runtimeConfig) =>
+          runtimeConfig.isActive &&
+          (
+            runtimeConfig.tenantSlug === tenantSlug
+            || runtimeConfig.tenantSubdomain === tenantSlug
+          ),
       ) ?? null
     );
   }

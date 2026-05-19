@@ -1,21 +1,46 @@
 "use client";
 
-import { useEffect } from "react";
+import { useContext, useEffect } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { MoveLeft } from "lucide-react";
+import RuntimeUnavailableState from "@/components/runtime/RuntimeUnavailableState";
 import type { RuntimeAttributeOption } from "@/runtime/contracts/runtime";
 import { type RuntimeAttributeField } from "@/runtime/attributes/attributeTemplateUtils";
 import { saveRuntimeSurveySession } from "@/runtime/attributes/surveySession";
+import { RuntimeContext } from "@/runtime/context/RuntimeContext";
 import { useRuntimeAttributeForm } from "@/runtime/hooks/useRuntimeAttributeForm";
-import { useRuntimeConfig } from "@/runtime/hooks/useRuntimeConfig";
+import type { TenantRuntimeConfig } from "@/runtime/contracts/runtime";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 const SELECT_FIELDS: RuntimeAttributeField[] = ["stream", "location", "function", "department"];
 const CHOICE_FIELDS: RuntimeAttributeField[] = ["gender", "age", "seniority"];
 
 export default function SurveyPage() {
-  const config = useRuntimeConfig();
+  const { config, loading, error, tenantSlug, tenantSource } = useContext(RuntimeContext);
+  const theme = useTheme();
+
+  if (loading) {
+    return (
+      <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-24">
+        <div
+          className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
+          style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
+        >
+          <p className="text-sm font-medium text-slate-500">Loading your survey workspace...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!config) {
+    return <RuntimeUnavailableState error={error} tenantSlug={tenantSlug} tenantSource={tenantSource} />;
+  }
+
+  return <SurveyPageContent config={config} />;
+}
+
+function SurveyPageContent({ config }: { config: TenantRuntimeConfig }) {
   const theme = useTheme();
   const router = useRouter();
   const { selections, fields, validation, configurationIssues, resetSelections, updateSelection } =

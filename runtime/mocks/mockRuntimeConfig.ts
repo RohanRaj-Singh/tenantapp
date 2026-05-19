@@ -59,7 +59,7 @@ export const mockRuntimeConfig: TenantRuntimeConfig = {
       { id: "dept-11", label: "Helpdesk", value: "helpdesk", functionId: "func-6" },
       { id: "dept-12", label: "Infrastructure", value: "infrastructure", functionId: "func-6" },
     ],
-    genders: ["male", "female", "other", "prefer_not_to_say"],
+    genders: ["male", "female"],
     ageGroups: ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"],
     seniorityLevels: ["intern", "employee", "senior", "manager", "director", "vp", "c_suite"],
   },

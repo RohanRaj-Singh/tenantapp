@@ -9,6 +9,16 @@ interface ResolveRuntimeContextInput {
   runtimeConfigId?: string;
 }
 
+function matchesRuntimeTenantIdentifier(
+  runtimeConfig: RuntimeConfigDocument,
+  tenantSlug: string,
+) {
+  return (
+    runtimeConfig.tenantSlug === tenantSlug
+    || runtimeConfig.tenantSubdomain === tenantSlug
+  );
+}
+
 function createRuntimeUnavailableError(
   status: number,
   code: string,
@@ -26,7 +36,7 @@ function assertRuntimeConfigMatchesInput(
   runtimeConfig: RuntimeConfigDocument,
   input: ResolveRuntimeContextInput,
 ) {
-  if (input.tenantSlug && runtimeConfig.tenantSlug !== input.tenantSlug) {
+  if (input.tenantSlug && !matchesRuntimeTenantIdentifier(runtimeConfig, input.tenantSlug)) {
     throw new ApiError(
       409,
       "TENANT_RUNTIME_MISMATCH",
@@ -34,6 +44,7 @@ function assertRuntimeConfigMatchesInput(
       {
         expectedTenantSlug: input.tenantSlug,
         runtimeConfigTenantSlug: runtimeConfig.tenantSlug,
+        runtimeConfigTenantSubdomain: runtimeConfig.tenantSubdomain,
         runtimeConfigId: runtimeConfig.runtimeConfigId,
       },
     );

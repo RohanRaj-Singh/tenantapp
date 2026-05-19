@@ -153,7 +153,7 @@ const tenantBAttributeTemplate: RuntimeAttributeTemplate = {
       functionId: "func-service-desk",
     },
   ],
-  genders: ["female", "male", "non_binary", "prefer_not_to_say"],
+  genders: ["female", "male", "non_binary"],
   ageGroups: ["18-24", "25-34", "35-44", "45-54", "55+"],
   seniorityLevels: [],
   fixedAttributes: {
@@ -206,7 +206,7 @@ const tenantCAttributeTemplate: RuntimeAttributeTemplate = {
       functionId: "func-missing",
     },
   ],
-  genders: ["prefer_not_to_say"],
+  genders: ["female", "male"],
   ageGroups: ["25-34", "35-44"],
   seniorityLevels: [],
   fixedAttributes: {

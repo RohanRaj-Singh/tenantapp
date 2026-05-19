@@ -18,7 +18,12 @@ export class TenantsRepository implements TenantsRepositoryContract {
   }
 
   async findBySlug(slug: string) {
-    return this.collection().findOne({ slug });
+    return this.collection().findOne({
+      $or: [
+        { slug },
+        { subdomain: slug },
+      ],
+    });
   }
 
   async findByTenantId(tenantId: string) {

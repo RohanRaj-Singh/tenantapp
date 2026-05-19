@@ -26,18 +26,18 @@ function getUnavailableGuidance(
     failureReason === "root_domain_missing_subdomain" ||
     failureReason === "tenant_not_provided"
   ) {
-    return "Open this runtime with a tenant subdomain or use the localhost tenant fallback for development.";
+    return "This survey link is missing its tenant workspace. Reopen it from the correct tenant URL, or ask your administrator for the latest survey link.";
   }
 
   if (failureReason === "invalid_query_tenant") {
-    return "The local tenant fallback is invalid. Check the tenant slug and try again.";
+    return "The survey link appears incomplete or invalid. Please confirm the link with your tenant administrator and try again.";
   }
 
   if (tenantSource === "query" || tenantSource === "stored") {
-    return "The requested tenant runtime could not be loaded from the published configuration.";
+    return "We could not find an active published survey for this tenant. Please contact your organization's administrator or tenant owner to confirm the survey has been published.";
   }
 
-  return "The requested tenant runtime is not currently published or available.";
+  return "The requested tenant runtime is not currently published or available. Please contact your organization's administrator or tenant owner for assistance.";
 }
 
 export default function RuntimeUnavailableState({
@@ -62,10 +62,10 @@ export default function RuntimeUnavailableState({
 
         <div className="mt-6 space-y-3">
           <span className="tenant-chip inline-flex rounded-full px-4 py-1.5 text-sm font-medium">
-            Runtime unavailable
+            Survey unavailable
           </span>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            This survey is currently unavailable.
+            This survey is unavailable right now.
           </h1>
           <p className="text-sm leading-6 text-slate-600 sm:text-base">
             {getUnavailableGuidance(error, tenantSource)}
@@ -75,6 +75,10 @@ export default function RuntimeUnavailableState({
               Requested tenant: <span className="font-semibold text-slate-700">{tenantSlug}</span>
             </p>
           ) : null}
+          <p className="text-sm leading-6 text-slate-600">
+            If you were expecting to access this survey, please contact your organization's survey administrator, HR
+            team, or tenant owner.
+          </p>
         </div>
 
         <div
@@ -84,12 +88,19 @@ export default function RuntimeUnavailableState({
           {error?.message ?? "The published runtime configuration could not be resolved for this request."}
         </div>
 
-        <div className="mt-6">
+        <div className="mt-6 flex flex-wrap gap-3">
           <Link
             href="/"
             className="tenant-button inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold"
           >
             Return to home
+          </Link>
+          <Link
+            href="/contact"
+            className="inline-flex items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors"
+            style={{ borderColor: theme.borderAccent, backgroundColor: "#ffffff" }}
+          >
+            Contact support
           </Link>
         </div>
       </div>
