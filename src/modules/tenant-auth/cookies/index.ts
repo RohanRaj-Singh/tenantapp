@@ -1,7 +1,10 @@
 import { cookies } from "next/headers";
 import { NextResponse } from "next/server";
 import { TENANT_AUTH_CONFIG } from "../contracts/types";
-import { getTenantAuthCookieBaseOptions } from "./options";
+import {
+  getTenantAuthCookieBaseOptions,
+  getTenantAuthCookieBaseOptionsForCurrentRequest,
+} from "./options";
 
 export const TENANT_SESSION_COOKIE = TENANT_AUTH_CONFIG.sessionCookieName;
 export const TENANT_PASSWORD_CHANGE_COOKIE =
@@ -23,16 +26,17 @@ export async function setTenantAuthCookies(
 ): Promise<void> {
   const cookieStore = await cookies();
   const maxAge = TENANT_AUTH_CONFIG.sessionExpiryDays * 24 * 60 * 60;
+  const baseOptions = await getTenantAuthCookieBaseOptionsForCurrentRequest();
 
   cookieStore.set(TENANT_SESSION_COOKIE, sessionToken, {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge,
   });
   cookieStore.set(
     TENANT_PASSWORD_CHANGE_COOKIE,
     requiresPasswordChange ? "1" : "0",
     {
-      ...getTenantAuthCookieBaseOptions(),
+      ...baseOptions,
       maxAge,
     },
   );
@@ -40,32 +44,38 @@ export async function setTenantAuthCookies(
 
 export async function clearTenantAuthCookies(): Promise<void> {
   const cookieStore = await cookies();
+  const baseOptions = await getTenantAuthCookieBaseOptionsForCurrentRequest();
+
   cookieStore.set(TENANT_SESSION_COOKIE, "", {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge: 0,
   });
   cookieStore.set(TENANT_PASSWORD_CHANGE_COOKIE, "", {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge: 0,
   });
 }
 
-export function setTenantAuthCookiesOnResponse(
+export async function setTenantAuthCookiesOnResponse(
   response: NextResponse,
   sessionToken: string,
   requiresPasswordChange: boolean,
-): NextResponse {
+  request?: Request | Headers | { headers: Headers } | null,
+): Promise<NextResponse> {
   const maxAge = TENANT_AUTH_CONFIG.sessionExpiryDays * 24 * 60 * 60;
+  const baseOptions = request
+    ? getTenantAuthCookieBaseOptions(request)
+    : await getTenantAuthCookieBaseOptionsForCurrentRequest();
 
   response.cookies.set(TENANT_SESSION_COOKIE, sessionToken, {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge,
   });
   response.cookies.set(
     TENANT_PASSWORD_CHANGE_COOKIE,
     requiresPasswordChange ? "1" : "0",
     {
-      ...getTenantAuthCookieBaseOptions(),
+      ...baseOptions,
       maxAge,
     },
   );
@@ -73,15 +83,20 @@ export function setTenantAuthCookiesOnResponse(
   return response;
 }
 
-export function clearTenantAuthCookiesOnResponse(
+export async function clearTenantAuthCookiesOnResponse(
   response: NextResponse,
-): NextResponse {
+  request?: Request | Headers | { headers: Headers } | null,
+): Promise<NextResponse> {
+  const baseOptions = request
+    ? getTenantAuthCookieBaseOptions(request)
+    : await getTenantAuthCookieBaseOptionsForCurrentRequest();
+
   response.cookies.set(TENANT_SESSION_COOKIE, "", {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge: 0,
   });
   response.cookies.set(TENANT_PASSWORD_CHANGE_COOKIE, "", {
-    ...getTenantAuthCookieBaseOptions(),
+    ...baseOptions,
     maxAge: 0,
   });
 

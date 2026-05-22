@@ -28,10 +28,11 @@ export async function POST(request: NextRequest) {
       redirectTo: "/dashboard",
     });
 
-    return setTenantAuthCookiesOnResponse(
+    return await setTenantAuthCookiesOnResponse(
       response,
       auth.context.session.sessionToken,
       false,
+      request,
     );
   } catch (error) {
     return NextResponse.json(

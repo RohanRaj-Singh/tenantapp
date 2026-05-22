@@ -91,10 +91,11 @@ export async function POST(request: NextRequest) {
       requiresPasswordChange: result.requiresPasswordChange ?? false,
     });
 
-    return setTenantAuthCookiesOnResponse(
+    return await setTenantAuthCookiesOnResponse(
       response,
       result.session.sessionToken,
       Boolean(result.requiresPasswordChange),
+      request,
     );
   } catch (error) {
     return NextResponse.json(

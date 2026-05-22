@@ -67,11 +67,11 @@ export function middleware(request: NextRequest) {
       { status: 307 },
     );
     response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
-      ...getTenantAuthCookieBaseOptions(),
+      ...getTenantAuthCookieBaseOptions(request),
       maxAge: 0,
     });
     response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
-      ...getTenantAuthCookieBaseOptions(),
+      ...getTenantAuthCookieBaseOptions(request),
       maxAge: 0,
     });
     return response;
@@ -85,11 +85,11 @@ export function middleware(request: NextRequest) {
 
   if (sessionCookie && !isValidTenantSessionTokenFormat(sessionCookie)) {
     response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {
-      ...getTenantAuthCookieBaseOptions(),
+      ...getTenantAuthCookieBaseOptions(request),
       maxAge: 0,
     });
     response.cookies.set(TENANT_AUTH_CONFIG.passwordChangeCookieName, "", {
-      ...getTenantAuthCookieBaseOptions(),
+      ...getTenantAuthCookieBaseOptions(request),
       maxAge: 0,
     });
   }

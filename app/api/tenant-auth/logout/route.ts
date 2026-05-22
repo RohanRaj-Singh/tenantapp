@@ -20,5 +20,5 @@ export async function POST(request: NextRequest) {
     ? NextResponse.json({ success: true })
     : NextResponse.redirect(new URL("/login", request.url), { status: 303 });
 
-  return clearTenantAuthCookiesOnResponse(response);
+  return await clearTenantAuthCookiesOnResponse(response, request);
 }

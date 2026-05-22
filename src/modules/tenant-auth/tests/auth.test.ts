@@ -2,6 +2,10 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { TENANT_AUTH_CONFIG } from "../contracts/types";
 import {
+  getTenantAuthCookieBaseOptions,
+  shouldUseSecureTenantAuthCookies,
+} from "../cookies/options";
+import {
   TENANT_LOGIN_PATH,
   appendTenantSlugToPath,
   buildTenantLoginRedirectPath,
@@ -231,5 +235,29 @@ describe("Tenant Runtime Route Protection Helpers", () => {
       buildTenantLoginRedirectPath("/analytics?tenant=active", "Your session has expired. Please sign in again.", "active"),
       "/login?next=%2Fanalytics%3Ftenant%3Dactive&message=Your+session+has+expired.+Please+sign+in+again.&tenant=active",
     );
+  });
+});
+
+describe("Tenant Auth Cookie Options", () => {
+  it("disables secure cookies for forwarded http requests", () => {
+    const request = new Request("http://oq.remedygcc.com/api/tenant-auth/login", {
+      headers: {
+        "x-forwarded-proto": "http",
+      },
+    });
+
+    assert.equal(shouldUseSecureTenantAuthCookies(request), false);
+    assert.equal(getTenantAuthCookieBaseOptions(request).secure, false);
+  });
+
+  it("enables secure cookies for forwarded https requests", () => {
+    const request = new Request("http://internal-upstream/api/tenant-auth/login", {
+      headers: {
+        "x-forwarded-proto": "https",
+      },
+    });
+
+    assert.equal(shouldUseSecureTenantAuthCookies(request), true);
+    assert.equal(getTenantAuthCookieBaseOptions(request).secure, true);
   });
 });

@@ -49,7 +49,7 @@ export async function requireTenantApiAuth(
     return {
       success: false,
       response: validation.clearCookies
-        ? clearTenantAuthCookiesOnResponse(response)
+        ? await clearTenantAuthCookiesOnResponse(response)
         : response,
     };
   }
