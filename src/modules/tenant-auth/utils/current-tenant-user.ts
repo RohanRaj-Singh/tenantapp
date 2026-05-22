@@ -5,6 +5,7 @@ import {
   buildTenantLoginRedirectPath,
 } from "../guards/route-protection";
 import { getCurrentTenantAuthContext, getCurrentTenantAuthValidation } from "../middleware/tenant-auth";
+import { getCurrentTenantRequestScope } from "./request-tenant";
 
 export interface RequireTenantUserOptions {
   allowPasswordChange?: boolean;
@@ -22,6 +23,11 @@ export async function requireCurrentTenantUser(
 
   if (!validation.success || !validation.context) {
     const hadSessionCookie = Boolean(await getTenantSessionCookie());
+    const requestScope = await getCurrentTenantRequestScope();
+    const tenantSlug =
+      requestScope.resolution.source === "hostname"
+        ? null
+        : requestScope.tenant?.slug ?? requestScope.resolution.tenantSlug;
 
     if (validation.clearCookies) {
       await clearTenantAuthCookies();
@@ -31,6 +37,7 @@ export async function requireCurrentTenantUser(
       buildTenantLoginRedirectPath(
         options.nextPath,
         hadSessionCookie ? validation.error : undefined,
+        tenantSlug,
       ),
     );
   }

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from "next/server";
 import { setTenantAuthCookiesOnResponse } from "@/src/modules/tenant-auth/cookies";
 import {
   TENANT_PASSWORD_CHANGE_PATH,
+  appendTenantSlugToPath,
   getSafeTenantRedirectPath,
 } from "@/src/modules/tenant-auth/guards/route-protection";
 import { loginTenantUser } from "@/src/modules/tenant-auth/services/auth-service";
@@ -74,7 +75,14 @@ export async function POST(request: NextRequest) {
 
     const redirectTo = result.requiresPasswordChange
       ? TENANT_PASSWORD_CHANGE_PATH
-      : getSafeTenantRedirectPath(requestedNext);
+      : (
+        requestTenant.source === "hostname"
+          ? getSafeTenantRedirectPath(requestedNext)
+          : appendTenantSlugToPath(
+            getSafeTenantRedirectPath(requestedNext),
+            requestTenant.tenantSlug,
+          )
+      );
 
     const response = NextResponse.json({
       success: true,

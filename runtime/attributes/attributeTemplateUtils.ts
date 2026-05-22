@@ -7,6 +7,7 @@ import type {
   RuntimeFunctionOption,
   RuntimeLocationOption,
 } from "../contracts/runtime";
+import { getTenantStaticCopy, type AppLanguage } from "../language/translations";
 
 export const RUNTIME_ATTRIBUTE_FIELDS = [
   "stream",
@@ -81,26 +82,6 @@ export const EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS: RuntimeAttributeSelections = {
   gender: "",
   age: "",
   seniority: "",
-};
-
-const DEFAULT_FIELD_LABELS: Record<RuntimeAttributeField, string> = {
-  stream: "Stream",
-  location: "Location",
-  function: "Function",
-  department: "Department",
-  gender: "Gender",
-  age: "Age Group",
-  seniority: "Seniority Level",
-};
-
-const DEFAULT_FIELD_PLACEHOLDERS: Record<RuntimeAttributeField, string> = {
-  stream: "Select your stream",
-  location: "Select your location",
-  function: "Select your function",
-  department: "Select your department",
-  gender: "Select your gender",
-  age: "Select your age group",
-  seniority: "Select your seniority level",
 };
 
 const DISALLOWED_GENDER_OPTION_VALUES = new Set(["other", "prefer_not_to_say"]);
@@ -216,10 +197,12 @@ function resolveFixedAttributeConfig(
   field: RuntimeFixedAttributeKey,
   providedConfig: RuntimeFixedAttributeConfig | undefined,
   optionCount: number,
+  language: AppLanguage,
 ) {
-  const label = providedConfig?.label?.trim() || DEFAULT_FIELD_LABELS[field === "age" ? "age" : field];
-  const placeholder =
-    providedConfig?.placeholder?.trim() || DEFAULT_FIELD_PLACEHOLDERS[field === "age" ? "age" : field];
+  const attributeCopy = getTenantStaticCopy(language).attributeForm;
+  const key = field === "age" ? "age" : field;
+  const label = providedConfig?.label?.trim() || attributeCopy.labels[key];
+  const placeholder = providedConfig?.placeholder?.trim() || attributeCopy.placeholders[key];
   const enabled = providedConfig?.enabled ?? optionCount > 0;
   const required = enabled ? (providedConfig?.required ?? optionCount > 0) : false;
 
@@ -281,6 +264,7 @@ function getDemographicOptions(
 
 export function resolveRuntimeAttributeTemplate(
   template: RuntimeAttributeTemplate | null | undefined,
+  language: AppLanguage = "en",
 ): ResolvedRuntimeAttributeTemplate {
   const streamResult = normalizeOptions(template?.streams, "Stream option");
   const streamIds = new Set(streamResult.options.map((item) => item.id));
@@ -390,7 +374,7 @@ export function resolveRuntimeAttributeTemplate(
     seniorityLevels: seniorityResult.options,
     fixedAttributes: {
       location: {
-        ...resolveFixedAttributeConfig("location", providedLocationConfig, locationCount),
+        ...resolveFixedAttributeConfig("location", providedLocationConfig, locationCount, language),
         enabled: locationCount > 0 ? true : providedLocationConfig?.enabled ?? false,
         required: locationCount > 0 ? true : providedLocationConfig?.required ?? false,
       },
@@ -398,12 +382,14 @@ export function resolveRuntimeAttributeTemplate(
         "gender",
         template?.fixedAttributes?.gender,
         genderResult.options.length,
+        language,
       ),
-      age: resolveFixedAttributeConfig("age", template?.fixedAttributes?.age, ageGroupResult.options.length),
+      age: resolveFixedAttributeConfig("age", template?.fixedAttributes?.age, ageGroupResult.options.length, language),
       seniority: resolveFixedAttributeConfig(
         "seniority",
         template?.fixedAttributes?.seniority,
         seniorityResult.options.length,
+        language,
       ),
     },
     configurationIssues: [
@@ -543,6 +529,7 @@ export function applyRuntimeAttributeSelection(
 function createFieldState(
   key: RuntimeAttributeField,
   options: RuntimeAttributeOption[],
+  language: AppLanguage,
   settings: {
     label?: string;
     placeholder?: string;
@@ -552,10 +539,12 @@ function createFieldState(
     emptyMessage?: string | null;
   } = {},
 ): RuntimeAttributeFieldState {
+  const attributeCopy = getTenantStaticCopy(language).attributeForm;
+
   return {
     key,
-    label: settings.label ?? DEFAULT_FIELD_LABELS[key],
-    placeholder: settings.placeholder ?? DEFAULT_FIELD_PLACEHOLDERS[key],
+    label: settings.label ?? attributeCopy.labels[key],
+    placeholder: settings.placeholder ?? attributeCopy.placeholders[key],
     required: settings.required ?? false,
     visible: settings.visible ?? true,
     disabled: settings.disabled ?? options.length === 0,
@@ -573,7 +562,9 @@ function appendBlockingIssue(issues: string[], shouldAppend: boolean, message: s
 export function buildRuntimeAttributeFormState(
   template: ResolvedRuntimeAttributeTemplate,
   selections: RuntimeAttributeSelections,
+  language: AppLanguage = "en",
 ): RuntimeAttributeFormState {
+  const attributeCopy = getTenantStaticCopy(language).attributeForm;
   const locationOptions = getAvailableLocations(template, selections);
   const functionOptions = getAvailableFunctions(template, selections);
   const departmentOptions = getAvailableDepartments(template, selections);
@@ -588,12 +579,12 @@ export function buildRuntimeAttributeFormState(
   const hasFunctionSelection = Boolean(selections.function);
 
   const fields: Record<RuntimeAttributeField, RuntimeAttributeFieldState> = {
-    stream: createFieldState("stream", template.streams, {
+    stream: createFieldState("stream", template.streams, language, {
       required: true,
       visible: true,
-      emptyMessage: template.streams.length === 0 ? "No streams are configured for this tenant yet." : null,
+      emptyMessage: template.streams.length === 0 ? attributeCopy.emptyMessages.streamsMissing : null,
     }),
-    location: createFieldState("location", locationOptions, {
+    location: createFieldState("location", locationOptions, language, {
       label: locationConfig.label,
       placeholder: locationConfig.placeholder,
       required: locationConfig.required,
@@ -601,28 +592,28 @@ export function buildRuntimeAttributeFormState(
       disabled: locationOptions.length === 0,
       emptyMessage:
         locationConfig.enabled && hasStreamSelection && locationOptions.length === 0
-          ? "No locations are available for the selected stream."
+          ? attributeCopy.emptyMessages.noLocationsForStream
           : null,
     }),
-    function: createFieldState("function", functionOptions, {
+    function: createFieldState("function", functionOptions, language, {
       required: hasLocationSelection,
       visible: hasLocationSelection,
       disabled: functionOptions.length === 0,
       emptyMessage:
         hasLocationSelection && functionOptions.length === 0
-          ? "No functions are available for the selected location."
+          ? attributeCopy.emptyMessages.noFunctionsForLocation
           : null,
     }),
-    department: createFieldState("department", departmentOptions, {
+    department: createFieldState("department", departmentOptions, language, {
       required: hasFunctionSelection,
       visible: hasFunctionSelection,
       disabled: departmentOptions.length === 0,
       emptyMessage:
         hasFunctionSelection && departmentOptions.length === 0
-          ? "No departments are available for the selected function."
+          ? attributeCopy.emptyMessages.noDepartmentsForFunction
           : null,
     }),
-    gender: createFieldState("gender", template.genders, {
+    gender: createFieldState("gender", template.genders, language, {
       label: genderConfig.label,
       placeholder: genderConfig.placeholder,
       required: genderConfig.required,
@@ -630,10 +621,10 @@ export function buildRuntimeAttributeFormState(
       disabled: template.genders.length === 0,
       emptyMessage:
         genderConfig.enabled && template.genders.length === 0
-          ? "No gender options are configured for this tenant."
+          ? attributeCopy.emptyMessages.noGenderOptions
           : null,
     }),
-    age: createFieldState("age", template.ageGroups, {
+    age: createFieldState("age", template.ageGroups, language, {
       label: ageConfig.label,
       placeholder: ageConfig.placeholder,
       required: ageConfig.required,
@@ -641,10 +632,10 @@ export function buildRuntimeAttributeFormState(
       disabled: template.ageGroups.length === 0,
       emptyMessage:
         ageConfig.enabled && template.ageGroups.length === 0
-          ? "No age-group options are configured for this tenant."
+          ? attributeCopy.emptyMessages.noAgeOptions
           : null,
     }),
-    seniority: createFieldState("seniority", template.seniorityLevels, {
+    seniority: createFieldState("seniority", template.seniorityLevels, language, {
       label: seniorityConfig.label,
       placeholder: seniorityConfig.placeholder,
       required: seniorityConfig.required,
@@ -652,7 +643,7 @@ export function buildRuntimeAttributeFormState(
       disabled: template.seniorityLevels.length === 0,
       emptyMessage:
         seniorityConfig.enabled && template.seniorityLevels.length === 0
-          ? "No seniority options are configured for this tenant."
+          ? attributeCopy.emptyMessages.noSeniorityOptions
           : null,
     }),
   };
@@ -667,37 +658,37 @@ export function buildRuntimeAttributeFormState(
   appendBlockingIssue(
     blockingIssues,
     template.streams.length === 0,
-    "A stream configuration is required before the survey can start.",
+    attributeCopy.blockingIssues.missingStreamConfiguration,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.location.visible && fields.location.required && fields.location.options.length === 0,
-    "The selected stream has no location mappings.",
+    attributeCopy.blockingIssues.missingLocationMappings,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.function.visible && fields.function.options.length === 0,
-    "The selected location has no function mappings.",
+    attributeCopy.blockingIssues.missingFunctionMappings,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.department.visible && fields.department.options.length === 0,
-    "The selected function has no department mappings.",
+    attributeCopy.blockingIssues.missingDepartmentMappings,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.gender.visible && fields.gender.required && fields.gender.options.length === 0,
-    "Gender is required, but the tenant configuration does not provide any options.",
+    attributeCopy.blockingIssues.missingGenderOptions,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.age.visible && fields.age.required && fields.age.options.length === 0,
-    "Age group is required, but the tenant configuration does not provide any options.",
+    attributeCopy.blockingIssues.missingAgeOptions,
   );
   appendBlockingIssue(
     blockingIssues,
     fields.seniority.visible && fields.seniority.required && fields.seniority.options.length === 0,
-    "Seniority is required, but the tenant configuration does not provide any options.",
+    attributeCopy.blockingIssues.missingSeniorityOptions,
   );
 
   return {

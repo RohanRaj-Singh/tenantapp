@@ -1,3 +1,8 @@
+import {
+  RUNTIME_TENANT_QUERY_PARAM,
+  sanitizeTenantSlug,
+} from "@/runtime/tenant/tenantResolution";
+
 export const TENANT_LOGIN_PATH = "/login";
 export const TENANT_DASHBOARD_HOME_PATH = "/dashboard";
 export const TENANT_PASSWORD_CHANGE_PATH = "/change-password";
@@ -34,9 +39,44 @@ export function getSafeTenantRedirectPath(nextPath?: string | null): string {
   return nextPath;
 }
 
+export function getTenantSlugFromRedirectPath(nextPath?: string | null): string | null {
+  const safeNextPath = getSafeTenantRedirectPath(nextPath);
+
+  try {
+    const url = new URL(safeNextPath, "http://tenant.local");
+    return sanitizeTenantSlug(url.searchParams.get(RUNTIME_TENANT_QUERY_PARAM));
+  } catch {
+    return null;
+  }
+}
+
+export function appendTenantSlugToPath(
+  path: string,
+  tenantSlug?: string | null,
+): string {
+  const safeTenantSlug = sanitizeTenantSlug(tenantSlug);
+
+  if (!safeTenantSlug) {
+    return path;
+  }
+
+  try {
+    const url = new URL(path, "http://tenant.local");
+
+    if (!url.searchParams.has(RUNTIME_TENANT_QUERY_PARAM)) {
+      url.searchParams.set(RUNTIME_TENANT_QUERY_PARAM, safeTenantSlug);
+    }
+
+    return `${url.pathname}${url.search}${url.hash}`;
+  } catch {
+    return path;
+  }
+}
+
 export function buildTenantLoginRedirectPath(
   nextPath?: string | null,
   message?: string | null,
+  tenantSlug?: string | null,
 ): string {
   const params = new URLSearchParams();
   const safeNextPath = getSafeTenantRedirectPath(nextPath);
@@ -47,6 +87,11 @@ export function buildTenantLoginRedirectPath(
 
   if (message?.trim()) {
     params.set("message", message.trim());
+  }
+
+  const safeTenantSlug = sanitizeTenantSlug(tenantSlug);
+  if (safeTenantSlug) {
+    params.set(RUNTIME_TENANT_QUERY_PARAM, safeTenantSlug);
   }
 
   const query = params.toString();

@@ -3,6 +3,8 @@ import { clearTenantAuthCookies } from "@/src/modules/tenant-auth/cookies";
 import { TenantLoginPage } from "@/src/modules/tenant-auth/components/TenantLoginPage";
 import {
   TENANT_PASSWORD_CHANGE_PATH,
+  appendTenantSlugToPath,
+  getTenantSlugFromRedirectPath,
   getSafeTenantRedirectPath,
 } from "@/src/modules/tenant-auth/guards/route-protection";
 import { getCurrentTenantAuthValidation } from "@/src/modules/tenant-auth/middleware/tenant-auth";
@@ -29,15 +31,16 @@ function readSearchParam(
 export default async function LoginPage({ searchParams }: LoginPageProps) {
   const resolvedSearchParams: Record<string, string | string[] | undefined> =
     await (searchParams ?? Promise.resolve({}));
-  const nextPath = getSafeTenantRedirectPath(readSearchParam(resolvedSearchParams.next));
+  const requestedNextPath = getSafeTenantRedirectPath(readSearchParam(resolvedSearchParams.next));
   const providedMessage = readSearchParam(resolvedSearchParams.message);
+  const tenantSlugFromNextPath = getTenantSlugFromRedirectPath(requestedNextPath);
 
   const validation = await getCurrentTenantAuthValidation();
   if (validation.success && validation.context) {
     redirect(
       validation.context.user.mustChangePassword
         ? TENANT_PASSWORD_CHANGE_PATH
-        : nextPath,
+        : requestedNextPath,
     );
   }
 
@@ -48,7 +51,14 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   const requestScope = await getCurrentTenantRequestScope();
   const tenantName = requestScope.tenant?.name ?? null;
   const tenantSlug =
-    requestScope.tenant?.slug ?? requestScope.resolution.tenantSlug ?? null;
+    requestScope.tenant?.slug ??
+    requestScope.resolution.tenantSlug ??
+    tenantSlugFromNextPath ??
+    null;
+  const nextPath =
+    requestScope.resolution.source === "hostname"
+      ? requestedNextPath
+      : appendTenantSlugToPath(requestedNextPath, tenantSlug);
   const fallbackMessage =
     providedMessage ??
     (validation.reason && validation.reason !== "SESSION_MISSING"

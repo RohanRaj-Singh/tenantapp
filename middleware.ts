@@ -56,7 +56,14 @@ export function middleware(request: NextRequest) {
 
   if (isTenantProtectedPath(pathname) && !isValidTenantSessionTokenFormat(sessionCookie)) {
     const response = NextResponse.redirect(
-      new URL(buildTenantLoginRedirectPath(nextPath), request.url),
+      new URL(
+        buildTenantLoginRedirectPath(
+          nextPath,
+          undefined,
+          tenantResolution.source === "hostname" ? null : tenantResolution.tenantSlug,
+        ),
+        request.url,
+      ),
       { status: 307 },
     );
     response.cookies.set(TENANT_AUTH_CONFIG.sessionCookieName, "", {

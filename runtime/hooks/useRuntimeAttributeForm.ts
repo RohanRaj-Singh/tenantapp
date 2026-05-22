@@ -11,11 +11,15 @@ import {
   type RuntimeAttributeSelections,
   type RuntimeSelectionField,
 } from "../attributes/attributeTemplateUtils";
+import type { AppLanguage } from "../language/translations";
 
-export function useRuntimeAttributeForm(attributeTemplate: RuntimeAttributeTemplate) {
+export function useRuntimeAttributeForm(
+  attributeTemplate: RuntimeAttributeTemplate,
+  language: AppLanguage = "en",
+) {
   const resolvedTemplate = useMemo(
-    () => resolveRuntimeAttributeTemplate(attributeTemplate),
-    [attributeTemplate],
+    () => resolveRuntimeAttributeTemplate(attributeTemplate, language),
+    [attributeTemplate, language],
   );
   const [selections, setSelections] = useState<RuntimeAttributeSelections>(
     EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS,
@@ -28,8 +32,8 @@ export function useRuntimeAttributeForm(attributeTemplate: RuntimeAttributeTempl
   }, [resolvedTemplate]);
 
   const formState = useMemo(
-    () => buildRuntimeAttributeFormState(resolvedTemplate, selections),
-    [resolvedTemplate, selections],
+    () => buildRuntimeAttributeFormState(resolvedTemplate, selections, language),
+    [resolvedTemplate, selections, language],
   );
 
   const updateSelection = useCallback((field: RuntimeSelectionField, value: string) => {

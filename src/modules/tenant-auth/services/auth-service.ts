@@ -372,15 +372,6 @@ export function createTenantAuthService(
       return toSessionValidationFailure("SESSION_MISSING");
     }
 
-    if (!expectedTenantSlug) {
-      return toSessionValidationFailure("TENANT_SCOPE_REQUIRED");
-    }
-
-    const expectedTenant = await deps.getTenantBySlug(expectedTenantSlug);
-    if (!expectedTenant) {
-      return toSessionValidationFailure("TENANT_NOT_FOUND");
-    }
-
     const session = await deps.repository.getTenantSessionByToken(sessionToken);
     if (!session) {
       return toSessionValidationFailure("SESSION_NOT_FOUND");
@@ -392,9 +383,16 @@ export function createTenantAuthService(
       return toSessionValidationFailure("SESSION_EXPIRED");
     }
 
-    if (session.tenantId !== expectedTenant.tenantId) {
-      await deps.repository.deleteTenantSessionByToken(session.sessionToken);
-      return toSessionValidationFailure("TENANT_SCOPE_MISMATCH");
+    if (expectedTenantSlug) {
+      const expectedTenant = await deps.getTenantBySlug(expectedTenantSlug);
+      if (!expectedTenant) {
+        return toSessionValidationFailure("TENANT_NOT_FOUND");
+      }
+
+      if (session.tenantId !== expectedTenant.tenantId) {
+        await deps.repository.deleteTenantSessionByToken(session.sessionToken);
+        return toSessionValidationFailure("TENANT_SCOPE_MISMATCH");
+      }
     }
 
     const user = await deps.repository.getTenantUserById(session.tenantUserId);

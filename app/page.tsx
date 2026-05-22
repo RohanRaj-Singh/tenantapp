@@ -2,16 +2,18 @@
 
 import Image from "next/image";
 import Link from "next/link";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 export default function Home() {
   const theme = useTheme();
+  const { copy } = useLanguage();
 
   return (
     <section className="tenant-page-shell relative flex min-h-screen items-center justify-center overflow-hidden">
       <Image
         src="/images/Ellipse.png"
-        alt="Wellbeing Survey Banner"
+        alt={copy.home.bannerAlt}
         width={1600}
         height={1600}
         className="absolute inset-0 top-0 z-10 h-48 w-full sm:h-64"
@@ -20,7 +22,7 @@ export default function Home() {
       <div className="absolute inset-0 z-0">
         <Image
           src="/images/banner.png"
-          alt="Wellbeing Survey Banner"
+          alt={copy.home.bannerAlt}
           fill
           className="object-cover object-center"
           priority
@@ -37,17 +39,16 @@ export default function Home() {
           className="mb-5 bg-clip-text text-3xl font-bold text-transparent sm:text-5xl md:text-6xl"
           style={{ backgroundImage: theme.heroGradient }}
         >
-          Employee Wellbeing Survey
+          {copy.home.heroTitle}
         </h1>
         <p className="mx-auto mb-8 max-w-2xl text-sm leading-7 text-[#6b7280] sm:text-base">
-          Your organization cares about your wellbeing. Take this anonymous survey to help us understand and improve
-          your work experience.
+          {copy.home.heroDescription}
         </p>
         <Link
           href="/survey"
           className="tenant-button inline-flex w-full items-center justify-center rounded-full px-8 py-3 text-base font-medium transition-all duration-300 sm:w-auto sm:text-lg sm:hover:scale-105"
         >
-          Start Survey
+          {copy.home.startSurvey}
         </Link>
       </div>
     </section>

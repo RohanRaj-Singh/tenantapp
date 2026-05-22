@@ -3,8 +3,10 @@ import { describe, it } from "node:test";
 import { TENANT_AUTH_CONFIG } from "../contracts/types";
 import {
   TENANT_LOGIN_PATH,
+  appendTenantSlugToPath,
   buildTenantLoginRedirectPath,
   getSafeTenantRedirectPath,
+  getTenantSlugFromRedirectPath,
   isTenantProtectedPath,
   isTenantPublicPath,
   isValidTenantSessionTokenFormat,
@@ -91,6 +93,21 @@ describe("Tenant Runtime Auth Service", () => {
       context.sessions.get(loginResult.session!.sessionToken)?.lastAccessedAt,
       context.nowIso,
     );
+  });
+
+  it("restores a valid session even when the request URL has no explicit tenant scope", async () => {
+    const context = await createTenantAuthTestContext();
+    const loginResult = await context.service.loginTenantUser("active", {
+      identifier: "active.owner",
+      password: "OwnerPass1234",
+    });
+
+    const validation = await context.service.validateTenantSession(
+      loginResult.session!.sessionToken,
+    );
+
+    assert.equal(validation.success, true);
+    assert.equal(validation.context?.tenant.slug, "active");
   });
 
   it("invalidates expired sessions during validation", async () => {
@@ -204,9 +221,15 @@ describe("Tenant Runtime Route Protection Helpers", () => {
   it("builds safe redirect targets for login middleware and expired sessions", () => {
     assert.equal(getSafeTenantRedirectPath("/reports"), "/reports");
     assert.equal(getSafeTenantRedirectPath("//evil.test"), "/dashboard");
+    assert.equal(appendTenantSlugToPath("/dashboard", "active"), "/dashboard?tenant=active");
+    assert.equal(getTenantSlugFromRedirectPath("/dashboard?tenant=active"), "active");
     assert.equal(
       buildTenantLoginRedirectPath("/analytics", "Your session has expired. Please sign in again."),
       "/login?next=%2Fanalytics&message=Your+session+has+expired.+Please+sign+in+again.",
+    );
+    assert.equal(
+      buildTenantLoginRedirectPath("/analytics?tenant=active", "Your session has expired. Please sign in again.", "active"),
+      "/login?next=%2Fanalytics%3Ftenant%3Dactive&message=Your+session+has+expired.+Please+sign+in+again.&tenant=active",
     );
   });
 });

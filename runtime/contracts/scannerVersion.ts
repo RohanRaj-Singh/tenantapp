@@ -1,7 +1,13 @@
+export interface LocalizedText {
+  en: string;
+  ar: string;
+}
+
 export interface ScannerAnswerOption {
   id: string;
   order: number;
   label: string;
+  labelTranslations?: LocalizedText;
   score: number;
 }
 
@@ -9,6 +15,7 @@ export interface ScannerQuestion {
   id: string;
   order: number;
   questionText: string;
+  questionTextTranslations?: LocalizedText;
   weight: number;
   kind: "primary" | "follow-up";
   answers: ScannerAnswerOption[];
@@ -19,7 +26,9 @@ export interface ScannerSubdomain {
   id: string;
   order: number;
   label: string;
+  labelTranslations?: LocalizedText;
   description: string;
+  descriptionTranslations?: LocalizedText;
   weight: number;
   questions: ScannerQuestion[];
 }
@@ -28,7 +37,9 @@ export interface ScannerCategory {
   id: string;
   order: number;
   label: string;
+  labelTranslations?: LocalizedText;
   description: string;
+  descriptionTranslations?: LocalizedText;
   weight: number;
   subdomains: ScannerSubdomain[];
 }

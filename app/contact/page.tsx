@@ -1,20 +1,22 @@
 "use client";
 
-import { Mail, MapPin, Phone } from "lucide-react";
+import { Mail, MapPin } from "lucide-react";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 export default function ContactPage() {
   const theme = useTheme();
+  const { copy } = useLanguage();
 
   return (
     <div className="tenant-page-shell min-h-screen px-4 py-12 pt-28 sm:px-6 sm:pt-32">
       <div className="mx-auto max-w-3xl">
         <span className="tenant-chip mb-4 inline-flex rounded-full px-4 py-1.5 text-sm font-medium">
-          Contact
+          {copy.contact.chip}
         </span>
-        <h1 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl">Contact Us</h1>
+        <h1 className="mb-4 text-3xl font-bold text-gray-900 sm:text-4xl">{copy.contact.title}</h1>
         <p className="mb-8 text-sm leading-7 text-gray-600 sm:text-base">
-          Have questions about the {theme.tenantName} wellbeing survey? Reach out to us.
+          {copy.contact.description(theme.tenantName)}
         </p>
 
         <div
@@ -24,8 +26,8 @@ export default function ContactPage() {
           <div className="space-y-4">
             {[
               { icon: Mail, text: "support@remedygcc.com" },
-              { icon: Phone, text: "+1 (555) 123-4567" },
-              { icon: MapPin, text: "Dubai, United Arab Emirates" },
+              //{ icon: Phone, text: "+1 (555) 123-4567" },
+              { icon: MapPin, text: copy.contact.location },
             ].map((item) => {
               const Icon = item.icon;
 

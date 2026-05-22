@@ -4,18 +4,19 @@ import Image from "next/image";
 import Link from "next/link";
 import { useState } from "react";
 import { Menu, X } from "lucide-react";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
-
-const navigationLinks = [
-  { href: "/", label: "Home" },
-  { href: "/about", label: "About" },
-  { href: "/survey", label: "Survey" },
-  { href: "/contact", label: "Contact Us" },
-];
 
 export default function Header() {
   const theme = useTheme();
+  const { copy } = useLanguage();
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+
+  const navigationLinks = [
+    { href: "/", label: copy.navigation.home },
+    { href: "/about", label: copy.navigation.about },
+    { href: "/contact", label: copy.navigation.contact },
+  ];
 
   const toggleMenu = () => {
     setIsMenuOpen((current) => !current);
@@ -57,7 +58,7 @@ export default function Header() {
           <button
             className="inline-flex h-10 w-10 items-center justify-center rounded-xl sm:hidden"
             onClick={toggleMenu}
-            aria-label="Toggle menu"
+            aria-label={copy.header.menuAriaLabel}
             style={{ color: theme.linkColor }}
           >
             {isMenuOpen ? (

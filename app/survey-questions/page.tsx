@@ -14,6 +14,8 @@ import {
   type ScannerResponseMap,
   toSurveySubmissionResponses,
 } from "@/runtime/scanner/scannerUtils";
+import { useLanguage } from "@/runtime/language/LanguageContext";
+import { resolveLocalizedText } from "@/runtime/language/localizedText";
 import { useTheme } from "@/runtime/theme/useTheme";
 import { generateUUID } from "@/lib/utils";
 
@@ -25,6 +27,7 @@ export default function SurveyQuestionsPage() {
   const runtimeError = context?.error ?? null;
   const tenantSlug = context?.tenantSlug ?? null;
   const tenantSource = context?.tenantSource ?? null;
+  const { language, copy } = useLanguage();
   const theme = useTheme();
   const [responses, setResponses] = useState<ScannerResponseMap>({});
   const [currentQuestionIndex, setCurrentQuestionIndex] = useState(0);
@@ -99,7 +102,7 @@ export default function SurveyQuestionsPage() {
     const submissionResponses = toSurveySubmissionResponses(surveyQuestions, responses);
 
     if (submissionResponses.length !== surveyQuestions.length) {
-      setSubmissionError("Every visible question must be answered before the survey can be submitted.");
+      setSubmissionError(copy.surveyQuestions.missingAnswersError);
       return;
     }
 
@@ -140,7 +143,7 @@ export default function SurveyQuestionsPage() {
       setSubmissionError(
         error instanceof Error
           ? error.message
-          : "Unable to submit your survey right now. Please try again.",
+          : copy.surveyQuestions.submitFailure,
       );
     } finally {
       setIsSubmitting(false);
@@ -167,6 +170,7 @@ export default function SurveyQuestionsPage() {
   };
 
   const isFirstQuestion = currentQuestionIndex === 0;
+  const surveyQuestionsCopy = copy.surveyQuestions;
 
   if (loading) {
     return (
@@ -175,7 +179,7 @@ export default function SurveyQuestionsPage() {
           className="rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
-          <p className="text-sm font-medium text-slate-500">Loading survey...</p>
+          <p className="text-sm font-medium text-slate-500">{surveyQuestionsCopy.loadingSurvey}</p>
         </div>
       </div>
     );
@@ -192,7 +196,7 @@ export default function SurveyQuestionsPage() {
           className="rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
-          <p className="text-sm font-medium text-slate-500">Loading survey...</p>
+          <p className="text-sm font-medium text-slate-500">{surveyQuestionsCopy.loadingSurvey}</p>
         </div>
       </div>
     );
@@ -205,16 +209,15 @@ export default function SurveyQuestionsPage() {
           className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
-          <h1 className="text-xl font-semibold text-slate-900">Survey setup is incomplete</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{surveyQuestionsCopy.incompleteSetupTitle}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            Your tenant attributes are missing, outdated, or tied to a different scanner version. Start again so the
-            runtime app can rebuild a safe submission payload.
+            {surveyQuestionsCopy.incompleteSetupDescription}
           </p>
           <Link
             href="/survey"
             className="tenant-button mt-6 inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold"
           >
-            Return to survey setup
+            {surveyQuestionsCopy.returnToSurveySetup}
           </Link>
         </div>
       </div>
@@ -234,9 +237,9 @@ export default function SurveyQuestionsPage() {
           >
             <CheckCircle2 className="h-8 w-8" />
           </div>
-          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900">Thank you</h1>
+          <h1 className="mt-6 text-3xl font-semibold tracking-tight text-slate-900">{surveyQuestionsCopy.thankYouTitle}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600 sm:text-base">
-            Your wellbeing survey has been submitted successfully. We appreciate your time and honest feedback.
+            {surveyQuestionsCopy.thankYouBody}
           </p>
         </div>
       </div>
@@ -250,10 +253,9 @@ export default function SurveyQuestionsPage() {
           className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
-          <h1 className="text-xl font-semibold text-slate-900">No survey questions available</h1>
+          <h1 className="text-xl font-semibold text-slate-900">{surveyQuestionsCopy.noQuestionsTitle}</h1>
           <p className="mt-3 text-sm leading-6 text-slate-600">
-            The scanner configuration does not contain any valid runtime questions right now. Please check back after
-            the tenant setup is updated.
+            {surveyQuestionsCopy.noQuestionsDescription}
           </p>
           {scannerAudit?.configurationIssues.length ? (
             <p className="mt-4 text-sm text-amber-700">{scannerAudit.configurationIssues[0]}</p>
@@ -272,34 +274,12 @@ export default function SurveyQuestionsPage() {
             style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
           >
             <div className="border-b px-5 py-5 sm:px-8 sm:py-6" style={{ borderColor: theme.borderAccent }}>
-              <div className="flex items-start justify-between gap-4">
-                <div className="space-y-3">
-                  <div className="flex flex-wrap gap-2">
-                    <span
-                      className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] sm:text-[0.7rem]"
-                      style={{
-                        borderColor: theme.primaryColor,
-                        backgroundColor: theme.softAccent,
-                        color: theme.linkColor,
-                      }}
-                    >
-                      Domain: {currentQuestion.category.label}
-                    </span>
-                    <span
-                      className="inline-flex rounded-full border px-3 py-1 text-xs font-semibold uppercase tracking-[0.18em] sm:text-[0.7rem]"
-                      style={{
-                        borderColor: theme.borderAccent,
-                        backgroundColor: "#ffffff",
-                        color: theme.linkColor,
-                      }}
-                    >
-                      Subdomain: {currentQuestion.subdomain.label}
-                    </span>
-                  </div>
-                  <div className="space-y-2">
+              <div className="flex w-full items-start justify-between gap-4">
+                <div className="min-w-0 w-full space-y-3">
+                  <div className="w-full space-y-2">
                     <div className="flex items-center justify-between gap-3">
                       <p className="text-xs font-semibold uppercase tracking-[0.2em] text-slate-500">
-                        Question {questionNumber}
+                        {surveyQuestionsCopy.questionLabel(questionNumber)}
                       </p>
                       <p className="text-sm font-medium text-slate-500">
                         {questionNumber} / {surveyQuestions.length}
@@ -322,7 +302,11 @@ export default function SurveyQuestionsPage() {
             <div className="flex flex-1 flex-col px-5 py-6 sm:px-8 sm:py-8">
               <div className="max-w-3xl">
                 <h1 className="text-2xl font-semibold leading-tight tracking-tight text-slate-900 sm:text-[2.1rem]">
-                  {currentQuestion.question.questionText}
+                  {resolveLocalizedText(
+                    currentQuestion.question.questionText,
+                    currentQuestion.question.questionTextTranslations,
+                    language,
+                  )}
                 </h1>
               </div>
 
@@ -336,7 +320,7 @@ export default function SurveyQuestionsPage() {
                         key={answer.id}
                         type="button"
                         onClick={() => handleAnswer(currentQuestion.question.id, answer.id, answer.score)}
-                        className="w-full rounded-[20px] border px-4 py-4 text-left text-base font-medium text-slate-900 transition-colors sm:rounded-[22px] sm:px-6 sm:py-5"
+                        className="w-full rounded-[20px] border px-4 py-4 text-start text-base font-medium text-slate-900 transition-colors sm:rounded-[22px] sm:px-6 sm:py-5"
                         style={
                           isSelected
                             ? {
@@ -349,7 +333,7 @@ export default function SurveyQuestionsPage() {
                               }
                         }
                       >
-                        {answer.label}
+                        {resolveLocalizedText(answer.label, answer.labelTranslations, language)}
                       </button>
                     );
                   })}
@@ -376,7 +360,7 @@ export default function SurveyQuestionsPage() {
                 className="inline-flex min-h-12 flex-1 items-center justify-center rounded-full border px-5 py-3 text-sm font-semibold transition-colors disabled:cursor-not-allowed disabled:opacity-60"
                 style={{ borderColor: theme.borderAccent, backgroundColor: "#ffffff" }}
               >
-                Back
+                {surveyQuestionsCopy.back}
               </button>
 
               <button
@@ -385,7 +369,11 @@ export default function SurveyQuestionsPage() {
                 disabled={!currentResponse || isSubmitting}
                 className="tenant-button inline-flex min-h-12 flex-1 items-center justify-center rounded-full px-5 py-3 text-sm font-semibold transition-opacity disabled:cursor-not-allowed disabled:opacity-60"
               >
-                {isSubmitting ? "Submitting..." : isLastQuestion ? "Submit" : "Continue"}
+                {isSubmitting
+                  ? surveyQuestionsCopy.submitting
+                  : isLastQuestion
+                    ? surveyQuestionsCopy.submit
+                    : surveyQuestionsCopy.continue}
               </button>
             </div>
           </div>

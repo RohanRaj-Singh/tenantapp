@@ -2,6 +2,8 @@
 
 import Link from "next/link";
 import { AlertCircle } from "lucide-react";
+import { useLanguage } from "@/runtime/language/LanguageContext";
+import type { TenantStaticCopy } from "@/runtime/language/translations";
 import type { RuntimeContextError } from "@/runtime/context/RuntimeContext";
 import type { RuntimeTenantResolutionSource } from "@/runtime/tenant/tenantResolution";
 import { useTheme } from "@/runtime/theme/useTheme";
@@ -15,6 +17,7 @@ interface RuntimeUnavailableStateProps {
 function getUnavailableGuidance(
   error: RuntimeContextError | null,
   tenantSource: RuntimeTenantResolutionSource | null,
+  copy: TenantStaticCopy["runtimeUnavailable"],
 ) {
   const failureReason =
     typeof error?.details?.failureReason === "string"
@@ -26,18 +29,18 @@ function getUnavailableGuidance(
     failureReason === "root_domain_missing_subdomain" ||
     failureReason === "tenant_not_provided"
   ) {
-    return "This survey link is missing its tenant workspace. Reopen it from the correct tenant URL, or ask your administrator for the latest survey link.";
+    return copy.missingTenantWorkspace;
   }
 
   if (failureReason === "invalid_query_tenant") {
-    return "The survey link appears incomplete or invalid. Please confirm the link with your tenant administrator and try again.";
+    return copy.invalidTenantLink;
   }
 
   if (tenantSource === "query" || tenantSource === "stored") {
-    return "We could not find an active published survey for this tenant. Please contact your organization's administrator or tenant owner to confirm the survey has been published.";
+    return copy.missingPublishedSurvey;
   }
 
-  return "The requested tenant runtime is not currently published or available. Please contact your organization's administrator or tenant owner for assistance.";
+  return copy.genericUnavailable;
 }
 
 export default function RuntimeUnavailableState({
@@ -46,6 +49,8 @@ export default function RuntimeUnavailableState({
   tenantSource,
 }: RuntimeUnavailableStateProps) {
   const theme = useTheme();
+  const { copy } = useLanguage();
+  const runtimeUnavailableCopy = copy.runtimeUnavailable;
 
   return (
     <div className="tenant-page-shell flex min-h-screen w-full items-center justify-center px-4 pt-24">
@@ -62,22 +67,21 @@ export default function RuntimeUnavailableState({
 
         <div className="mt-6 space-y-3">
           <span className="tenant-chip inline-flex rounded-full px-4 py-1.5 text-sm font-medium">
-            Survey unavailable
+            {runtimeUnavailableCopy.chip}
           </span>
           <h1 className="text-3xl font-semibold tracking-tight text-slate-900">
-            This survey is unavailable right now.
+            {runtimeUnavailableCopy.title}
           </h1>
           <p className="text-sm leading-6 text-slate-600 sm:text-base">
-            {getUnavailableGuidance(error, tenantSource)}
+            {getUnavailableGuidance(error, tenantSource, runtimeUnavailableCopy)}
           </p>
           {tenantSlug ? (
             <p className="text-sm text-slate-500">
-              Requested tenant: <span className="font-semibold text-slate-700">{tenantSlug}</span>
+              {runtimeUnavailableCopy.requestedTenant} <span className="font-semibold text-slate-700">{tenantSlug}</span>
             </p>
           ) : null}
           <p className="text-sm leading-6 text-slate-600">
-            If you were expecting to access this survey, please contact your organization's survey administrator, HR
-            team, or tenant owner.
+            {runtimeUnavailableCopy.footerHelp}
           </p>
         </div>
 
@@ -85,7 +89,7 @@ export default function RuntimeUnavailableState({
           className="mt-6 rounded-2xl border px-4 py-4 text-sm text-slate-600"
           style={{ borderColor: theme.borderAccent, backgroundColor: theme.surfaceAccent }}
         >
-          {error?.message ?? "The published runtime configuration could not be resolved for this request."}
+          {error?.message ?? runtimeUnavailableCopy.unresolvedRequest}
         </div>
 
         <div className="mt-6 flex flex-wrap gap-3">
@@ -93,14 +97,14 @@ export default function RuntimeUnavailableState({
             href="/"
             className="tenant-button inline-flex items-center justify-center rounded-full px-5 py-2.5 text-sm font-semibold"
           >
-            Return to home
+            {runtimeUnavailableCopy.returnHome}
           </Link>
           <Link
             href="/contact"
             className="inline-flex items-center justify-center rounded-full border px-5 py-2.5 text-sm font-semibold text-slate-700 transition-colors"
             style={{ borderColor: theme.borderAccent, backgroundColor: "#ffffff" }}
           >
-            Contact support
+            {runtimeUnavailableCopy.contactSupport}
           </Link>
         </div>
       </div>

@@ -1,11 +1,12 @@
 "use client";
 
 import { useMemo, useState } from "react";
-import { useRouter } from "next/navigation";
 import { AlertCircle, Loader2, LockKeyhole, UserRound } from "lucide-react";
 import {
+  appendTenantSlugToPath,
   getSafeTenantRedirectPath,
 } from "../guards/route-protection";
+import { RUNTIME_TENANT_QUERY_PARAM } from "@/runtime/tenant/tenantResolution";
 
 interface TenantLoginPageProps {
   tenantName?: string | null;
@@ -20,17 +21,26 @@ export function TenantLoginPage({
   message,
   nextPath,
 }: TenantLoginPageProps) {
-  const router = useRouter();
   const [identifier, setIdentifier] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(message ?? null);
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   const safeNextPath = useMemo(
-    () => getSafeTenantRedirectPath(nextPath),
-    [nextPath],
+    () => appendTenantSlugToPath(getSafeTenantRedirectPath(nextPath), tenantSlug),
+    [nextPath, tenantSlug],
   );
   const canSubmit = Boolean(tenantSlug);
+  const loginApiPath = useMemo(() => {
+    if (!tenantSlug) {
+      return "/api/tenant-auth/login";
+    }
+
+    const params = new URLSearchParams({
+      [RUNTIME_TENANT_QUERY_PARAM]: tenantSlug,
+    });
+    return `/api/tenant-auth/login?${params.toString()}`;
+  }, [tenantSlug]);
 
   async function handleSubmit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault();
@@ -54,7 +64,7 @@ export function TenantLoginPage({
     setIsSubmitting(true);
 
     try {
-      const response = await fetch("/api/tenant-auth/login", {
+      const response = await fetch(loginApiPath, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
@@ -67,8 +77,7 @@ export function TenantLoginPage({
         return;
       }
 
-      router.replace(payload.redirectTo ?? safeNextPath);
-      router.refresh();
+      window.location.assign(payload.redirectTo ?? safeNextPath);
     } catch (requestError) {
       setError(
         requestError instanceof Error

@@ -11,6 +11,7 @@ import { saveRuntimeSurveySession } from "@/runtime/attributes/surveySession";
 import { RuntimeContext } from "@/runtime/context/RuntimeContext";
 import { useRuntimeAttributeForm } from "@/runtime/hooks/useRuntimeAttributeForm";
 import type { TenantRuntimeConfig } from "@/runtime/contracts/runtime";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 const SELECT_FIELDS: RuntimeAttributeField[] = ["stream", "location", "function", "department"];
@@ -18,6 +19,7 @@ const CHOICE_FIELDS: RuntimeAttributeField[] = ["gender", "age", "seniority"];
 
 export default function SurveyPage() {
   const { config, loading, error, tenantSlug, tenantSource } = useContext(RuntimeContext);
+  const { copy } = useLanguage();
   const theme = useTheme();
 
   if (loading) {
@@ -27,7 +29,7 @@ export default function SurveyPage() {
           className="w-full max-w-lg rounded-[28px] border bg-white px-8 py-10 text-center shadow-[0_24px_60px_-40px_rgba(15,23,42,0.35)]"
           style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
         >
-          <p className="text-sm font-medium text-slate-500">Loading your survey workspace...</p>
+          <p className="text-sm font-medium text-slate-500">{copy.survey.loadingWorkspace}</p>
         </div>
       </div>
     );
@@ -43,8 +45,9 @@ export default function SurveyPage() {
 function SurveyPageContent({ config }: { config: TenantRuntimeConfig }) {
   const theme = useTheme();
   const router = useRouter();
+  const { language, copy } = useLanguage();
   const { selections, fields, validation, configurationIssues, resetSelections, updateSelection } =
-    useRuntimeAttributeForm(config.attributeTemplate);
+    useRuntimeAttributeForm(config.attributeTemplate, language);
 
   useEffect(() => {
     resetSelections();
@@ -168,7 +171,7 @@ function SurveyPageContent({ config }: { config: TenantRuntimeConfig }) {
           className="tenant-brand-text z-10 inline-flex items-center justify-center text-sm text-gray-700"
         >
           <MoveLeft className="mr-2 h-4 w-4" />
-          Back to Home
+          {copy.survey.backToHome}
         </Link>
       </div>
 
@@ -182,16 +185,18 @@ function SurveyPageContent({ config }: { config: TenantRuntimeConfig }) {
             {theme.tenantName}
           </span>
           <h1 className="break-words text-2xl font-bold text-gray-800 sm:text-3xl">
-            {theme.tenantName} Wellbeing Survey
+            {copy.survey.title(theme.tenantName)}
           </h1>
         </div>
 
         {configurationIssues.length > 0 ? (
           <div className="rounded-lg border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
-            <p className="font-medium">Incomplete tenant mappings were ignored.</p>
+            <p className="font-medium">{copy.survey.incompleteMappingsTitle}</p>
             <p className="mt-1">
               {configurationIssues[0]}
-              {configurationIssues.length > 1 ? ` ${configurationIssues.length - 1} more mapping issue(s) were filtered safely.` : ""}
+              {configurationIssues.length > 1
+                ? ` ${copy.survey.additionalMappingIssues(configurationIssues.length - 1)}`
+                : ""}
             </p>
           </div>
         ) : null}
@@ -213,7 +218,7 @@ function SurveyPageContent({ config }: { config: TenantRuntimeConfig }) {
             disabled={!validation.canSubmit}
             className="tenant-button w-full rounded-full px-6 py-3 font-medium transition-opacity hover:opacity-90 sm:w-auto disabled:cursor-not-allowed disabled:opacity-60"
           >
-            Start Survey
+            {copy.survey.startSurvey}
           </button>
         </div>
       </form>
