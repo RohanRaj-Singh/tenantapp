@@ -194,13 +194,14 @@ function getNormalizedBranding(config: TenantRuntimeConfig | null) {
     "#ffffff",
     MIN_ACCENT_CONTRAST,
   );
+  const logo = config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO;
 
   return {
     tenantName: config?.tenant?.name?.trim() || DEFAULT_TENANT_NAME,
-    logo: config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO,
-    logoUrl: config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+    logo,
+    logoUrl: logo,
     backgroundImage: config?.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
-    faviconUrl: config?.branding?.faviconUrl?.trim() || DEFAULT_FAVICON,
+    faviconUrl: config?.branding?.faviconUrl?.trim() || logo || DEFAULT_FAVICON,
     fontFamily: config?.branding?.fontFamily?.trim() || DEFAULT_FONT_FAMILY,
     primaryColor,
     secondaryColor,

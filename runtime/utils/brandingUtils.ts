@@ -84,6 +84,7 @@ export function withBrandingDefaults(
     "#ffffff",
     3,
   );
+  const logo = config.branding?.logo?.trim() || config.branding?.logoUrl?.trim() || DEFAULT_LOGO;
 
   return {
     ...config,
@@ -93,13 +94,13 @@ export function withBrandingDefaults(
       slug: config.tenant.slug?.trim() || config.tenant.id || DEFAULT_TENANT_NAME.toLowerCase(),
     },
     branding: {
-      logo: config.branding?.logo?.trim() || config.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+      logo,
       backgroundImage: config.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
-      logoUrl: config.branding?.logo?.trim() || config.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+      logoUrl: logo,
       primaryColor,
       secondaryColor,
       fontFamily: config.branding?.fontFamily?.trim() || DEFAULT_FONT_FAMILY,
-      faviconUrl: config.branding?.faviconUrl?.trim() || DEFAULT_FAVICON,
+      faviconUrl: config.branding?.faviconUrl?.trim() || logo || DEFAULT_FAVICON,
     },
   };
 }
