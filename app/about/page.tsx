@@ -12,7 +12,7 @@ export default function AboutPage() {
       <section className="flex w-full flex-col items-center justify-center px-4 py-12 pt-28 text-center sm:px-6 sm:pt-32">
         
         <h1 className="mb-4 max-w-4xl break-words text-3xl font-medium text-gray-900 sm:text-4xl">
-          {copy.about.titlePrefix} <span className="font-semibold" style={{ color: theme.linkColor }}>RemedyGCC</span>
+          {copy.about.titlePrefix} <span className="font-semibold" style={{ color: theme.linkColor }}>{theme.tenantName}</span>
         </h1>
         
 

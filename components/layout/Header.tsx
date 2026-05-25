@@ -43,6 +43,7 @@ export default function Header() {
                     alt={`${theme.tenantName} logo`}
                     fill
                     sizes="36px"
+                    unoptimized
                     className="object-contain"
                   />
                 ) : (

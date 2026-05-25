@@ -19,11 +19,22 @@ export const mockRuntimeConfig: TenantRuntimeConfig = {
     createdAt: "2024-01-15T00:00:00.000Z",
   },
   branding: {
+    logo: "/images/orgLogo.png",
     logoUrl: "/images/orgLogo.png",
+    backgroundImage: "/images/banner.png",
     primaryColor: "#0f766e",
     secondaryColor: "#0d9488",
     fontFamily: "Inter, system-ui, sans-serif",
     faviconUrl: "/favicon.ico",
+  },
+  content: {
+    pages: {
+      about: {
+        intro: {
+          en: "Our wellbeing platform helps organizations understand and improve employee experience through data-driven insights.",
+        },
+      },
+    },
   },
   attributeTemplate: {
     streams: [

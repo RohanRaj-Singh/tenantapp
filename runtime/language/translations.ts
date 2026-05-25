@@ -1,3 +1,5 @@
+import type { TenantContentConfig, TenantContentText } from "../contracts/runtime";
+
 export type AppLanguage = "en" | "ar";
 export type AttributeFieldKey =
   | "stream"
@@ -363,4 +365,40 @@ export const APP_COPY: Record<AppLanguage, TenantStaticCopy> = {
 
 export function getTenantStaticCopy(language: AppLanguage): TenantStaticCopy {
   return APP_COPY[language];
+}
+
+function resolveTenantContentValue(
+  value: TenantContentText | undefined,
+  language: AppLanguage,
+): string | undefined {
+  if (!value) {
+    return undefined;
+  }
+
+  const preferred = value[language]?.trim();
+  if (preferred) {
+    return preferred;
+  }
+
+  return value.en?.trim() || value.ar?.trim() || undefined;
+}
+
+export function getTenantCopyWithOverrides(
+  language: AppLanguage,
+  content?: TenantContentConfig | null,
+): TenantStaticCopy {
+  const baseCopy = getTenantStaticCopy(language);
+  const aboutIntro = resolveTenantContentValue(content?.pages?.about?.intro, language);
+
+  if (!aboutIntro) {
+    return baseCopy;
+  }
+
+  return {
+    ...baseCopy,
+    about: {
+      ...baseCopy.about,
+      intro: aboutIntro,
+    },
+  };
 }

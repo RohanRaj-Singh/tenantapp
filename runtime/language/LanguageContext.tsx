@@ -11,7 +11,7 @@ import {
 } from "react";
 import { RuntimeContext } from "../context/RuntimeContext";
 import {
-  getTenantStaticCopy,
+  getTenantCopyWithOverrides,
   type AppLanguage,
   type TenantStaticCopy,
 } from "./translations";
@@ -31,7 +31,7 @@ const LanguageContext = createContext<LanguageContextValue>({
   setLanguage: () => undefined,
   isRtl: false,
   direction: "ltr",
-  copy: getTenantStaticCopy("en"),
+  copy: getTenantCopyWithOverrides("en"),
 });
 
 function isSupportedLanguage(value: string | null): value is AppLanguage {
@@ -73,9 +73,9 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
       setLanguage,
       isRtl: direction === "rtl",
       direction,
-      copy: getTenantStaticCopy(language),
+      copy: getTenantCopyWithOverrides(language, config?.content),
     };
-  }, [language, setLanguage]);
+  }, [config?.content, language, setLanguage]);
 
   return <LanguageContext.Provider value={value}>{children}</LanguageContext.Provider>;
 }

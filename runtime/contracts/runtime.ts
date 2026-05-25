@@ -1,11 +1,26 @@
 import type { RuntimeScannerVersion } from "./scannerVersion";
 
 export interface TenantBrandingConfig {
+  logo?: string;
+  backgroundImage?: string;
   logoUrl?: string;
   primaryColor?: string;
   secondaryColor?: string;
   fontFamily?: string;
   faviconUrl?: string;
+}
+
+export interface TenantContentText {
+  en?: string;
+  ar?: string;
+}
+
+export interface TenantContentConfig {
+  pages?: {
+    about?: {
+      intro?: TenantContentText;
+    };
+  };
 }
 
 export interface RuntimeVersionRefs {
@@ -66,6 +81,7 @@ export interface TenantRuntimeConfig {
     createdAt: string;
   };
   branding?: TenantBrandingConfig;
+  content?: TenantContentConfig;
   attributeTemplate: RuntimeAttributeTemplate;
   scannerVersion: RuntimeScannerVersion;
   runtimeSettings: {

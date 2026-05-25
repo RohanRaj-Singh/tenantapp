@@ -4,6 +4,7 @@ import type {
 } from "@/runtime/contracts/aggregation";
 import type {
   RuntimeAttributeTemplate,
+  TenantContentConfig,
   RuntimeVersionRefs,
   TenantBrandingConfig,
   TenantRuntimeConfig,
@@ -40,6 +41,7 @@ export interface TenantDocument extends TimestampFields {
   status: TenantRuntimeConfig["tenant"]["status"];
   plan: TenantRuntimeConfig["tenant"]["plan"];
   branding: TenantBrandingConfig;
+  content?: TenantContentConfig;
   brandingVersionId: string;
   activeRuntimeConfigId: string;
   activeRuntimeConfigPublishedAt: string;
@@ -54,6 +56,7 @@ export interface RuntimeConfigDocument extends TimestampFields {
   isActive: boolean;
   versionRefs: RuntimeVersionRefs;
   branding: TenantBrandingConfig;
+  content?: TenantContentConfig;
   attributeTemplate: RuntimeAttributeTemplate;
   scannerVersion: RuntimeScannerVersion;
   runtimeSettings: TenantRuntimeConfig["runtimeSettings"];

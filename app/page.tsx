@@ -20,12 +20,14 @@ export default function Home() {
         priority
       />
       <div className="absolute inset-0 z-0">
-        <Image
-          src="/images/banner.png"
-          alt={copy.home.bannerAlt}
-          fill
-          className="object-cover object-center"
-          priority
+        <div
+          className="absolute inset-0"
+          style={{
+            backgroundImage: `url("${theme.backgroundImage}")`,
+            backgroundPosition: 'center',
+            backgroundRepeat: 'no-repeat',
+            backgroundSize: 'cover',
+          }}
         />
         <div className="absolute inset-0 bg-white/80" />
         <div className="absolute inset-0" style={{ background: theme.headerGradient }} />

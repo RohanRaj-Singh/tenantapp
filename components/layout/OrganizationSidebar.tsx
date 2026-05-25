@@ -182,6 +182,7 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
                   alt={`${theme.tenantName} logo`}
                   fill
                   sizes="44px"
+                  unoptimized
                   className="object-contain p-2"
                 />
               ) : (

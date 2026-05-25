@@ -4,7 +4,8 @@ import type { TenantRuntimeConfig } from "../contracts/runtime";
 
 export const DEFAULT_PRIMARY = "#f58220";
 export const DEFAULT_SECONDARY = "#f37820";
-export const DEFAULT_LOGO = "/images/logo.png";
+export const DEFAULT_LOGO = "/default/logo.png";
+export const DEFAULT_BACKGROUND_IMAGE = "/default/background.png";
 export const DEFAULT_TENANT_NAME = "RemedyGCC";
 export const DEFAULT_FONT_FAMILY = "Inter, system-ui, sans-serif";
 export const DEFAULT_FAVICON = "/favicon.ico";
@@ -20,7 +21,9 @@ const MIN_ACCENT_CONTRAST = 3;
 
 export interface ResolvedTenantTheme {
   tenantName: string;
+  logo: string;
   logoUrl: string;
+  backgroundImage: string;
   faviconUrl: string;
   fontFamily: string;
   primaryColor: string;
@@ -194,7 +197,9 @@ function getNormalizedBranding(config: TenantRuntimeConfig | null) {
 
   return {
     tenantName: config?.tenant?.name?.trim() || DEFAULT_TENANT_NAME,
-    logoUrl: config?.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+    logo: config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+    logoUrl: config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+    backgroundImage: config?.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
     faviconUrl: config?.branding?.faviconUrl?.trim() || DEFAULT_FAVICON,
     fontFamily: config?.branding?.fontFamily?.trim() || DEFAULT_FONT_FAMILY,
     primaryColor,
@@ -240,7 +245,9 @@ export function withBrandingDefaults(config: TenantRuntimeConfig): TenantRuntime
       slug: config.tenant.slug?.trim() || config.tenant.id || DEFAULT_TENANT_NAME.toLowerCase(),
     },
     branding: {
+      logo: branding.logo,
       logoUrl: branding.logoUrl,
+      backgroundImage: branding.backgroundImage,
       primaryColor: branding.primaryColor,
       secondaryColor: branding.secondaryColor,
       fontFamily: branding.fontFamily,
@@ -268,7 +275,9 @@ export function getResolvedTheme(config: TenantRuntimeConfig | null): ResolvedTe
 
   return {
     tenantName: normalizedBranding.tenantName,
+    logo: normalizedBranding.logo,
     logoUrl: normalizedBranding.logoUrl,
+    backgroundImage: normalizedBranding.backgroundImage,
     faviconUrl: normalizedBranding.faviconUrl,
     fontFamily: normalizedBranding.fontFamily,
     primaryColor,
@@ -325,6 +334,7 @@ export function injectThemeVariables(config: TenantRuntimeConfig | null): void {
     "--tenant-primary-border": theme.borderAccent,
     "--tenant-primary-surface": theme.surfaceAccent,
     "--tenant-primary-surface-strong": theme.surfaceAccentStrong,
+    "--tenant-background-image": `url("${theme.backgroundImage}")`,
     "--tenant-brand-gradient": theme.brandGradient,
     "--tenant-header-gradient": theme.headerGradient,
     "--tenant-page-gradient": theme.pageGradient,

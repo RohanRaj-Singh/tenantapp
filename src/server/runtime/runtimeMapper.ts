@@ -10,6 +10,9 @@ export function toTenantRuntimeConfig(
   tenant: TenantDocument,
   runtimeConfig: RuntimeConfigDocument,
 ): TenantRuntimeConfig {
+  const runtimeContent = runtimeConfig.content ?? {};
+  const tenantContent = tenant.content ?? {};
+
   return {
     runtimeConfigId: runtimeConfig.runtimeConfigId,
     publishedAt: runtimeConfig.publishedAt,
@@ -23,6 +26,18 @@ export function toTenantRuntimeConfig(
       createdAt: tenant.createdAt,
     },
     branding: runtimeConfig.branding,
+    content: {
+      ...runtimeContent,
+      ...tenantContent,
+      pages: {
+        ...(runtimeContent.pages ?? {}),
+        ...(tenantContent.pages ?? {}),
+        about: {
+          ...(runtimeContent.pages?.about ?? {}),
+          ...(tenantContent.pages?.about ?? {}),
+        },
+      },
+    },
     attributeTemplate: runtimeConfig.attributeTemplate,
     scannerVersion: runtimeConfig.scannerVersion,
     runtimeSettings: runtimeConfig.runtimeSettings,

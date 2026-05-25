@@ -2,7 +2,8 @@ import type { TenantRuntimeConfig } from "../contracts/runtime";
 
 export const DEFAULT_PRIMARY = "#f58220";
 export const DEFAULT_SECONDARY = "#f37820";
-export const DEFAULT_LOGO = "/images/logo.png";
+export const DEFAULT_LOGO = "/default/logo.png";
+export const DEFAULT_BACKGROUND_IMAGE = "/default/background.png";
 export const DEFAULT_TENANT_NAME = "RemedyGCC";
 export const DEFAULT_FONT_FAMILY = "Inter, system-ui, sans-serif";
 export const DEFAULT_FAVICON = "/favicon.ico";
@@ -92,7 +93,9 @@ export function withBrandingDefaults(
       slug: config.tenant.slug?.trim() || config.tenant.id || DEFAULT_TENANT_NAME.toLowerCase(),
     },
     branding: {
-      logoUrl: config.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+      logo: config.branding?.logo?.trim() || config.branding?.logoUrl?.trim() || DEFAULT_LOGO,
+      backgroundImage: config.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
+      logoUrl: config.branding?.logo?.trim() || config.branding?.logoUrl?.trim() || DEFAULT_LOGO,
       primaryColor,
       secondaryColor,
       fontFamily: config.branding?.fontFamily?.trim() || DEFAULT_FONT_FAMILY,

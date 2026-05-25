@@ -7,7 +7,10 @@ html {
 
 body {
   font-family: var(--tenant-font-family, 'Inter', system-ui, sans-serif);
-  background: var(--tenant-page-gradient, #f8fafc);
+  background-image: var(--tenant-page-gradient, linear-gradient(180deg, rgba(245, 130, 32, 0.06) 0%, #f8fafc 38%, #ffffff 100%)), var(--tenant-background-image, url("/default/background.png"));
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
   color: #0f172a;
   overflow-x: hidden;
 }
@@ -28,6 +31,7 @@ body {
     --tenant-primary-border: rgba(245, 130, 32, 0.26);
     --tenant-primary-surface: rgba(245, 130, 32, 0.06);
     --tenant-primary-surface-strong: rgba(245, 130, 32, 0.11);
+    --tenant-background-image: url("/default/background.png");
     --tenant-brand-gradient: linear-gradient(135deg, #f58220 0%, #f37820 100%);
     --tenant-header-gradient: linear-gradient(135deg, rgba(245, 130, 32, 0.15) 0%, rgba(243, 120, 32, 0.12) 100%);
     --tenant-page-gradient: linear-gradient(180deg, rgba(245, 130, 32, 0.06) 0%, #f8fafc 38%, #ffffff 100%);
@@ -45,11 +49,17 @@ body {
 }
 
 .tenant-page-shell {
-  background: var(--tenant-page-gradient);
+  background-image: var(--tenant-page-gradient), var(--tenant-background-image);
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
 }
 
 .tenant-dashboard-shell {
-  background: var(--tenant-dashboard-gradient);
+  background-image: var(--tenant-dashboard-gradient), var(--tenant-background-image);
+  background-position: center, center;
+  background-repeat: no-repeat, no-repeat;
+  background-size: cover, cover;
 }
 
 .tenant-card-surface {
