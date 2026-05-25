@@ -1,6 +1,8 @@
 "use client";
 
 import type { TenantRuntimeConfig } from "../contracts/runtime";
+import type { AppLanguage } from "../language/translations";
+import { resolveLocalizedText } from "../language/localizedText";
 
 export const DEFAULT_PRIMARY = "#f58220";
 export const DEFAULT_SECONDARY = "#f37820";
@@ -186,7 +188,10 @@ function createHoverColor(color: string): string {
   return mixHexColors(color, hoverTarget, readableText === DEFAULT_LIGHT_TEXT ? 0.84 : 0.88);
 }
 
-function getNormalizedBranding(config: TenantRuntimeConfig | null) {
+function getNormalizedBranding(
+  config: TenantRuntimeConfig | null,
+  language: AppLanguage = "en",
+) {
   const primaryColor = ensureAccessibleColor(config?.branding?.primaryColor ?? DEFAULT_PRIMARY, "#ffffff", MIN_ACCENT_CONTRAST);
   const fallbackSecondary = mixHexColors(primaryColor, DEFAULT_SECONDARY, 0.55);
   const secondaryColor = ensureAccessibleColor(
@@ -195,9 +200,14 @@ function getNormalizedBranding(config: TenantRuntimeConfig | null) {
     MIN_ACCENT_CONTRAST,
   );
   const logo = config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO;
+  const tenantName = resolveLocalizedText(
+    config?.tenant?.name?.trim() || DEFAULT_TENANT_NAME,
+    config?.tenant?.nameTranslations,
+    language,
+  ).trim() || DEFAULT_TENANT_NAME;
 
   return {
-    tenantName: config?.tenant?.name?.trim() || DEFAULT_TENANT_NAME,
+    tenantName,
     logo,
     logoUrl: logo,
     backgroundImage: config?.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
@@ -258,7 +268,14 @@ export function withBrandingDefaults(config: TenantRuntimeConfig): TenantRuntime
 }
 
 export function getResolvedTheme(config: TenantRuntimeConfig | null): ResolvedTenantTheme {
-  const normalizedBranding = getNormalizedBranding(config);
+  return getResolvedThemeForLanguage(config, "en");
+}
+
+export function getResolvedThemeForLanguage(
+  config: TenantRuntimeConfig | null,
+  language: AppLanguage,
+): ResolvedTenantTheme {
+  const normalizedBranding = getNormalizedBranding(config, language);
   const primaryColor = normalizedBranding.primaryColor;
   const secondaryColor = normalizedBranding.secondaryColor;
   const primaryHoverColor = createHoverColor(primaryColor);

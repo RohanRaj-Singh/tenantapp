@@ -5,6 +5,7 @@ import { EMPTY_RUNTIME_ATTRIBUTE_SELECTIONS } from "@/runtime/attributes/attribu
 import { readRuntimeSurveySession } from "@/runtime/attributes/surveySession";
 import { RuntimeContext } from "../../runtime/context/RuntimeContext";
 import { QuestionRenderer } from "./QuestionRenderer";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 import { submitSurvey } from "@/runtime/providers/surveyService";
 import {
@@ -16,18 +17,22 @@ import {
 import { generateUUID } from "@/lib/utils";
 
 function LoadingState() {
+  const { copy } = useLanguage();
+
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <p className="text-lg">Loading survey...</p>
+      <p className="text-lg">{copy.legacySurvey.loading}</p>
     </div>
   );
 }
 
 function ThankYouState() {
+  const { copy } = useLanguage();
+
   return (
     <div className="mx-auto max-w-3xl p-6">
-      <h1 className="mb-4 text-2xl font-bold">Thank You!</h1>
-      <p className="text-gray-600">Your survey has been submitted successfully.</p>
+      <h1 className="mb-4 text-2xl font-bold">{copy.legacySurvey.thankYouTitle}</h1>
+      <p className="text-gray-600">{copy.legacySurvey.thankYouBody}</p>
     </div>
   );
 }
@@ -35,6 +40,7 @@ function ThankYouState() {
 export function SurveyContainer() {
   const { config, loading } = useContext(RuntimeContext);
   const theme = useTheme();
+  const { copy } = useLanguage();
   const [responses, setResponses] = useState<ScannerResponseMap>({});
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [submitted, setSubmitted] = useState(false);
@@ -106,7 +112,7 @@ metadata: {
       setSubmissionError(
         error instanceof Error
           ? error.message
-          : "Unable to submit your survey right now. Please try again.",
+          : copy.legacySurvey.submitFailure,
       );
     } finally {
       setIsSubmitting(false);
@@ -119,15 +125,15 @@ metadata: {
   return (
     <div className="mx-auto max-w-3xl p-6">
       <div className="mb-4 flex justify-between gap-3">
-        <h1 className="text-2xl font-bold">{theme.tenantName} Survey</h1>
+        <h1 className="text-2xl font-bold">{copy.legacySurvey.title(theme.tenantName)}</h1>
         <span className="text-sm text-gray-500">
-          {answeredCount} / {totalCount} answered
+          {copy.legacySurvey.answeredProgress(answeredCount, totalCount)}
         </span>
       </div>
 
       {scannerAudit.configurationIssues.length > 0 ? (
         <div className="mb-6 rounded border border-amber-200 bg-amber-50 p-4 text-sm text-amber-800">
-          <p className="font-medium">Scanner configuration issues were filtered safely.</p>
+          <p className="font-medium">{copy.legacySurvey.filteredIssues}</p>
           <p className="mt-1">{scannerAudit.configurationIssues[0]}</p>
         </div>
       ) : null}
@@ -143,7 +149,11 @@ metadata: {
             <span>&middot;</span>
             <span>{item.subdomain.label}</span>
             <span>&middot;</span>
-            <span>{item.question.kind === "follow-up" ? "Follow-up" : "Primary"}</span>
+            <span>
+              {item.question.kind === "follow-up"
+                ? copy.legacySurvey.followUpQuestion
+                : copy.legacySurvey.primaryQuestion}
+            </span>
           </div>
 
           <QuestionRenderer
@@ -165,7 +175,7 @@ metadata: {
         disabled={isSubmitting || totalCount === 0 || answeredCount < totalCount}
         className="btn-primary mt-6"
       >
-        {isSubmitting ? "Submitting..." : "Submit Survey"}
+        {isSubmitting ? copy.legacySurvey.submitting : copy.legacySurvey.submitSurvey}
       </button>
     </div>
   );

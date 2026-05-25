@@ -1,5 +1,6 @@
 import Link from "next/link";
 import { BarChart3, ShieldCheck, TrendingUp } from "lucide-react";
+import { getServerTenantCopy } from "@/runtime/language/server";
 
 const ANALYTICS_CARDS = [
   {
@@ -22,24 +23,27 @@ const ANALYTICS_CARDS = [
   },
 ] as const;
 
-export default function AnalyticsPage() {
+export default async function AnalyticsPage() {
+  const copy = await getServerTenantCopy();
+  const analyticsCopy = copy.dashboard.analyticsPage;
   return (
     <div className="space-y-6">
       <section className="rounded-[2rem] border border-slate-200 bg-white p-8 shadow-sm">
         <p className="text-sm font-medium uppercase tracking-[0.18em] text-teal-700">
-          Analytics Access
+          {analyticsCopy.chip}
         </p>
         <h2 className="mt-2 text-3xl font-semibold text-slate-900">
-          Protected organization analytics with clean tenant boundaries.
+          {analyticsCopy.title}
         </h2>
         <p className="mt-3 max-w-3xl text-base leading-7 text-slate-600">
-          This runtime surface exposes analytics only for the authenticated tenant dashboard owner. Public survey pages remain outside this session boundary.
+          {analyticsCopy.description}
         </p>
       </section>
 
       <section className="grid gap-4 md:grid-cols-3">
-        {ANALYTICS_CARDS.map((card) => {
+        {ANALYTICS_CARDS.map((card, index) => {
           const Icon = card.icon;
+          const translatedCard = analyticsCopy.cards[index];
 
           return (
             <Link
@@ -50,8 +54,8 @@ export default function AnalyticsPage() {
               <div className="flex h-12 w-12 items-center justify-center rounded-2xl bg-[rgba(15,118,110,0.1)]">
                 <Icon className="h-5 w-5 text-teal-700" />
               </div>
-              <h3 className="mt-5 text-lg font-semibold text-slate-900">{card.title}</h3>
-              <p className="mt-2 text-sm leading-6 text-slate-600">{card.description}</p>
+              <h3 className="mt-5 text-lg font-semibold text-slate-900">{translatedCard.title}</h3>
+              <p className="mt-2 text-sm leading-6 text-slate-600">{translatedCard.description}</p>
             </Link>
           );
         })}

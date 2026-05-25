@@ -40,7 +40,7 @@ export default function Header() {
                 {theme.logoUrl ? (
                   <Image
                     src={theme.logoUrl}
-                    alt={`${theme.tenantName} logo`}
+                    alt={copy.header.logoAlt(theme.tenantName)}
                     fill
                     sizes="36px"
                     unoptimized

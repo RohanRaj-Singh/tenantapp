@@ -790,13 +790,13 @@ export function getDomainMetric(data: DashboardMockData, domainName: string): Me
 }
 
 export function getStatusTone(score: number): {
-  label: string;
+  toneKey: "thriving" | "stable" | "watchlist" | "atRisk";
   textClassName: string;
   backgroundClassName: string;
 } {
   if (score >= 75) {
     return {
-      label: "Thriving",
+      toneKey: "thriving",
       textClassName: "text-emerald-700",
       backgroundClassName: "bg-emerald-100",
     };
@@ -804,7 +804,7 @@ export function getStatusTone(score: number): {
 
   if (score >= 65) {
     return {
-      label: "Stable",
+      toneKey: "stable",
       textClassName: "text-sky-700",
       backgroundClassName: "bg-sky-100",
     };
@@ -812,14 +812,14 @@ export function getStatusTone(score: number): {
 
   if (score >= 55) {
     return {
-      label: "Watchlist",
+      toneKey: "watchlist",
       textClassName: "text-amber-700",
       backgroundClassName: "bg-amber-100",
     };
   }
 
   return {
-    label: "At Risk",
+    toneKey: "atRisk",
     textClassName: "text-rose-700",
     backgroundClassName: "bg-rose-100",
   };

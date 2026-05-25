@@ -1,9 +1,13 @@
-import type { LocalizedText } from "../contracts/scannerVersion";
 import type { AppLanguage } from "./translations";
+
+interface LocalizedTextLike {
+  en?: string;
+  ar?: string;
+}
 
 export function resolveLocalizedText(
   fallback: string,
-  translations: LocalizedText | undefined,
+  translations: LocalizedTextLike | undefined,
   language: AppLanguage,
 ) {
   const preferred = translations?.[language]?.trim();

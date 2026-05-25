@@ -16,6 +16,14 @@ export const DEFAULT_MOCK_TENANT_SLUG = DEFAULT_RUNTIME_TENANT_SLUG;
 export const MOCK_TENANT_QUERY_PARAM = RUNTIME_TENANT_QUERY_PARAM;
 export const MOCK_TENANT_STORAGE_KEY = RUNTIME_TENANT_STORAGE_KEY;
 
+function createOption(value: string, label = value) {
+  return {
+    id: value,
+    label,
+    value,
+  };
+}
+
 function createVersionRefs(
   tenantKey: string,
   scannerVersionId: string,
@@ -153,8 +161,14 @@ const tenantBAttributeTemplate: RuntimeAttributeTemplate = {
       functionId: "func-service-desk",
     },
   ],
-  genders: ["female", "male", "non_binary"],
-  ageGroups: ["18-24", "25-34", "35-44", "45-54", "55+"],
+  genders: [createOption("female", "Female"), createOption("male", "Male"), createOption("non_binary", "Non Binary")],
+  ageGroups: [
+    createOption("18-24", "18-24"),
+    createOption("25-34", "25-34"),
+    createOption("35-44", "35-44"),
+    createOption("45-54", "45-54"),
+    createOption("55+", "55+"),
+  ],
   seniorityLevels: [],
   fixedAttributes: {
     location: {
@@ -206,8 +220,8 @@ const tenantCAttributeTemplate: RuntimeAttributeTemplate = {
       functionId: "func-missing",
     },
   ],
-  genders: ["female", "male"],
-  ageGroups: ["25-34", "35-44"],
+  genders: [createOption("female", "Female"), createOption("male", "Male")],
+  ageGroups: [createOption("25-34", "25-34"), createOption("35-44", "35-44")],
   seniorityLevels: [],
   fixedAttributes: {
     seniority: {
@@ -222,9 +236,9 @@ const tenantDAttributeTemplate: RuntimeAttributeTemplate = {
   locations: [],
   functions: [],
   departments: [],
-  genders: ["female", "male"],
-  ageGroups: ["25-34"],
-  seniorityLevels: ["employee"],
+  genders: [createOption("female", "Female"), createOption("male", "Male")],
+  ageGroups: [createOption("25-34", "25-34")],
+  seniorityLevels: [createOption("employee", "Employee")],
   fixedAttributes: {
     location: {
       enabled: false,
@@ -245,6 +259,10 @@ const tenantAConfig: TenantRuntimeConfig = {
     ...tenantABaseConfig.tenant,
     id: "tenant-remedygcc-a",
     name: "RemedyGCC Energy Alliance",
+    nameTranslations: {
+      en: "RemedyGCC Energy Alliance",
+      ar: "تحالف ريميدي جي سي سي للطاقة",
+    },
     slug: "tenant-a",
   },
 };
@@ -257,6 +275,10 @@ const tenantBConfig: TenantRuntimeConfig = {
     ...tenantABaseConfig.tenant,
     id: "tenant-remedygcc-b",
     name: "Northern Horizon Occupational Wellbeing Alliance",
+    nameTranslations: {
+      en: "Northern Horizon Occupational Wellbeing Alliance",
+      ar: "تحالف نورثرن هورايزن للرفاهية المهنية",
+    },
     slug: "tenant-b",
     plan: "pro",
   },
@@ -278,6 +300,10 @@ const tenantCConfig: TenantRuntimeConfig = {
     ...tenantABaseConfig.tenant,
     id: "tenant-remedygcc-c",
     name: "RemedyGCC Fallback Validation Tenant",
+    nameTranslations: {
+      en: "RemedyGCC Fallback Validation Tenant",
+      ar: "مستأجر ريميدي جي سي سي للتحقق الاحتياطي",
+    },
     slug: "tenant-c",
     plan: "free",
   },
@@ -293,6 +319,10 @@ const tenantDConfig: TenantRuntimeConfig = {
     ...tenantABaseConfig.tenant,
     id: "tenant-remedygcc-d",
     name: "RemedyGCC Empty Hierarchy Tenant",
+    nameTranslations: {
+      en: "RemedyGCC Empty Hierarchy Tenant",
+      ar: "مستأجر ريميدي جي سي سي بهيكلية فارغة",
+    },
     slug: "tenant-d",
     plan: "free",
   },

@@ -36,6 +36,7 @@ export interface TimestampFields {
 export interface TenantDocument extends TimestampFields {
   tenantId: string;
   name: string;
+  nameAr?: string | null;
   slug: string;
   subdomain?: string;
   status: TenantRuntimeConfig["tenant"]["status"];

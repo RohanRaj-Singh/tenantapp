@@ -25,7 +25,7 @@ export default function ContactPage() {
         >
           <div className="space-y-4">
             {[
-              { icon: Mail, text: "support@remedygcc.com" },
+              { icon: Mail, text: copy.contact.email },
               //{ icon: Phone, text: "+1 (555) 123-4567" },
               { icon: MapPin, text: copy.contact.location },
             ].map((item) => {

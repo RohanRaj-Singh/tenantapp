@@ -7,12 +7,15 @@ import DashboardFilters, {
 import ExecutiveSummaryComponent from "@/components/dashboard/ExecutiveSummaryComponent";
 import { SectionCard, StatCard } from "@/components/dashboard/DashboardPrimitives";
 import { useDashboardFilters } from "@/components/dashboard/useDashboardFilters";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useDashboardData } from "@/runtime/hooks/useDashboardData";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 export default function ExecutiveSummaryPage() {
   const theme = useTheme();
+  const { copy } = useLanguage();
   const tenantName = theme.tenantName;
+  const sharedCopy = copy.dashboard.shared;
   const {
     filters,
     appliedFilters,
@@ -28,7 +31,7 @@ export default function ExecutiveSummaryPage() {
   if (isLoading) {
     return (
       <div className="space-y-6">
-        <p className="text-sm text-slate-500">Loading executive summary...</p>
+        <p className="text-sm text-slate-500">{sharedCopy.loadingExecutiveSummary}</p>
       </div>
     );
   }
@@ -39,18 +42,18 @@ export default function ExecutiveSummaryPage() {
   ) {
     return (
       <div className="space-y-6">
-        <SectionCard title="Analytics Unavailable">
+        <SectionCard title={sharedCopy.analyticsUnavailableTitle}>
           <p className="text-sm text-slate-500">
-            Unable to load executive summary data.
+            {sharedCopy.analyticsUnavailableDescription}
           </p>
         </SectionCard>
-        <SectionCard title="Recovery">
+        <SectionCard title={sharedCopy.recovery}>
           <button
             type="button"
             onClick={refetch}
             className="tenant-button inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium transition"
           >
-            Retry
+            {sharedCopy.retry}
           </button>
         </SectionCard>
       </div>
@@ -64,29 +67,29 @@ export default function ExecutiveSummaryPage() {
     <div className="space-y-6">
       <div className="grid gap-4 md:grid-cols-3">
         <StatCard
-          title="Participants"
+          title={sharedCopy.participants}
           value={String(data.totalParticipants)}
-          caption="Current response volume across the organization."
+          caption={copy.dashboard.executiveSummary.participantsCaption}
           icon={<Users className="h-4 w-4" />}
           accentColor={theme.chartColors.info}
         />
         <StatCard
-          title="Locations"
+          title={sharedCopy.locations}
           value={String(locationCount)}
-          caption="Distinct reporting sites included in the executive summary."
+          caption={copy.dashboard.executiveSummary.locationsCaption}
           icon={<MapPinned className="h-4 w-4" />}
           accentColor={theme.chartColors.success}
         />
         <StatCard
-          title="Filters"
-          value={hasAppliedFilters ? "Active" : "All Data"}
+          title={sharedCopy.filters}
+          value={hasAppliedFilters ? sharedCopy.active : sharedCopy.allData}
           caption={
             hasAppliedFilters
-              ? "Custom drill-down is staged for this dashboard view."
-              : "Organization-wide view with no filters applied."
+              ? sharedCopy.customDrillDown
+              : sharedCopy.organizationWideView
           }
           icon={<Filter className="h-4 w-4" />}
-          badge={hasAppliedFilters ? "Scoped" : "Global"}
+          badge={hasAppliedFilters ? sharedCopy.scoped : sharedCopy.global}
           accentColor={theme.chartColors.primary}
         />
       </div>

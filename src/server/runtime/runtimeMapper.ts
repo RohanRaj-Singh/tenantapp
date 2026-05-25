@@ -20,6 +20,10 @@ export function toTenantRuntimeConfig(
     tenant: {
       id: tenant.tenantId,
       name: tenant.name,
+      nameTranslations: {
+        en: tenant.name,
+        ar: tenant.nameAr?.trim() ?? "",
+      },
       slug: tenant.slug,
       status: tenant.status,
       plan: tenant.plan,

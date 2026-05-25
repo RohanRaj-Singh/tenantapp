@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { cn } from "@/lib/utils";
 import { Card } from "@/components/ui/card";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 
 interface StatCardProps {
@@ -150,15 +151,36 @@ export function DetailListCard({
 
 export function StatusLegendCard() {
   const theme = useTheme();
+  const { copy } = useLanguage();
+  const sharedCopy = copy.dashboard.shared;
   const bands = [
-    { label: "Thriving", range: "75% and above", tone: theme.chartColors.success },
-    { label: "Stable", range: "65% to 74%", tone: theme.chartColors.info },
-    { label: "Watchlist", range: "55% to 64%", tone: theme.chartColors.warning },
-    { label: "At Risk", range: "Below 55%", tone: theme.chartColors.danger },
+    {
+      label: sharedCopy.statusLabels.thriving,
+      range: sharedCopy.statusRanges.thriving,
+      tone: theme.chartColors.success,
+    },
+    {
+      label: sharedCopy.statusLabels.stable,
+      range: sharedCopy.statusRanges.stable,
+      tone: theme.chartColors.info,
+    },
+    {
+      label: sharedCopy.statusLabels.watchlist,
+      range: sharedCopy.statusRanges.watchlist,
+      tone: theme.chartColors.warning,
+    },
+    {
+      label: sharedCopy.statusLabels.atRisk,
+      range: sharedCopy.statusRanges.atRisk,
+      tone: theme.chartColors.danger,
+    },
   ];
 
   return (
-    <SectionCard title="Status Legend" description="A simple interpretation guide used across the dashboard.">
+    <SectionCard
+      title={sharedCopy.statusLegendTitle}
+      description={sharedCopy.statusLegendDescription}
+    >
       <div className="space-y-3">
         {bands.map((band) => (
           <div

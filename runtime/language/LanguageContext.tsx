@@ -9,14 +9,14 @@ import {
   useState,
   type ReactNode,
 } from "react";
+import { useRouter } from "next/navigation";
 import { RuntimeContext } from "../context/RuntimeContext";
+import { LANGUAGE_COOKIE_NAME, LANGUAGE_STORAGE_KEY } from "./cookie";
 import {
   getTenantCopyWithOverrides,
   type AppLanguage,
   type TenantStaticCopy,
 } from "./translations";
-
-const LANGUAGE_STORAGE_KEY = "remedygcc-language";
 
 interface LanguageContextValue {
   language: AppLanguage;
@@ -40,6 +40,7 @@ function isSupportedLanguage(value: string | null): value is AppLanguage {
 
 export function LanguageProvider({ children }: { children: ReactNode }) {
   const { config } = useContext(RuntimeContext);
+  const router = useRouter();
   const [language, setLanguageState] = useState<AppLanguage>("en");
 
   useEffect(() => {
@@ -57,22 +58,22 @@ export function LanguageProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     document.documentElement.lang = language;
-    document.documentElement.dir = language === "ar" ? "rtl" : "ltr";
+    document.documentElement.dir = "ltr";
   }, [language]);
 
   const setLanguage = useCallback((nextLanguage: AppLanguage) => {
     setLanguageState(nextLanguage);
     window.localStorage.setItem(LANGUAGE_STORAGE_KEY, nextLanguage);
-  }, []);
+    document.cookie = `${LANGUAGE_COOKIE_NAME}=${nextLanguage}; path=/; max-age=31536000; samesite=lax`;
+    router.refresh();
+  }, [router]);
 
   const value = useMemo<LanguageContextValue>(() => {
-    const direction = language === "ar" ? "rtl" : "ltr";
-
     return {
       language,
       setLanguage,
-      isRtl: direction === "rtl",
-      direction,
+      isRtl: false,
+      direction: "ltr",
       copy: getTenantCopyWithOverrides(language, config?.content),
     };
   }, [config?.content, language, setLanguage]);

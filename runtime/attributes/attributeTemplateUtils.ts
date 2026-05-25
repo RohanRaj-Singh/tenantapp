@@ -8,6 +8,7 @@ import type {
   RuntimeLocationOption,
 } from "../contracts/runtime";
 import { getTenantStaticCopy, type AppLanguage } from "../language/translations";
+import { resolveLocalizedText } from "../language/localizedText";
 
 export const RUNTIME_ATTRIBUTE_FIELDS = [
   "stream",
@@ -121,6 +122,7 @@ function dedupeOptions<T extends RuntimeAttributeOption>(items: T[], issueLabel:
 function normalizeOptions<T extends RuntimeAttributeOption>(
   items: T[] | undefined,
   issueLabel: string,
+  language: AppLanguage,
 ) {
   const issues: string[] = [];
   const normalizedItems = (items ?? []).flatMap((item) => {
@@ -129,11 +131,13 @@ function normalizeOptions<T extends RuntimeAttributeOption>(
       return [];
     }
 
+    const fallbackLabel = isNonEmptyString(item.label) ? item.label.trim() : formatAttributeLabel(item.value);
+
     return [
       {
         ...item,
         id: item.id.trim(),
-        label: isNonEmptyString(item.label) ? item.label.trim() : formatAttributeLabel(item.value),
+        label: resolveLocalizedText(fallbackLabel, item.labelTranslations, language),
         value: item.value.trim(),
       },
     ];
@@ -147,19 +151,41 @@ function normalizeOptions<T extends RuntimeAttributeOption>(
   };
 }
 
-function normalizeValueList(values: string[] | undefined, issueLabel: string) {
+function normalizeOptionListLike(
+  values: Array<RuntimeAttributeOption | string> | undefined,
+  issueLabel: string,
+  language: AppLanguage,
+) {
   const issues: string[] = [];
-  const normalizedItems = (values ?? []).flatMap((value) => {
-    if (!isNonEmptyString(value)) {
-      issues.push(`${issueLabel} entries must be non-empty strings.`);
+  const normalizedItems = (values ?? []).flatMap((item) => {
+    if (typeof item === "string") {
+      if (!isNonEmptyString(item)) {
+        issues.push(`${issueLabel} entries must be non-empty strings.`);
+        return [];
+      }
+
+      return [
+        {
+          id: item.trim(),
+          label: formatAttributeLabel(item),
+          value: item.trim(),
+        } satisfies RuntimeAttributeOption,
+      ];
+    }
+
+    if (!isNonEmptyString(item?.id) || !isNonEmptyString(item?.value)) {
+      issues.push(`${issueLabel} entries require non-empty id and value fields.`);
       return [];
     }
 
+    const fallbackLabel = isNonEmptyString(item.label) ? item.label.trim() : formatAttributeLabel(item.value);
+
     return [
       {
-        id: value.trim(),
-        label: formatAttributeLabel(value),
-        value: value.trim(),
+        ...item,
+        id: item.id.trim(),
+        label: resolveLocalizedText(fallbackLabel, item.labelTranslations, language),
+        value: item.value.trim(),
       },
     ];
   });
@@ -172,8 +198,11 @@ function normalizeValueList(values: string[] | undefined, issueLabel: string) {
   };
 }
 
-function normalizeGenderValueList(values: string[] | undefined) {
-  const normalized = normalizeValueList(values, "Gender option");
+function normalizeGenderValueList(
+  values: Array<RuntimeAttributeOption | string> | undefined,
+  language: AppLanguage,
+) {
+  const normalized = normalizeOptionListLike(values, "Gender option", language);
   const filteredOptions: RuntimeAttributeOption[] = [];
 
   normalized.options.forEach((option) => {
@@ -201,8 +230,16 @@ function resolveFixedAttributeConfig(
 ) {
   const attributeCopy = getTenantStaticCopy(language).attributeForm;
   const key = field === "age" ? "age" : field;
-  const label = providedConfig?.label?.trim() || attributeCopy.labels[key];
-  const placeholder = providedConfig?.placeholder?.trim() || attributeCopy.placeholders[key];
+  const label = resolveLocalizedText(
+    providedConfig?.label?.trim() || attributeCopy.labels[key],
+    providedConfig?.labelTranslations,
+    language,
+  );
+  const placeholder = resolveLocalizedText(
+    providedConfig?.placeholder?.trim() || attributeCopy.placeholders[key],
+    providedConfig?.placeholderTranslations,
+    language,
+  );
   const enabled = providedConfig?.enabled ?? optionCount > 0;
   const required = enabled ? (providedConfig?.required ?? optionCount > 0) : false;
 
@@ -266,10 +303,10 @@ export function resolveRuntimeAttributeTemplate(
   template: RuntimeAttributeTemplate | null | undefined,
   language: AppLanguage = "en",
 ): ResolvedRuntimeAttributeTemplate {
-  const streamResult = normalizeOptions(template?.streams, "Stream option");
+  const streamResult = normalizeOptions(template?.streams, "Stream option", language);
   const streamIds = new Set(streamResult.options.map((item) => item.id));
 
-  const locationBaseResult = normalizeOptions(template?.locations, "Location option");
+  const locationBaseResult = normalizeOptions(template?.locations, "Location option", language);
   const locations: RuntimeLocationOption[] = [];
   const locationIssues = [...locationBaseResult.issues];
 
@@ -293,7 +330,7 @@ export function resolveRuntimeAttributeTemplate(
   });
 
   const locationIds = new Set(locations.map((item) => item.id));
-  const functionBaseResult = normalizeOptions(template?.functions, "Function option");
+  const functionBaseResult = normalizeOptions(template?.functions, "Function option", language);
   const functions: RuntimeFunctionOption[] = [];
   const functionIssues = [...functionBaseResult.issues];
 
@@ -317,7 +354,7 @@ export function resolveRuntimeAttributeTemplate(
   });
 
   const functionIds = new Set(functions.map((item) => item.id));
-  const departmentBaseResult = normalizeOptions(template?.departments, "Department option");
+  const departmentBaseResult = normalizeOptions(template?.departments, "Department option", language);
   const departments: RuntimeDepartmentOption[] = [];
   const departmentIssues = [...departmentBaseResult.issues];
 
@@ -358,9 +395,20 @@ export function resolveRuntimeAttributeTemplate(
     }
   });
 
-  const genderResult = normalizeGenderValueList(template?.genders);
-  const ageGroupResult = normalizeValueList(template?.ageGroups, "Age option");
-  const seniorityResult = normalizeValueList(template?.seniorityLevels, "Seniority option");
+  const genderResult = normalizeGenderValueList(
+    template?.genders as Array<RuntimeAttributeOption | string> | undefined,
+    language,
+  );
+  const ageGroupResult = normalizeOptionListLike(
+    template?.ageGroups as Array<RuntimeAttributeOption | string> | undefined,
+    "Age option",
+    language,
+  );
+  const seniorityResult = normalizeOptionListLike(
+    template?.seniorityLevels as Array<RuntimeAttributeOption | string> | undefined,
+    "Seniority option",
+    language,
+  );
   const locationCount = locations.length;
   const providedLocationConfig = template?.fixedAttributes?.location;
 

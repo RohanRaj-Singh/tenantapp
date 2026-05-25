@@ -1,6 +1,14 @@
 import { TenantRuntimeConfig } from "../contracts/runtime";
 import { tenantAScannerVersion } from "./mockScannerCatalog";
 
+function createOption(value: string, label = value) {
+  return {
+    id: value,
+    label,
+    value,
+  };
+}
+
 export const mockRuntimeConfig: TenantRuntimeConfig = {
   runtimeConfigId: "runtimecfg_demo_20260510_001",
   publishedAt: "2026-05-10T08:00:00.000Z",
@@ -13,6 +21,10 @@ export const mockRuntimeConfig: TenantRuntimeConfig = {
   tenant: {
     id: "tenant-demo",
     name: "RemedyGCC Demo Tenant",
+    nameTranslations: {
+      en: "RemedyGCC Demo Tenant",
+      ar: "مستأجر ريميدي جي سي سي التجريبي",
+    },
     slug: "demo",
     status: "active",
     plan: "enterprise",
@@ -70,9 +82,24 @@ export const mockRuntimeConfig: TenantRuntimeConfig = {
       { id: "dept-11", label: "Helpdesk", value: "helpdesk", functionId: "func-6" },
       { id: "dept-12", label: "Infrastructure", value: "infrastructure", functionId: "func-6" },
     ],
-    genders: ["male", "female"],
-    ageGroups: ["18-24", "25-34", "35-44", "45-54", "55-64", "65+"],
-    seniorityLevels: ["intern", "employee", "senior", "manager", "director", "vp", "c_suite"],
+    genders: [createOption("male", "Male"), createOption("female", "Female")],
+    ageGroups: [
+      createOption("18-24", "18-24"),
+      createOption("25-34", "25-34"),
+      createOption("35-44", "35-44"),
+      createOption("45-54", "45-54"),
+      createOption("55-64", "55-64"),
+      createOption("65+", "65+"),
+    ],
+    seniorityLevels: [
+      createOption("intern", "Intern"),
+      createOption("employee", "Employee"),
+      createOption("senior", "Senior"),
+      createOption("manager", "Manager"),
+      createOption("director", "Director"),
+      createOption("vp", "VP"),
+      createOption("c_suite", "C Suite"),
+    ],
   },
   scannerVersion: tenantAScannerVersion,
   runtimeSettings: {

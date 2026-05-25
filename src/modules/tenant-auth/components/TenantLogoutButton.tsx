@@ -3,15 +3,15 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, LogOut } from "lucide-react";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 
 interface TenantLogoutButtonProps {
   className?: string;
 }
 
-export function TenantLogoutButton({
-  className,
-}: TenantLogoutButtonProps) {
+export function TenantLogoutButton({ className }: TenantLogoutButtonProps) {
   const router = useRouter();
+  const { copy } = useLanguage();
   const [isSubmitting, setIsSubmitting] = useState(false);
 
   async function handleLogout() {
@@ -33,18 +33,13 @@ export function TenantLogoutButton({
   }
 
   return (
-    <button
-      type="button"
-      onClick={handleLogout}
-      disabled={isSubmitting}
-      className={className}
-    >
+    <button type="button" onClick={handleLogout} disabled={isSubmitting} className={className}>
       {isSubmitting ? (
         <Loader2 className="h-4 w-4 animate-spin" />
       ) : (
         <LogOut className="h-4 w-4" />
       )}
-      <span>{isSubmitting ? "Signing out" : "Sign Out"}</span>
+      <span>{isSubmitting ? copy.auth.logout.signingOut : copy.auth.logout.signOut}</span>
     </button>
   );
 }

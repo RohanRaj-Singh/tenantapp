@@ -1,4 +1,4 @@
-import type { RuntimeScannerVersion } from "./scannerVersion";
+import type { LocalizedText, RuntimeScannerVersion } from "./scannerVersion";
 
 export interface TenantBrandingConfig {
   logo?: string;
@@ -34,6 +34,7 @@ export interface RuntimeAttributeOption {
   id: string;
   label: string;
   value: string;
+  labelTranslations?: LocalizedText;
 }
 
 export interface RuntimeLocationOption extends RuntimeAttributeOption {
@@ -55,6 +56,8 @@ export interface RuntimeFixedAttributeConfig {
   required?: boolean;
   label?: string;
   placeholder?: string;
+  labelTranslations?: LocalizedText;
+  placeholderTranslations?: LocalizedText;
 }
 
 export interface RuntimeAttributeTemplate {
@@ -62,9 +65,9 @@ export interface RuntimeAttributeTemplate {
   locations: RuntimeLocationOption[];
   functions: RuntimeFunctionOption[];
   departments: RuntimeDepartmentOption[];
-  genders?: string[];
-  ageGroups?: string[];
-  seniorityLevels?: string[];
+  genders?: RuntimeAttributeOption[];
+  ageGroups?: RuntimeAttributeOption[];
+  seniorityLevels?: RuntimeAttributeOption[];
   fixedAttributes?: Partial<Record<RuntimeFixedAttributeKey, RuntimeFixedAttributeConfig>>;
 }
 
@@ -75,6 +78,7 @@ export interface TenantRuntimeConfig {
   tenant: {
     id: string;
     name: string;
+    nameTranslations?: LocalizedText;
     slug: string;
     status: "active" | "inactive" | "suspended" | "disabled" | "archived";
     plan: "free" | "pro" | "enterprise";

@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { Loader2, LockKeyhole } from "lucide-react";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 
 interface TenantPasswordFormProps {
   title: string;
@@ -16,6 +17,8 @@ export function TenantPasswordForm({
   submitLabel,
 }: TenantPasswordFormProps) {
   const router = useRouter();
+  const { copy } = useLanguage();
+  const passwordCopy = copy.auth.passwordForm;
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -29,17 +32,17 @@ export function TenantPasswordForm({
     setSuccess(null);
 
     if (!currentPassword) {
-      setError("Current password is required.");
+      setError(passwordCopy.errors.currentPasswordRequired);
       return;
     }
 
     if (!newPassword) {
-      setError("New password is required.");
+      setError(passwordCopy.errors.newPasswordRequired);
       return;
     }
 
     if (newPassword !== confirmPassword) {
-      setError("New password confirmation does not match.");
+      setError(passwordCopy.errors.confirmationMismatch);
       return;
     }
 
@@ -60,14 +63,14 @@ export function TenantPasswordForm({
 
       const payload = await response.json().catch(() => null);
       if (!response.ok || !payload?.success) {
-        setError(payload?.error ?? "Password change failed.");
+        setError(payload?.error ?? passwordCopy.errors.changeFailed);
         return;
       }
 
       setCurrentPassword("");
       setNewPassword("");
       setConfirmPassword("");
-      setSuccess("Password updated successfully.");
+      setSuccess(passwordCopy.success);
 
       if (payload.redirectTo) {
         router.replace(payload.redirectTo);
@@ -77,7 +80,7 @@ export function TenantPasswordForm({
       setError(
         requestError instanceof Error
           ? requestError.message
-          : "Password change failed.",
+          : passwordCopy.errors.changeFailed,
       );
     } finally {
       setIsSubmitting(false);
@@ -98,11 +101,8 @@ export function TenantPasswordForm({
 
       <form onSubmit={handleSubmit} className="mt-6 space-y-4">
         <div>
-          <label
-            htmlFor="current-password"
-            className="mb-2 block text-sm font-medium text-slate-700"
-          >
-            Current password
+          <label htmlFor="current-password" className="mb-2 block text-sm font-medium text-slate-700">
+            {passwordCopy.currentPassword}
           </label>
           <input
             id="current-password"
@@ -116,11 +116,8 @@ export function TenantPasswordForm({
         </div>
 
         <div>
-          <label
-            htmlFor="new-password"
-            className="mb-2 block text-sm font-medium text-slate-700"
-          >
-            New password
+          <label htmlFor="new-password" className="mb-2 block text-sm font-medium text-slate-700">
+            {passwordCopy.newPassword}
           </label>
           <input
             id="new-password"
@@ -131,17 +128,12 @@ export function TenantPasswordForm({
             disabled={isSubmitting}
             className="w-full rounded-2xl border border-slate-200 px-4 py-3 text-slate-900 outline-none transition focus:border-teal-400 focus:ring-2 focus:ring-teal-100"
           />
-          <p className="mt-2 text-xs text-slate-500">
-            Use at least 12 characters with uppercase, lowercase, and a number.
-          </p>
+          <p className="mt-2 text-xs text-slate-500">{passwordCopy.passwordHint}</p>
         </div>
 
         <div>
-          <label
-            htmlFor="confirm-password"
-            className="mb-2 block text-sm font-medium text-slate-700"
-          >
-            Confirm new password
+          <label htmlFor="confirm-password" className="mb-2 block text-sm font-medium text-slate-700">
+            {passwordCopy.confirmPassword}
           </label>
           <input
             id="confirm-password"

@@ -15,6 +15,7 @@ import {
   getDomainMetric,
   getStatusTone,
 } from "@/lib/dashboardMockData";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useDashboardData } from "@/runtime/hooks/useDashboardData";
 import { useTheme } from "@/runtime/theme/useTheme";
 
@@ -180,8 +181,10 @@ function clampScore(score: number) {
 
 export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey }) {
   const theme = useTheme();
+  const { copy } = useLanguage();
   const tenantName = theme.tenantName;
   const config = PAGE_CONFIG[pageId];
+  const statusLabels = copy.dashboard.shared.statusLabels;
   const {
     filters,
     appliedFilters,
@@ -237,6 +240,7 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
   };
 
   const status = getStatusTone(metric.dashboardDomainAverage.averageSatisfactionScore);
+  const statusLabel = statusLabels[status.toneKey];
   const locationStatsArray = [...data.locationStats];
   const topLocation = locationStatsArray.sort((a, b) => b.satisfactionScore - a.satisfactionScore)[0] ?? { location: "N/A", satisfactionScore: 0, totalResponses: 0 };
   const departmentStatsArray = [...data.departmentStats];
@@ -255,9 +259,9 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
       <StatCard
         title={config.statLabel}
         value={`${metric.dashboardDomainAverage.averageSatisfactionScore}%`}
-        caption={`${status.label} status based on the current satisfaction score.`}
+        caption={`${statusLabel} status based on the current satisfaction score.`}
         icon={<Sparkles className="h-4 w-4" />}
-        badge={status.label}
+        badge={statusLabel}
         accentColor={theme.chartColors.primary}
       />
       <StatCard

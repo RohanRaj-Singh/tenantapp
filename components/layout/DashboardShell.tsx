@@ -5,6 +5,7 @@ import { BarChart3 } from "lucide-react";
 import { usePathname } from "next/navigation";
 import OrganizationSidebar from "@/components/layout/OrganizationSidebar";
 import { getDashboardMeta } from "@/lib/dashboardMockData";
+import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 import type { TenantUserProfile } from "@/src/modules/tenant-auth/contracts/types";
 import { TenantLogoutButton } from "@/src/modules/tenant-auth/components/TenantLogoutButton";
@@ -17,7 +18,9 @@ interface DashboardShellProps {
 export default function DashboardShell({ children, user }: DashboardShellProps) {
   const pathname = usePathname();
   const theme = useTheme();
+  const { copy } = useLanguage();
   const activePage = getDashboardMeta(pathname);
+  const activePageCopy = copy.dashboard.navigation[activePage.id];
 
   return (
     <div className="tenant-dashboard-shell min-h-screen pt-24">
@@ -45,10 +48,10 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
                     {theme.tenantName}
                   </p>
                   <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                    {activePage.headerTitle ?? activePage.name}
+                    {activePageCopy.headerTitle ?? activePageCopy.name}
                   </h1>
                   <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                    {activePage.description}
+                    {activePageCopy.description}
                   </p>
                 </div>
               </div>
@@ -62,7 +65,7 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
                     color: theme.linkColor,
                   }}
                 >
-                  Organization Dashboard
+                  {copy.dashboard.shell.badge}
                 </div>
                 <div className="text-left md:text-right">
                   <p className="text-sm font-semibold text-slate-900">{user.username}</p>
