@@ -6,11 +6,9 @@ html {
 }
 
 body {
-  font-family: var(--tenant-font-family, 'Inter', system-ui, sans-serif);
-  background-image: var(--tenant-page-gradient, linear-gradient(180deg, rgba(245, 130, 32, 0.06) 0%, #f8fafc 38%, #ffffff 100%)), var(--tenant-background-image, url("/default/background.png"));
-  background-position: center, center;
-  background-repeat: no-repeat, no-repeat;
-  background-size: cover, cover;
+  font-family: var(--tenant-font-family, Arial, Helvetica, sans-serif);
+  background-image: none;
+  background-color: #ffffff;
   color: #0f172a;
   overflow-x: hidden;
 }
@@ -25,7 +23,7 @@ body {
     --tenant-on-secondary: #ffffff;
     --tenant-link: #b45309;
     --tenant-link-hover: #92400e;
-    --tenant-font-family: "Inter", system-ui, sans-serif;
+    --tenant-font-family: Arial, Helvetica, sans-serif;
     --tenant-primary-soft: rgba(245, 130, 32, 0.12);
     --tenant-primary-soft-strong: rgba(245, 130, 32, 0.18);
     --tenant-primary-border: rgba(245, 130, 32, 0.26);
@@ -34,9 +32,9 @@ body {
     --tenant-background-image: url("/default/background.png");
     --tenant-brand-gradient: linear-gradient(135deg, #f58220 0%, #f37820 100%);
     --tenant-header-gradient: linear-gradient(135deg, rgba(245, 130, 32, 0.15) 0%, rgba(243, 120, 32, 0.12) 100%);
-    --tenant-page-gradient: linear-gradient(180deg, rgba(245, 130, 32, 0.06) 0%, #f8fafc 38%, #ffffff 100%);
-    --tenant-dashboard-gradient: linear-gradient(180deg, rgba(245, 130, 32, 0.08) 0%, #f1f5f9 24%, #f8fafc 100%);
-    --tenant-card-gradient: linear-gradient(135deg, rgba(245, 130, 32, 0.06) 0%, #ffffff 42%, rgba(243, 120, 32, 0.06) 100%);
+    --tenant-page-gradient: linear-gradient(180deg, #ffffff 0%, #ffffff 100%);
+    --tenant-dashboard-gradient: linear-gradient(180deg, #fff7f2 0%, #ffffff 22%, #ffffff 100%);
+    --tenant-card-gradient: linear-gradient(135deg, #ffffff 0%, #ffffff 100%);
     --tenant-chart-grid: #e2e8f0;
     --tenant-chart-text: #475569;
     --tenant-chart-1: #f58220;

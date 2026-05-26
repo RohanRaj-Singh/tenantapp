@@ -1,11 +1,8 @@
 "use client";
 
-import { Filter, MapPinned, Users } from "lucide-react";
-import DashboardFilters, {
-  checkHasActiveFilters,
-} from "@/components/dashboard/filter/DashboardFilters";
+import DashboardFilters from "@/components/dashboard/filter/DashboardFilters";
 import ExecutiveSummaryComponent from "@/components/dashboard/ExecutiveSummaryComponent";
-import { SectionCard, StatCard } from "@/components/dashboard/DashboardPrimitives";
+import { DashboardErrorState, DashboardLoadingState } from "@/components/dashboard/DashboardStates";
 import { useDashboardFilters } from "@/components/dashboard/useDashboardFilters";
 import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useDashboardData } from "@/runtime/hooks/useDashboardData";
@@ -26,14 +23,8 @@ export default function ExecutiveSummaryPage() {
   } = useDashboardFilters();
   const { state: dashboardState, isLoading, refetch } = useDashboardData(tenantName, appliedFilters);
 
-  const hasAppliedFilters = checkHasActiveFilters(appliedFilters);
-
   if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <p className="text-sm text-slate-500">{sharedCopy.loadingExecutiveSummary}</p>
-      </div>
-    );
+    return <DashboardLoadingState label={sharedCopy.loadingExecutiveSummary} />;
   }
 
   if (
@@ -41,59 +32,19 @@ export default function ExecutiveSummaryPage() {
     !dashboardState.data
   ) {
     return (
-      <div className="space-y-6">
-        <SectionCard title={sharedCopy.analyticsUnavailableTitle}>
-          <p className="text-sm text-slate-500">
-            {sharedCopy.analyticsUnavailableDescription}
-          </p>
-        </SectionCard>
-        <SectionCard title={sharedCopy.recovery}>
-          <button
-            type="button"
-            onClick={refetch}
-            className="tenant-button inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium transition"
-          >
-            {sharedCopy.retry}
-          </button>
-        </SectionCard>
-      </div>
+      <DashboardErrorState
+        title={sharedCopy.analyticsUnavailableTitle}
+        description={sharedCopy.analyticsUnavailableDescription}
+        buttonLabel={sharedCopy.retry}
+        onRetry={refetch}
+      />
     );
   }
 
   const data = dashboardState.data;
-  const locationCount = data.locationStats.filter((location) => location.totalResponses > 0).length;
 
   return (
-    <div className="space-y-6">
-      <div className="grid gap-4 md:grid-cols-3">
-        <StatCard
-          title={sharedCopy.participants}
-          value={String(data.totalParticipants)}
-          caption={copy.dashboard.executiveSummary.participantsCaption}
-          icon={<Users className="h-4 w-4" />}
-          accentColor={theme.chartColors.info}
-        />
-        <StatCard
-          title={sharedCopy.locations}
-          value={String(locationCount)}
-          caption={copy.dashboard.executiveSummary.locationsCaption}
-          icon={<MapPinned className="h-4 w-4" />}
-          accentColor={theme.chartColors.success}
-        />
-        <StatCard
-          title={sharedCopy.filters}
-          value={hasAppliedFilters ? sharedCopy.active : sharedCopy.allData}
-          caption={
-            hasAppliedFilters
-              ? sharedCopy.customDrillDown
-              : sharedCopy.organizationWideView
-          }
-          icon={<Filter className="h-4 w-4" />}
-          badge={hasAppliedFilters ? sharedCopy.scoped : sharedCopy.global}
-          accentColor={theme.chartColors.primary}
-        />
-      </div>
-
+    <div className="space-y-8">
       <DashboardFilters
         key={filterKey}
         filters={filters}
@@ -101,7 +52,18 @@ export default function ExecutiveSummaryPage() {
         onApply={handleApplyFilters}
         onReset={resetFilters}
         isLoading={isLoading}
+        rollUpActive={dashboardState.snapshot?.anonymity.rollUpApplied ?? false}
       />
+
+      {dashboardState.status === "stale" ? (
+        <div className="rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-800">
+          Snapshot shown from{" "}
+          {new Date(
+            dashboardState.generatedAt ?? dashboardState.snapshot?.generatedAt ?? Date.now(),
+          ).toLocaleString()}
+          .
+        </div>
+      ) : null}
 
       <ExecutiveSummaryComponent
         mentalHealthMetrics={data.mentalHealthMetrics}

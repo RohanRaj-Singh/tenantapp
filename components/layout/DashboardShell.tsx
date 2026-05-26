@@ -1,7 +1,7 @@
 "use client";
 
 import type { ReactNode } from "react";
-import { BarChart3 } from "lucide-react";
+import Image from "next/image";
 import { usePathname } from "next/navigation";
 import OrganizationSidebar from "@/components/layout/OrganizationSidebar";
 import { getDashboardMeta } from "@/lib/dashboardMockData";
@@ -23,65 +23,42 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
   const activePageCopy = copy.dashboard.navigation[activePage.id];
 
   return (
-    <div className="tenant-dashboard-shell min-h-screen pt-24">
-      <div className="mx-auto flex max-w-[1440px] gap-3 px-3 pb-4 sm:px-6 sm:pb-6 lg:gap-6 lg:px-8">
+    <div className="min-h-screen bg-white">
+      <div className="flex h-screen w-full bg-white">
         <OrganizationSidebar user={user} />
 
-        <div
-          className="flex min-h-[calc(100dvh-7rem)] min-w-0 flex-1 flex-col overflow-hidden rounded-[1.5rem] border bg-white shadow-[0_24px_70px_-48px_rgba(15,23,42,0.35)] sm:rounded-[2rem]"
-          style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
-        >
+        <div className="flex flex-1 flex-col overflow-hidden">
           <header
-            className="border-b px-4 py-4 sm:px-6 sm:py-5 lg:px-8"
-            style={{ borderColor: theme.borderAccent, background: theme.headerGradient }}
+            className="flex min-h-16 items-center justify-between border-b bg-white px-4 sm:px-6"
+            style={{ borderColor: theme.borderAccent }}
           >
-            <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-              <div className="flex items-start gap-4">
-                <div
-                  className="flex h-11 w-11 items-center justify-center rounded-2xl"
-                  style={{ background: theme.brandGradient, color: theme.onPrimaryColor }}
-                >
-                  <BarChart3 className="h-5 w-5" />
-                </div>
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.24em] text-slate-400">
-                    {theme.tenantName}
-                  </p>
-                  <h1 className="mt-2 text-xl font-semibold tracking-tight text-slate-900 sm:text-2xl">
-                    {activePageCopy.headerTitle ?? activePageCopy.name}
-                  </h1>
-                  <p className="mt-1 max-w-3xl text-sm leading-6 text-slate-500">
-                    {activePageCopy.description}
-                  </p>
-                </div>
+            <div className="flex min-w-0 items-center gap-3">
+              <Image
+                src={theme.logoUrl || "/images/orgLogo.png"}
+                alt={copy.header.logoAlt(theme.tenantName)}
+                width={150}
+                height={48}
+                unoptimized
+                className="h-10 w-auto object-contain"
+              />
+              <div className="hidden min-w-0 md:block">
+                <p className="truncate text-sm font-semibold text-slate-900">
+                  {activePageCopy.headerTitle ?? activePageCopy.name}
+                </p>
+                <p className="truncate text-xs text-slate-500">{theme.tenantName}</p>
               </div>
+            </div>
 
-              <div className="flex flex-col items-start gap-3 md:items-end">
-                <div
-                  className="rounded-full border px-3 py-1.5 text-xs font-medium"
-                  style={{
-                    borderColor: theme.borderAccent,
-                    backgroundColor: theme.surfaceAccent,
-                    color: theme.linkColor,
-                  }}
-                >
-                  {copy.dashboard.shell.badge}
-                </div>
-                <div className="text-left md:text-right">
-                  <p className="text-sm font-semibold text-slate-900">{user.username}</p>
-                  <p className="text-sm text-slate-500">{user.email}</p>
-                </div>
-                <TenantLogoutButton
-                  className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60"
-                />
+            <div className="flex items-center gap-3">
+              <div className="hidden text-right md:block">
+                <p className="text-sm font-semibold text-slate-900">{user.username}</p>
+                <p className="text-xs text-slate-500">{user.email}</p>
               </div>
+              <TenantLogoutButton className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-4 py-2 text-sm font-medium text-slate-700 transition hover:border-slate-300 hover:bg-slate-50 disabled:cursor-not-allowed disabled:opacity-60" />
             </div>
           </header>
 
-          <main
-            className="flex-1 overflow-y-auto p-3 sm:p-4 md:p-6 lg:p-8"
-            style={{ background: theme.cardGradient }}
-          >
+          <main className="flex-1 overflow-y-auto bg-[#f5822010] p-4 sm:p-6">
             <div className="mx-auto max-w-7xl">{children}</div>
           </main>
         </div>

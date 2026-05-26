@@ -1,23 +1,23 @@
 "use client";
 
-import { Activity, ShieldAlert, Sparkles, Users } from "lucide-react";
+import { useMemo } from "react";
+import { Shield, Smile, TrendingUp, Users } from "lucide-react";
 import DashboardFilters from "@/components/dashboard/filter/DashboardFilters";
-import {
-  DetailListCard,
-  MeterList,
-  SectionCard,
-  StatCard,
-  StatusLegendCard,
-} from "@/components/dashboard/DashboardPrimitives";
+import { DashboardErrorState, DashboardLoadingState } from "@/components/dashboard/DashboardStates";
 import { useDashboardFilters } from "@/components/dashboard/useDashboardFilters";
-import {
-  formatLabel,
-  getDomainMetric,
-  getStatusTone,
-} from "@/lib/dashboardMockData";
-import { useLanguage } from "@/runtime/language/LanguageContext";
+import { getDomainMetric } from "@/lib/dashboardMockData";
 import { useDashboardData } from "@/runtime/hooks/useDashboardData";
 import { useTheme } from "@/runtime/theme/useTheme";
+import { ScoreCard } from "@/components/dashboard/organizationDashboard/ScoreCard";
+import { RiskLegend } from "@/components/dashboard/organizationDashboard/RiskLegend";
+import { RankingTable } from "@/components/dashboard/organizationDashboard/RankingTable";
+import { FearBlameChart } from "@/components/dashboard/organizationDashboard/FearBlameChart";
+import { ComparisonChart } from "@/components/dashboard/organizationDashboard/ComparisonChart";
+import { BarChartComponent } from "@/components/dashboard/organizationDashboard/BarChart";
+import { SubdomainCard } from "@/components/dashboard/organizationDashboard/SubDomainCard";
+import StreamSummeryCard from "@/components/dashboard/organizationDashboard/StreamSummeryCard";
+import FunctionSummeryCard from "@/components/dashboard/organizationDashboard/FunctionSummeryCard";
+import { Card } from "@/components/ui/card";
 
 type DomainPageKey =
   | "clinical-risk-index"
@@ -26,152 +26,46 @@ type DomainPageKey =
   | "leadership-alignment"
   | "satisfaction-engagement";
 
-type DetailTone = "primary" | "secondary" | "success" | "info" | "warning" | "danger" | "neutral";
+interface OverviewChartDatum {
+  name: string;
+  participantCount: number;
+  highRiskCount: number;
+  riskScore: number;
+  satisfactionScore: number;
+}
 
 const PAGE_CONFIG: Record<
   DomainPageKey,
   {
     domainName: string;
-    statLabel: string;
-    primaryTitle: string;
-    primaryDescription: string;
-    secondaryTitle: string;
-    secondaryDescription: string;
-    detailTitle: string;
-    detailItems: { title: string; description: string; tone: DetailTone }[];
+    title: string;
+    description: string;
   }
 > = {
   "clinical-risk-index": {
     domainName: "Clinical Risk Index",
-    statLabel: "Overall Index",
-    primaryTitle: "Domain Breakdown",
-    primaryDescription: "Risk concentration by age group based on the current organization snapshot.",
-    secondaryTitle: "Overall Index Gauge",
-    secondaryDescription: "Higher score means lower clinical risk and better resilience capacity.",
-    detailTitle: "Key Indicators",
-    detailItems: [
-      {
-        title: "Burnout exposure",
-        description: "Track teams with elevated workload strain and emotional exhaustion signals.",
-        tone: "danger",
-      },
-      {
-        title: "Recovery confidence",
-        description: "Use satisfaction movement to spot where support systems are improving recovery.",
-        tone: "info",
-      },
-      {
-        title: "Escalation watch",
-        description: "Pair high-risk counts with location trends to prioritize early intervention.",
-        tone: "warning",
-      },
-    ],
+    title: "Clinical Risk Index",
+    description: "Breakdown of burnout, anxiety, and depression indicators across your organization",
   },
   "psychological-safety": {
     domainName: "Psychological Safety Index",
-    statLabel: "Safety Score",
-    primaryTitle: "Department Rankings",
-    primaryDescription: "Departments ranked by satisfaction as a proxy for trust and interpersonal safety.",
-    secondaryTitle: "Fear/Blame Intensity Breakdown",
-    secondaryDescription: "A simplified distribution of pressure signals across current reporting groups.",
-    detailTitle: "Psychological Safety Signals",
-    detailItems: [
-      {
-        title: "Trust & openness",
-        description: "Strong psychological safety shows up where teams feel safe to speak candidly.",
-        tone: "info",
-      },
-      {
-        title: "Learning climate",
-        description: "Monitor whether mistakes are treated as learning moments instead of blame events.",
-        tone: "success",
-      },
-      {
-        title: "Interpersonal safety",
-        description: "Use department rankings to spot where everyday interactions still feel risky.",
-        tone: "secondary",
-      },
-    ],
+    title: "Psychological Safety Index",
+    description: "Assessment of employee trust, open communication, and interpersonal safety",
   },
   "workload-efficiency": {
     domainName: "Workload & Efficiency",
-    statLabel: "Efficiency Score",
-    primaryTitle: "Workload vs Satisfaction by Department",
-    primaryDescription: "A minimal comparison of demand pressure against perceived satisfaction.",
-    secondaryTitle: "Satisfaction Dimensions",
-    secondaryDescription: "The three practical dimensions used in the source organization dashboard.",
-    detailTitle: "Satisfaction Dimensions",
-    detailItems: [
-      {
-        title: "Coworker Satisfaction",
-        description: "Quality of relationships and team dynamics.",
-        tone: "success",
-      },
-      {
-        title: "Personal Satisfaction",
-        description: "Career development and personal fulfillment.",
-        tone: "info",
-      },
-      {
-        title: "Workplace Satisfaction",
-        description: "Work environment quality and access to the right resources.",
-        tone: "warning",
-      },
-    ],
+    title: "Workload & Efficiency",
+    description: "Analysis of employee workload management and satisfaction across the organization",
   },
   "leadership-alignment": {
     domainName: "Leadership & Alignment",
-    statLabel: "Leadership Score",
-    primaryTitle: "Leadership Score by Gender",
-    primaryDescription: "Perception of leadership effectiveness across gender groups.",
-    secondaryTitle: "Leadership Score by Department",
-    secondaryDescription: "A department-level view of leadership effectiveness and alignment.",
-    detailTitle: "Leadership Dimensions",
-    detailItems: [
-      {
-        title: "Vision & Strategy",
-        description: "Clear organizational direction and strategic alignment.",
-        tone: "secondary",
-      },
-      {
-        title: "Trust & Credibility",
-        description: "Employee confidence in leadership decisions and integrity.",
-        tone: "primary",
-      },
-      {
-        title: "Engagement & Communication",
-        description: "Transparent and frequent organizational communication.",
-        tone: "info",
-      },
-    ],
+    title: "Leadership & Alignment",
+    description: "Analysis of leadership effectiveness and organizational alignment across demographics",
   },
   "satisfaction-engagement": {
     domainName: "Satisfaction & Engagement",
-    statLabel: "Overall Satisfaction",
-    primaryTitle: "Satisfaction Subdomains",
-    primaryDescription: "The same three satisfaction themes highlighted in the source dashboard.",
-    secondaryTitle: "Stream summary (3 Or More Participants)",
-    secondaryDescription: "A stream-level snapshot sized to the current mock organization view.",
-    detailTitle: "About This Index",
-    detailItems: [
-      {
-        title: "What We Measure",
-        description:
-          "The Satisfaction & Engagement Index reflects relationships, fulfillment, and workplace experience.",
-        tone: "success",
-      },
-      {
-        title: "Why It Matters",
-        description:
-          "High satisfaction correlates with stronger retention, productivity, and healthier teams.",
-        tone: "info",
-      },
-      {
-        title: "How To Use It",
-        description: "Combine stream and function summaries to spot where engagement support should start.",
-        tone: "warning",
-      },
-    ],
+    title: "Satisfaction & Engagement",
+    description: "Measure of employee satisfaction with colleagues, personal fulfillment, and workplace environment",
   },
 };
 
@@ -179,12 +73,32 @@ function clampScore(score: number) {
   return Math.max(0, Math.min(score, 100));
 }
 
+function SimpleStatCard({
+  title,
+  count,
+  accentClassName,
+  icon,
+}: {
+  title: string;
+  count: number;
+  accentClassName: string;
+  icon?: React.ReactNode;
+}) {
+  return (
+    <Card className={`p-6 ${accentClassName}`}>
+      <div className="mb-2 flex items-center gap-3">
+        {icon ?? <TrendingUp className="h-5 w-5" />}
+        <h3 className="text-sm font-semibold md:text-lg">{title}</h3>
+      </div>
+      <p className="text-3xl font-bold">{count}</p>
+    </Card>
+  );
+}
+
 export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey }) {
   const theme = useTheme();
-  const { copy } = useLanguage();
   const tenantName = theme.tenantName;
   const config = PAGE_CONFIG[pageId];
-  const statusLabels = copy.dashboard.shared.statusLabels;
   const {
     filters,
     appliedFilters,
@@ -195,408 +109,555 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
   } = useDashboardFilters();
   const { state: dashboardState, isLoading, refetch } = useDashboardData(tenantName, appliedFilters);
 
-  // ---- Early-return guards: render only when a usable snapshot is available ----
-  if (isLoading) {
-    return (
-      <div className="space-y-6">
-        <p className="text-sm text-slate-500">Loading dashboard data...</p>
-      </div>
+  const data =
+    dashboardState.status === "ready" || dashboardState.status === "stale"
+      ? dashboardState.data
+      : null;
+  const snapshot =
+    dashboardState.status === "ready" || dashboardState.status === "stale"
+      ? dashboardState.snapshot ?? null
+      : null;
+
+  const metric = useMemo(() => {
+    if (!data) {
+      return null;
+    }
+    return getDomainMetric(data, config.domainName);
+  }, [config.domainName, data]);
+
+  const subdomainMetrics = useMemo<OverviewChartDatum[]>(() => {
+    if (!snapshot || !metric) return [];
+
+    const category = snapshot.categoryMetrics.find(
+      (item) => item.categoryLabel === config.domainName,
     );
+    if (!category) return [];
+
+    return snapshot.subdomainMetrics
+      .filter((item) => item.categoryId === category.categoryId)
+      .map((item) => {
+        const participantCount = item.participantCount || metric.participants;
+        const highRiskCount = item.riskDistribution.highRisk;
+        const weightedRisk =
+          participantCount > 0
+            ? ((item.riskDistribution.lowRisk * 33) +
+                (item.riskDistribution.mediumRisk * 66) +
+                (item.riskDistribution.highRisk * 100)) /
+              participantCount
+            : 0;
+
+        return {
+          name: item.subdomainLabel,
+          participantCount,
+          highRiskCount,
+          riskScore: Number(weightedRisk.toFixed(1)),
+          satisfactionScore: Number((100 - weightedRisk).toFixed(1)),
+        };
+      });
+  }, [config.domainName, metric, snapshot]);
+
+  if (isLoading) {
+    return <DashboardLoadingState label="Loading dashboard data..." />;
   }
 
   if (
     (dashboardState.status !== "ready" && dashboardState.status !== "stale") ||
-    !dashboardState.data
+    !data ||
+    !metric
   ) {
     return (
-      <div className="space-y-6">
-        <SectionCard title="Analytics Unavailable" description="The dashboard could not be loaded at this time.">
-          <p className="text-sm text-slate-500">Please try again in a moment.</p>
-        </SectionCard>
-             <SectionCard title="Retry">
-          <button
-            type="button"
-            onClick={refetch}
-            className="tenant-button inline-flex items-center gap-2 rounded-2xl px-4 py-3 text-sm font-medium transition"
-          >
-            Retry
-          </button>
-        </SectionCard>
-      </div>
-    );
-  }
-
-  const data = dashboardState.data;
-  const metric = getDomainMetric(data, config.domainName);
-
-  const toneColorMap: Record<DetailTone, string> = {
-    primary: theme.chartColors.primary,
-    secondary: theme.chartColors.secondary,
-    success: theme.chartColors.success,
-    info: theme.chartColors.info,
-    warning: theme.chartColors.warning,
-    danger: theme.chartColors.danger,
-    neutral: theme.chartColors.neutral,
-  };
-
-  const status = getStatusTone(metric.dashboardDomainAverage.averageSatisfactionScore);
-  const statusLabel = statusLabels[status.toneKey];
-  const locationStatsArray = [...data.locationStats];
-  const topLocation = locationStatsArray.sort((a, b) => b.satisfactionScore - a.satisfactionScore)[0] ?? { location: "N/A", satisfactionScore: 0, totalResponses: 0 };
-  const departmentStatsArray = [...data.departmentStats];
-  const highestRiskDepartment = departmentStatsArray.sort((a, b) => b.avgRisk - a.avgRisk)[0] ?? { department: "N/A", avgRisk: 0 };
-  const hasParticipantData = data.totalParticipants > 0;
-  const topLocationLabel = hasParticipantData && topLocation.totalResponses > 0 ? topLocation.location : "0";
-  const topLocationCaption = hasParticipantData
-    ? `${topLocation.satisfactionScore}% satisfaction with ${topLocation.totalResponses} responses.`
-    : "0 responses match the current filters.";
-  const highestRiskDepartmentDescription = hasParticipantData
-    ? `${highestRiskDepartment.department} is currently carrying the highest average risk score at ${highestRiskDepartment.avgRisk}%.`
-    : "0 responses match the current filters for this view.";
-
-  const baseStats = (
-    <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
-      <StatCard
-        title={config.statLabel}
-        value={`${metric.dashboardDomainAverage.averageSatisfactionScore}%`}
-        caption={`${statusLabel} status based on the current satisfaction score.`}
-        icon={<Sparkles className="h-4 w-4" />}
-        badge={statusLabel}
-        accentColor={theme.chartColors.primary}
+      <DashboardErrorState
+        title="Analytics Unavailable"
+        description="The dashboard could not be loaded at this time."
+        buttonLabel="Retry"
+        onRetry={refetch}
       />
-      <StatCard
-        title="Risk Score"
-        value={`${metric.dashboardDomainAverage.averageRiskScore}%`}
-        caption={`${metric.highRiskSurveyCount} high-risk responses currently flagged in this domain.`}
-        icon={<ShieldAlert className="h-4 w-4" />}
-        accentColor={theme.chartColors.danger}
-      />
-      <StatCard
-        title="Participants"
-        value={String(metric.participants)}
-        caption="Eligible responses currently contributing to this domain snapshot."
-        icon={<Users className="h-4 w-4" />}
-        accentColor={theme.chartColors.info}
-      />
-      <StatCard
-        title="Best Performing Location"
-        value={topLocationLabel}
-        caption={topLocationCaption}
-        icon={<Activity className="h-4 w-4" />}
-        accentColor={theme.chartColors.success}
-      />
-    </div>
-  );
-
-  if (pageId === "clinical-risk-index") {
-    const breakdownItems = [...data.ageStats]
-      .sort((a, b) => b.riskScore - a.riskScore)
-      .map((item) => ({
-        label: item.ageGroup,
-        value: item.riskScore,
-        caption: `${item.people} participants - ${item.satisfactionScore}% satisfaction`,
-      }));
-
-    return (
-      <div className="space-y-6">
-        {baseStats}
-        <DashboardFilters
-          key={filterKey}
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onApply={handleApplyFilters}
-          onReset={resetFilters}
-          isLoading={isLoading}
-        />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
-            <div className="rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total Participants</p>
-              <p className="mt-2 text-3xl font-semibold text-slate-900">{data.totalParticipants}</p>
-            </div>
-          </SectionCard>
-          <SectionCard title={config.secondaryTitle} description={config.secondaryDescription}>
-            <div className="rounded-[1.25rem] p-5" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-              <div className="flex items-end justify-between gap-3">
-                <div>
-                  <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Clinical Risk</p>
-                  <p className="mt-2 text-4xl font-semibold text-slate-900">
-                    {metric.dashboardDomainAverage.averageRiskScore}%
-                  </p>
-                </div>
-                <span className="tenant-outline-chip rounded-full px-3 py-1 text-xs font-medium shadow-sm">
-                  Higher is healthier
-                </span>
-              </div>
-              <div className="mt-5 h-2.5 rounded-full bg-slate-200">
-                <div
-                  className="h-2.5 rounded-full"
-                  style={{
-                    width: `${clampScore(metric.dashboardDomainAverage.averageRiskScore)}%`,
-                    backgroundColor: theme.primaryColor,
-                  }}
-                />
-              </div>
-            </div>
-          </SectionCard>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-[1.2fr_0.8fr]">
-          <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-            <MeterList items={breakdownItems} accentColor={theme.chartColors.danger} />
-          </SectionCard>
-          <DetailListCard
-            title={config.detailTitle}
-            items={[
-              ...config.detailItems.map((item) => ({
-                title: item.title,
-                description: item.description,
-                toneColor: toneColorMap[item.tone],
-              })),
-              {
-                title: "Most exposed department",
-                description: highestRiskDepartmentDescription,
-                toneColor: theme.chartColors.primary,
-              },
-            ]}
-          />
-        </div>
-        <StatusLegendCard />
-      </div>
     );
   }
 
-   if (pageId === "psychological-safety") {
-    const departmentItems = [...data.departmentStats]
-      .sort((a, b) => b.satisfactionScore - a.satisfactionScore)
-      .map((item) => ({
-        label: item.department,
-        value: item.satisfactionScore,
-        caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
-      }));
+  const hasInsufficientData = data.totalParticipants < 4;
+  const overviewChartData: OverviewChartDatum[] = subdomainMetrics.length
+    ? subdomainMetrics
+    : [
+        {
+          name: metric.domain,
+          participantCount: metric.participants,
+          highRiskCount: metric.highRiskSurveyCount,
+          riskScore: metric.dashboardDomainAverage.averageRiskScore,
+          satisfactionScore: metric.dashboardDomainAverage.averageSatisfactionScore,
+        },
+      ];
 
-    return (
-      <div className="space-y-6">
-        {baseStats}
-        <DashboardFilters
-          key={filterKey}
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onApply={handleApplyFilters}
-          onReset={resetFilters}
-          isLoading={isLoading}
-        />
-        <SectionCard title="Summary Statistics" description="Current participation for this domain view.">
-          <div className="rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-            <p className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">Total Participants</p>
-            <p className="mt-2 text-3xl font-semibold text-slate-900">{data.totalParticipants}</p>
-            <p className="mt-2 text-sm text-slate-500">Across all departments in the current dataset.</p>
-          </div>
-        </SectionCard>
-        <div className="grid gap-4 lg:grid-cols-1">
-          <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-            <MeterList items={departmentItems} accentColor={theme.chartColors.info} />
-          </SectionCard>
-          <SectionCard title="Fear / Candor Pressure — Unavailable">
-            <p className="text-sm text-slate-500">
-              Fear/candor pressure breakdowns will appear here once the backend exposes
-              subdomain-level psychological safety scores. No fabricated values are displayed.
-            </p>
-          </SectionCard>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <StatusLegendCard />
-          <DetailListCard
-            title={config.detailTitle}
-            items={config.detailItems.map((item) => ({
-              title: item.title,
-              description: item.description,
-              toneColor: toneColorMap[item.tone],
-            }))}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (pageId === "workload-efficiency") {
-    const workloadItems = [...data.departmentStats].map((item) => ({
-      label: item.department,
-      left: item.avgRisk,
-      right: item.satisfactionScore,
-      caption: `${item.totalResponses} responses`,
-    }));
-
-    return (
-      <div className="space-y-6">
-        {baseStats}
-        <DashboardFilters
-          key={filterKey}
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onApply={handleApplyFilters}
-          onReset={resetFilters}
-          isLoading={isLoading}
-        />
-        <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-          <div className="space-y-4">
-            {workloadItems.map((item) => (
-              <div key={item.label} className="rounded-[1.25rem] p-4" style={{ backgroundColor: theme.surfaceAccentStrong }}>
-                <div className="mb-3 flex items-center justify-between gap-3">
-                  <div>
-                    <p className="text-sm font-medium text-slate-800">{item.label}</p>
-                    <p className="text-xs text-slate-500">{item.caption}</p>
-                  </div>
-                  <p className="text-xs font-medium text-slate-500">
-                    Risk {item.left}% - Satisfaction {item.right}%
-                  </p>
-                </div>
-                <div className="space-y-2">
-                  <div>
-                    <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                      <span>Workload</span>
-                      <span>{item.left}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-200">
-                      <div
-                        className="h-2 rounded-full"
-                        style={{ width: `${clampScore(item.left)}%`, backgroundColor: theme.chartColors.warning }}
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <div className="mb-1 flex items-center justify-between text-xs text-slate-500">
-                      <span>Satisfaction</span>
-                      <span>{item.right}%</span>
-                    </div>
-                    <div className="h-2 rounded-full bg-slate-200">
-                      <div
-                        className="h-2 rounded-full"
-                        style={{ width: `${clampScore(item.right)}%`, backgroundColor: theme.chartColors.success }}
-                      />
-                    </div>
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        </SectionCard>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <StatusLegendCard />
-          <DetailListCard
-            title={config.detailTitle}
-            items={config.detailItems.map((item) => ({
-              title: item.title,
-              description: item.description,
-              toneColor: toneColorMap[item.tone],
-            }))}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  if (pageId === "leadership-alignment") {
-    const genderItems = data.genderStats.map((item) => ({
-      label: formatLabel(item.gender),
-      value: item.satisfactionScore,
-      caption: `${item.people} participants - ${item.riskScore}% risk`,
-    }));
-    const departmentItems = [...data.departmentStats]
-      .sort((a, b) => b.satisfactionScore - a.satisfactionScore)
-      .map((item) => ({
-        label: item.department,
-        value: item.satisfactionScore,
-        caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
-      }));
-
-    return (
-      <div className="space-y-6">
-        {baseStats}
-        <DashboardFilters
-          key={filterKey}
-          filters={filters}
-          onFilterChange={handleFilterChange}
-          onApply={handleApplyFilters}
-          onReset={resetFilters}
-          isLoading={isLoading}
-        />
-        <div className="grid gap-4 lg:grid-cols-2">
-          <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-            <MeterList items={genderItems} accentColor={theme.chartColors.secondary} />
-          </SectionCard>
-          <SectionCard title={config.secondaryTitle} description={config.secondaryDescription}>
-            <MeterList items={departmentItems} accentColor={theme.chartColors.primary} />
-          </SectionCard>
-        </div>
-        <div className="grid gap-4 lg:grid-cols-2">
-          <StatusLegendCard />
-          <DetailListCard
-            title={config.detailTitle}
-            items={config.detailItems.map((item) => ({
-              title: item.title,
-              description: item.description,
-              toneColor: toneColorMap[item.tone],
-            }))}
-          />
-        </div>
-      </div>
-    );
-  }
-
-  const streamItems = [...data.streamStats]
-    .filter((item) => item.totalResponses > 2)
+  const departmentRankingData = [...data.departmentStats]
+    .sort((a, b) => b.satisfactionScore - a.satisfactionScore)
     .map((item) => ({
-      label: item.stream,
-      value: item.satisfactionScore,
-      caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
+      department: item.department,
+      satisfactionScore: item.satisfactionScore,
+      riskScore: item.avgRisk,
     }));
-  const functionItems = [...data.functionStats]
-    .filter((item) => item.totalResponses > 2)
-    .map((item) => ({
-      label: item.function,
-      value: item.satisfactionScore,
-      caption: `${item.totalResponses} responses - ${item.avgRisk}% risk`,
-    }));
+
+  const genderComparisonData = data.genderStats.map((item) => ({
+    name: item.gender,
+    value: item.satisfactionScore,
+    isSatisfactionScore: true,
+  }));
+
+  const departmentComparisonData = data.departmentStats.map((item) => ({
+    name: item.department,
+    value: item.satisfactionScore,
+    isSatisfactionScore: true,
+  }));
+
+  const workloadVsSatisfactionData = data.departmentStats.map((item) => ({
+    name: item.department,
+    value1: item.avgRisk,
+    value2: item.satisfactionScore,
+  }));
+
+  const streamSummaryData = data.streamStats.filter((item) => item.totalResponses > 2);
+  const functionSummaryData = data.functionStats.filter((item) => item.totalResponses > 2);
+
+  const fearBlameChartData = overviewChartData.map((item) => ({
+    name: item.name,
+    value: item.satisfactionScore,
+  }));
+
+  const clinicalTopCards = overviewChartData.slice(0, 3);
+  const clinicalGaugeScore = Math.round(metric.dashboardDomainAverage.averageSatisfactionScore);
+  const gaugeCircumference = 251.2;
+  const gaugeOffset =
+    gaugeCircumference - (Math.max(0, Math.min(clinicalGaugeScore, 100)) / 100) * gaugeCircumference;
+
+  const scoreIconMap = {
+    "clinical-risk-index": <TrendingUp className="h-6 w-6 text-emerald-600" />,
+    "psychological-safety": <Shield className="h-6 w-6 text-blue-600" />,
+    "workload-efficiency": <TrendingUp className="h-6 w-6 text-orange-600" />,
+    "leadership-alignment": <Users className="h-6 w-6 text-purple-600" />,
+    "satisfaction-engagement": <Smile className="h-6 w-6 text-green-600" />,
+  } as const;
 
   return (
-    <div className="space-y-6">
-      {baseStats}
-      <DashboardFilters
-        key={filterKey}
-        filters={filters}
-        onFilterChange={handleFilterChange}
-        onApply={handleApplyFilters}
-        onReset={resetFilters}
-        isLoading={isLoading}
-      />
-      <SectionCard title={config.primaryTitle} description={config.primaryDescription}>
-        <p className="text-sm text-slate-500">
-          Subdomain satisfaction breakdowns will appear here once the backend exposes
-          per-subdomain satisfaction scores. No fabricated metric values are displayed.
-        </p>
-      </SectionCard>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <SectionCard title={config.secondaryTitle} description={config.secondaryDescription}>
-          <MeterList items={streamItems} accentColor={theme.chartColors.info} />
-        </SectionCard>
-        <SectionCard
-          title="Function summary (3 Or More Participants)"
-          description="Function-level view using the same participant threshold as the source dashboard."
-        >
-          <MeterList items={functionItems} accentColor={theme.chartColors.secondary} />
-        </SectionCard>
-      </div>
-      <div className="grid gap-4 lg:grid-cols-2">
-        <StatusLegendCard />
-        <DetailListCard
-          title={config.detailTitle}
-          items={config.detailItems.map((item) => ({
-            title: item.title,
-            description: item.description,
-            toneColor: toneColorMap[item.tone],
-          }))}
+    <div className="mx-auto px-4 py-8 md:px-8">
+      <div className="mb-8">
+        <div className="flex flex-col items-start justify-between gap-6 md:flex-row md:items-center">
+          <div>
+            <h1 className="text-xl font-bold text-slate-900 md:text-3xl">{config.title}</h1>
+            <p className="mt-2 text-slate-600 md:text-lg">{config.description}</p>
+          </div>
+        </div>
+
+        <DashboardFilters
+          key={filterKey}
+          filters={filters}
+          onFilterChange={handleFilterChange}
+          onApply={handleApplyFilters}
+          onReset={resetFilters}
+          isLoading={isLoading}
+          rollUpActive={snapshot?.anonymity.rollUpApplied ?? false}
         />
       </div>
+
+      {hasInsufficientData ? (
+        <Card className="border-amber-200 bg-amber-50 p-4">
+          <p className="text-sm text-amber-900">
+            Insufficient data to display results due to anonymity protection.
+          </p>
+        </Card>
+      ) : (
+        <div className="space-y-8">
+          {pageId === "clinical-risk-index" ? (
+            <>
+              <div className="grid grid-cols-1 gap-6 sm:grid-cols-2 lg:grid-cols-4">
+                <ScoreCard
+                  title="Overall Index"
+                  score={metric.dashboardDomainAverage.averageRiskScore}
+                  icon={scoreIconMap[pageId]}
+                  participantCount={data.totalParticipants}
+                />
+                {clinicalTopCards.map((item) => (
+                  <ScoreCard
+                    key={item.name}
+                    title={item.name}
+                    score={item.riskScore}
+                    icon={<TrendingUp className="h-6 w-6 text-rose-500" />}
+                    participantCount={item.participantCount}
+                  />
+                ))}
+              </div>
+
+              <section>
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Summary Statistics</h2>
+                <SimpleStatCard
+                  title="Total Participants"
+                  count={data.totalParticipants}
+                  accentClassName="bg-emerald-50 text-emerald-600"
+                  icon={<Smile className="h-5 w-5" />}
+                />
+              </section>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <BarChartComponent
+                  title="Domain Breakdown"
+                  description="Higher score = Lower clinical risk (better mental health)"
+                  data={overviewChartData.map((item) => ({
+                    name: item.name,
+                    value: item.satisfactionScore,
+                    isSatisfactionScore: true,
+                  }))}
+                />
+                <Card className="p-6">
+                  <h3 className="mb-4 font-semibold text-slate-900">Overall Index Gauge</h3>
+                  <div className="rounded-2xl border border-slate-200 p-6">
+                    <div className="flex justify-center">
+                      <svg width="240" height="140" viewBox="0 0 240 140" className="overflow-visible">
+                        <path
+                          d="M 40 120 A 80 80 0 0 1 200 120"
+                          fill="none"
+                          stroke="#e5e7eb"
+                          strokeWidth="18"
+                          strokeLinecap="round"
+                        />
+                        <path
+                          d="M 40 120 A 80 80 0 0 1 200 120"
+                          fill="none"
+                          stroke="#eab308"
+                          strokeWidth="18"
+                          strokeLinecap="round"
+                          strokeDasharray={gaugeCircumference}
+                          strokeDashoffset={gaugeOffset}
+                        />
+                      </svg>
+                    </div>
+                    <div className="-mt-2 text-center">
+                      <p className="text-5xl font-bold text-slate-900">{clinicalGaugeScore}%</p>
+                      <p className="mt-2 text-sm text-slate-500">{data.totalParticipants} participants</p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 py-4 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4">
+                {overviewChartData.map((item) => (
+                  <SubdomainCard
+                    key={item.name}
+                    name={item.name}
+                    score={item.riskScore}
+                    participantCount={item.participantCount}
+                  />
+                ))}
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <RiskLegend isClinical={true} />
+                <Card className="p-6">
+                  <h3 className="mb-4 font-semibold text-slate-900">Key Indicators</h3>
+                  <ul className="space-y-4 text-sm">
+                    <li>
+                      <p className="font-medium text-slate-900">Psychological Safety</p>
+                      <p className="text-slate-600">Freedom to speak up without fear</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Trust Refinement</p>
+                      <p className="text-slate-600">Building interpersonal trust and reliability</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Fear/Blame Intensity</p>
+                      <p className="text-slate-600">Absence of punitive culture</p>
+                    </li>
+                  </ul>
+                </Card>
+              </div>
+            </>
+          ) : null}
+
+          {pageId === "psychological-safety" ? (
+            <>
+              <Card className="border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <Shield className="h-4 w-4 text-blue-500" />
+                  <h3 className="text-sm font-semibold text-slate-900">Overall Psychological Safety</h3>
+                </div>
+                <p className="text-5xl font-bold text-slate-900">
+                  {metric.dashboardDomainAverage.averageSatisfactionScore.toFixed(2)}%
+                </p>
+                <p className="mt-2 text-sm font-semibold text-amber-700">Medium Risk</p>
+                <div className="mt-5 h-2 rounded-full bg-amber-100">
+                  <div
+                    className="h-2 rounded-full bg-amber-500"
+                    style={{ width: `${clampScore(metric.dashboardDomainAverage.averageSatisfactionScore)}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Based on {data.totalParticipants} participants</p>
+              </Card>
+
+              <section>
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Summary Statistics</h2>
+                <SimpleStatCard
+                  title="Total Participants"
+                  count={data.totalParticipants}
+                  accentClassName="bg-blue-50 text-blue-600"
+                  icon={<TrendingUp className="h-5 w-5" />}
+                />
+              </section>
+
+              <div className="grid grid-cols-1 gap-6 xl:grid-cols-[1.1fr_0.9fr]">
+                <Card className="p-6">
+                  <h3 className="text-foreground mb-2 font-semibold">Department Rankings</h3>
+                  <p className="text-muted-foreground mb-4 text-sm">
+                    Psychological safety scores ranked from highest to lowest
+                  </p>
+                  <div className="space-y-2">
+                    {departmentRankingData.map((item, index) => (
+                      <div
+                        key={item.department}
+                        className="flex items-center justify-between rounded-lg border border-slate-100 px-3 py-3"
+                      >
+                        <div className="flex min-w-0 items-center gap-3">
+                          <div className="flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-slate-100 text-xs font-semibold text-slate-600">
+                            {index + 1}
+                          </div>
+                          <p className="truncate text-sm font-medium text-slate-800">
+                            {item.department}
+                          </p>
+                        </div>
+                        <div className="text-right">
+                          <p className="text-sm font-bold text-slate-900">
+                            {item.satisfactionScore.toFixed(2)}%
+                          </p>
+                          <p className="text-[11px] text-slate-500">
+                            Risk: {item.riskScore?.toFixed(1)}%
+                          </p>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </Card>
+
+                <FearBlameChart
+                  title="Fear/Blame Intensity Breakdown"
+                  description="Percentage of employees showing indicators for each psychological safety domain"
+                  data={fearBlameChartData}
+                />
+              </div>
+
+              <div>
+                <RiskLegend />
+              </div>
+            </>
+          ) : null}
+
+          {pageId === "workload-efficiency" ? (
+            <>
+              <Card className="border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <TrendingUp className="h-4 w-4 text-orange-500" />
+                  <h3 className="text-sm font-semibold text-slate-900">Workload & Efficiency</h3>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-5xl font-bold text-slate-900">
+                    {metric.dashboardDomainAverage.averageSatisfactionScore.toFixed(2)}
+                  </p>
+                  <span className="text-2xl text-slate-500">%</span>
+                </div>
+                <p className="mt-2 text-sm font-semibold text-amber-700">Medium Risk</p>
+                <div className="mt-5 h-2 rounded-full bg-amber-100">
+                  <div
+                    className="h-2 rounded-full bg-amber-500"
+                    style={{ width: `${clampScore(metric.dashboardDomainAverage.averageSatisfactionScore)}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Based on {data.totalParticipants} participants</p>
+              </Card>
+
+              <ComparisonChart
+                title="Workload vs Satisfaction by Department"
+                data={workloadVsSatisfactionData}
+                series1Name="Workload & Efficiency"
+                series2Name="Satisfaction & Engagement"
+                description="Comparison showing the relationship between workload management and satisfaction levels across departments"
+              />
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <RiskLegend />
+                <Card className="p-6">
+                  <h3 className="mb-4 font-semibold text-slate-900">Satisfaction Dimensions</h3>
+                  <ul className="space-y-3 text-sm">
+                    <li>
+                      <p className="font-medium text-slate-900">Coworker Satisfaction</p>
+                      <p className="mt-1 text-slate-600">Quality of relationships and team dynamics</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Personal Satisfaction</p>
+                      <p className="mt-1 text-slate-600">Career development and personal fulfillment</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Workplace Satisfaction</p>
+                      <p className="mt-1 text-slate-600">Work environment quality and resources</p>
+                    </li>
+                  </ul>
+                </Card>
+              </div>
+            </>
+          ) : null}
+
+          {pageId === "leadership-alignment" ? (
+            <>
+              <Card className="border border-lime-200 bg-lime-50 p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <Users className="h-4 w-4 text-violet-500" />
+                  <h3 className="text-sm font-semibold text-slate-900">Leadership & Alignment Score</h3>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-5xl font-bold text-slate-900">
+                    {metric.dashboardDomainAverage.averageSatisfactionScore.toFixed(2)}
+                  </p>
+                  <span className="text-2xl text-slate-500">%</span>
+                </div>
+                <p className="mt-2 text-sm font-semibold text-lime-700">Low Risk</p>
+                <div className="mt-5 h-2 rounded-full bg-lime-100">
+                  <div
+                    className="h-2 rounded-full bg-lime-500"
+                    style={{ width: `${clampScore(metric.dashboardDomainAverage.averageSatisfactionScore)}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Based on {data.totalParticipants} participants</p>
+              </Card>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <BarChartComponent
+                  title="Leadership Score by Gender"
+                  description="Leadership perception comparison across gender groups"
+                  data={genderComparisonData}
+                />
+                <BarChartComponent
+                  title="Leadership Score by Department"
+                  description="Leadership effectiveness ranking across departments"
+                  data={departmentComparisonData}
+                />
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <RiskLegend />
+                <Card className="p-6">
+                  <h3 className="mb-4 font-semibold text-slate-900">Leadership Dimensions</h3>
+                  <ul className="space-y-3 text-sm">
+                    <li>
+                      <p className="font-medium text-slate-900">Vision & Strategy</p>
+                      <p className="mt-1 text-slate-600">Clear organizational direction and strategic alignment</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Trust & Credibility</p>
+                      <p className="mt-1 text-slate-600">Employee confidence in leadership decisions and integrity</p>
+                    </li>
+                    <li>
+                      <p className="font-medium text-slate-900">Engagement & Communication</p>
+                      <p className="mt-1 text-slate-600">Transparent and frequent organizational communication</p>
+                    </li>
+                  </ul>
+                </Card>
+              </div>
+            </>
+          ) : null}
+
+          {pageId === "satisfaction-engagement" ? (
+            <>
+              <Card className="border border-amber-200 bg-amber-50 p-6 shadow-sm">
+                <div className="mb-3 flex items-center gap-2">
+                  <Smile className="h-4 w-4 text-green-500" />
+                  <h3 className="text-sm font-semibold text-slate-900">Overall Satisfaction & Engagement</h3>
+                </div>
+                <div className="flex items-baseline gap-2">
+                  <p className="text-5xl font-bold text-slate-900">
+                    {metric.dashboardDomainAverage.averageSatisfactionScore.toFixed(2)}
+                  </p>
+                  <span className="text-2xl text-slate-500">%</span>
+                </div>
+                <p className="mt-2 text-sm font-semibold text-amber-700">Medium Risk</p>
+                <div className="mt-5 h-2 rounded-full bg-amber-100">
+                  <div
+                    className="h-2 rounded-full bg-amber-500"
+                    style={{ width: `${clampScore(metric.dashboardDomainAverage.averageSatisfactionScore)}%` }}
+                  />
+                </div>
+                <p className="mt-3 text-xs text-slate-500">Based on {data.totalParticipants} participants</p>
+              </Card>
+
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Satisfaction Subdomains</h2>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {overviewChartData.map((item) => (
+                    <SubdomainCard
+                      key={item.name}
+                      name={item.name}
+                      score={item.satisfactionScore}
+                      participantCount={item.participantCount}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Stream summary (3 Or More Participants)</h2>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {streamSummaryData.map((item) => (
+                    <StreamSummeryCard
+                      key={item.stream}
+                      data={{
+                        stream: item.stream,
+                        participants: item.totalResponses,
+                        riskScore: item.avgRisk,
+                        satisfiedScore: item.satisfactionScore,
+                        riskStatus: "",
+                        satisfactionStatus: "",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div>
+                <h2 className="mb-4 text-lg font-semibold text-slate-900">Function summary (3 Or More Participants)</h2>
+                <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+                  {functionSummaryData.map((item) => (
+                    <FunctionSummeryCard
+                      key={item.function}
+                      data={{
+                        function: item.function,
+                        participants: item.totalResponses,
+                        riskScore: item.avgRisk,
+                        satisfiedScore: item.satisfactionScore,
+                        riskStatus: "",
+                        satisfactionStatus: "",
+                      }}
+                    />
+                  ))}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-1 gap-6 lg:grid-cols-2">
+                <RiskLegend />
+                <Card className="p-6">
+                  <h3 className="mb-4 font-semibold text-slate-900">About This Index</h3>
+                  <div className="space-y-3 text-sm">
+                    <div>
+                      <p className="font-medium text-slate-900">What We Measure</p>
+                      <p className="mt-1 text-slate-600">
+                        The Satisfaction & Engagement Index reflects employee satisfaction across key dimensions: relationships with colleagues, personal fulfillment, and workplace environment satisfaction.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-medium text-slate-900">Why It Matters</p>
+                      <p className="mt-1 text-slate-600">
+                        High satisfaction correlates with better retention, productivity, and mental health outcomes.
+                      </p>
+                    </div>
+                  </div>
+                </Card>
+              </div>
+            </>
+          ) : null}
+        </div>
+      )}
     </div>
   );
 }

@@ -37,6 +37,7 @@ interface DashboardFiltersProps {
   onReset: () => void;
   isLoading?: boolean;
   showActiveFilters?: boolean;
+  rollUpActive?: boolean;
 }
 
 export const initialFilterState: FilterState = {
@@ -129,6 +130,7 @@ export default function DashboardFilters({
   onReset,
   isLoading = false,
   showActiveFilters = true,
+  rollUpActive = false,
 }: DashboardFiltersProps) {
   const theme = useTheme();
   const [mobileExpanded, setMobileExpanded] = useState(false);
@@ -228,8 +230,8 @@ export default function DashboardFilters({
       <button
         type="button"
         onClick={() => setMobileExpanded(!mobileExpanded)}
-        className="flex w-full items-center justify-between border-b border-slate-200 bg-slate-50 px-3 py-3 lg:hidden"
-        style={{ borderColor: theme.borderAccent, backgroundColor: theme.surfaceAccent }}
+        className="flex w-full items-center justify-between border-b px-3 py-3 lg:hidden"
+        style={{ borderColor: theme.borderAccent, backgroundColor: "#f8fafc" }}
       >
         <div className="flex items-center gap-2">
           <SlidersHorizontal className="h-4 w-4 text-slate-500" />
@@ -251,7 +253,7 @@ export default function DashboardFilters({
       </button>
 
       {mobileExpanded ? (
-        <div className="space-y-3 bg-gradient-to-b from-white to-slate-50 p-4 lg:hidden">
+        <div className="space-y-3 bg-white p-4 lg:hidden">
           <div className="grid grid-cols-1 gap-3">
             <FilterSelect
               value={filters.stream}
@@ -307,10 +309,15 @@ export default function DashboardFilters({
           </div>
 
           <div className="flex items-center justify-between border-t border-slate-100 pt-2">
-            <div className="flex items-center gap-2">
-              {isLoading ? (
-                <div className="inline-flex items-center gap-2 text-sm text-slate-500">
-                  <Loader2 className="h-4 w-4 animate-spin" />
+          <div className="flex items-center gap-2">
+            {rollUpActive ? (
+              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                Roll Up
+              </span>
+            ) : null}
+            {isLoading ? (
+              <div className="inline-flex items-center gap-2 text-sm text-slate-500">
+                <Loader2 className="h-4 w-4 animate-spin" />
                 </div>
               ) : null}
             </div>
@@ -340,7 +347,7 @@ export default function DashboardFilters({
         </div>
       ) : null}
 
-      <div className="hidden bg-gradient-to-r from-white to-slate-50 p-4 lg:block">
+      <div className="hidden bg-white p-4 lg:block">
         <div className="flex flex-wrap items-center gap-4">
           <div className="w-48 min-w-[140px]">
             <FilterSelect
@@ -407,6 +414,11 @@ export default function DashboardFilters({
           ) : null}
 
           <div className="ml-auto flex items-center gap-2">
+            {rollUpActive ? (
+              <span className="rounded-full bg-amber-100 px-2 py-1 text-xs font-medium text-amber-700">
+                Roll Up
+              </span>
+            ) : null}
             {isLoading ? (
               <div className="inline-flex items-center gap-2 px-3 py-2 text-sm text-slate-500">
                 <Loader2 className="h-4 w-4 animate-spin" />
@@ -417,7 +429,7 @@ export default function DashboardFilters({
                 <button
                   type="button"
                   onClick={onReset}
-                  className="inline-flex items-center gap-1.5 rounded-xl px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
+                  className="inline-flex items-center gap-1.5 rounded-md px-3 py-2 text-sm text-slate-500 transition-colors hover:bg-slate-100 hover:text-slate-700"
                 >
                   <RotateCcw className="h-3.5 w-3.5" />
                   Reset
@@ -425,7 +437,7 @@ export default function DashboardFilters({
                 <button
                   type="button"
                   onClick={onApply}
-                  className="tenant-button inline-flex items-center gap-1.5 rounded-xl px-4 py-2 text-sm font-medium shadow-sm transition-colors"
+                  className="inline-flex items-center gap-1.5 rounded-md bg-[#f58220] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#e0731a]"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Apply
@@ -437,7 +449,7 @@ export default function DashboardFilters({
       </div>
 
       {showActiveFilters && isFilterActive ? (
-        <div className="border-t border-slate-100 px-3 py-2">
+        <div className="border-t border-slate-100 bg-slate-50/70 px-3 py-2">
           <div className="flex flex-wrap items-center gap-1.5">
             {filters.stream ? (
               <FilterPill

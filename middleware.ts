@@ -17,6 +17,7 @@ import {
   isValidTenantSessionTokenFormat,
 } from "@/src/modules/tenant-auth/guards/route-protection";
 import { getTenantAuthCookieBaseOptions } from "@/src/modules/tenant-auth/cookies/options";
+import { isLocalTenantAuthBypassEnabled } from "@/src/modules/tenant-auth/utils/local-auth-bypass-config";
 
 export function middleware(request: NextRequest) {
   const pathname = request.nextUrl.pathname;
@@ -53,8 +54,17 @@ export function middleware(request: NextRequest) {
 
   const sessionCookie = request.cookies.get(TENANT_AUTH_CONFIG.sessionCookieName)?.value;
   const nextPath = `${pathname}${request.nextUrl.search}`;
+  const localAuthBypassEnabled = isLocalTenantAuthBypassEnabled(
+    request.headers.get("x-forwarded-host") ??
+      request.headers.get("host") ??
+      request.nextUrl.host,
+  );
 
-  if (isTenantProtectedPath(pathname) && !isValidTenantSessionTokenFormat(sessionCookie)) {
+  if (
+    isTenantProtectedPath(pathname) &&
+    !localAuthBypassEnabled &&
+    !isValidTenantSessionTokenFormat(sessionCookie)
+  ) {
     const response = NextResponse.redirect(
       new URL(
         buildTenantLoginRedirectPath(

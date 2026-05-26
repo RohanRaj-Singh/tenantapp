@@ -14,14 +14,23 @@ interface AppShellProps {
 
 export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
-  const isDashboardPage = pathname?.startsWith("/dashboard") ?? false;
+  const protectedSurfacePrefixes = [
+    "/dashboard",
+    "/analytics",
+    "/reports",
+    "/settings",
+    "/change-password",
+  ];
+  const isProtectedSurface =
+    pathname != null &&
+    protectedSurfacePrefixes.some((prefix) => pathname === prefix || pathname.startsWith(`${prefix}/`));
 
   return (
     <Suspense fallback={null}>
       <RuntimeConfigProvider>
         <LanguageProvider>
-          {!isDashboardPage && <Header />}
-          {!isDashboardPage && <LanguageTogglePill />}
+          {!isProtectedSurface && <Header />}
+          {!isProtectedSurface && <LanguageTogglePill />}
           <div className="min-h-screen">{children}</div>
         </LanguageProvider>
       </RuntimeConfigProvider>

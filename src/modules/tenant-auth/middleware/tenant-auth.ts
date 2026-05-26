@@ -3,12 +3,22 @@ import { TENANT_PASSWORD_CHANGE_PATH } from "../guards/route-protection";
 import { validateTenantSession } from "../services/auth-service";
 import { clearTenantAuthCookiesOnResponse, getTenantSessionCookie } from "../cookies";
 import { getCurrentTenantRequestScope } from "../utils/request-tenant";
+import { getLocalTenantBypassAuthContext } from "../utils/local-auth-bypass";
+import type { TenantSessionValidationResult } from "../contracts/types";
 
 export interface TenantApiAuthGuardOptions {
   allowPasswordChange?: boolean;
 }
 
-export async function getCurrentTenantAuthValidation() {
+export async function getCurrentTenantAuthValidation(): Promise<TenantSessionValidationResult> {
+  const bypassContext = await getLocalTenantBypassAuthContext();
+  if (bypassContext) {
+    return {
+      success: true,
+      context: bypassContext,
+    };
+  }
+
   const sessionToken = await getTenantSessionCookie();
   const scope = await getCurrentTenantRequestScope();
 
