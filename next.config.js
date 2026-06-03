@@ -17,6 +17,10 @@ const nextConfig = {
         source: '/assets/:path*',
         destination: `${superAdminAssetOrigin.replace(/\/$/, '')}/assets/:path*`,
       },
+      {
+        source: '/api/tenant-assets/:path*',
+        destination: `${superAdminAssetOrigin.replace(/\/$/, '')}/api/tenant-assets/:path*`,
+      },
     ];
   },
 };
