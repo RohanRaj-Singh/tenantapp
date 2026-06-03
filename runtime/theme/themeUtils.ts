@@ -12,6 +12,22 @@ export const DEFAULT_TENANT_NAME = "RemedyGCC";
 export const DEFAULT_FONT_FAMILY = "Inter, system-ui, sans-serif";
 export const DEFAULT_FAVICON = "/favicon.ico";
 
+/**
+ * True when the stored faviconUrl is the bundled tenantapp default and
+ * the tenant has a custom logo. In that case we drop the faviconUrl
+ * entirely so the runtime falls back to the logo, making the favicon
+ * track the logo automatically.
+ */
+function shouldDropFaviconForLogoFallback(
+  faviconUrl: string | undefined,
+): boolean {
+  if (!faviconUrl) {
+    return false;
+  }
+  const trimmed = faviconUrl.trim();
+  return trimmed === DEFAULT_FAVICON || trimmed === "/favicon.ico";
+}
+
 const DEFAULT_DARK_TEXT = "#0f172a";
 const DEFAULT_LIGHT_TEXT = "#ffffff";
 const DEFAULT_PAGE_BASE = "#f8fafc";
@@ -200,6 +216,10 @@ function getNormalizedBranding(
     MIN_ACCENT_CONTRAST,
   );
   const logo = config?.branding?.logo?.trim() || config?.branding?.logoUrl?.trim() || DEFAULT_LOGO;
+  const storedFaviconUrl = config?.branding?.faviconUrl?.trim();
+  const faviconUrl = shouldDropFaviconForLogoFallback(storedFaviconUrl)
+    ? logo || DEFAULT_FAVICON
+    : storedFaviconUrl || logo || DEFAULT_FAVICON;
   const tenantName = resolveLocalizedText(
     config?.tenant?.name?.trim() || DEFAULT_TENANT_NAME,
     config?.tenant?.nameTranslations,
@@ -211,7 +231,7 @@ function getNormalizedBranding(
     logo,
     logoUrl: logo,
     backgroundImage: config?.branding?.backgroundImage?.trim() || DEFAULT_BACKGROUND_IMAGE,
-    faviconUrl: config?.branding?.faviconUrl?.trim() || logo || DEFAULT_FAVICON,
+    faviconUrl,
     fontFamily: config?.branding?.fontFamily?.trim() || DEFAULT_FONT_FAMILY,
     primaryColor,
     secondaryColor,
