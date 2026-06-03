@@ -1,62 +1,92 @@
-import { promises as fs } from 'fs';
-import path from 'path';
 import { NextRequest, NextResponse } from 'next/server';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
-const ASSET_ROOT = path.resolve(
-  process.cwd(),
-  '..',
-  'remedygcc-admin',
-  'public',
-  'assets',
-);
+const SUPER_ADMIN_ASSET_ORIGIN =
+  process.env.NEXT_PUBLIC_SUPER_ADMIN_ASSET_ORIGIN ||
+  process.env.SUPER_ADMIN_ASSET_ORIGIN ||
+  process.env.INTERNAL_API_BASE_URL;
 
-const CONTENT_TYPES: Record<string, string> = {
-  '.png': 'image/png',
-  '.jpg': 'image/jpeg',
-  '.jpeg': 'image/jpeg',
-  '.webp': 'image/webp',
-  '.svg': 'image/svg+xml',
-};
+const PROXY_TIMEOUT_MS = 10_000;
 
-function resolveAssetPath(pathSegments: string[]): string {
-  const resolvedPath = path.resolve(ASSET_ROOT, ...pathSegments);
-
-  if (!resolvedPath.startsWith(ASSET_ROOT)) {
-    throw new Error('Invalid asset path.');
+function buildProxyUrl(pathSegments: string[]): string | null {
+  if (!SUPER_ADMIN_ASSET_ORIGIN) {
+    return null;
   }
-
-  return resolvedPath;
-}
-
-async function serveAsset(pathSegments: string[]) {
-  const assetPath = resolveAssetPath(pathSegments);
-  const fileBuffer = await fs.readFile(assetPath);
-  const extension = path.extname(assetPath).toLowerCase();
-  const contentType = CONTENT_TYPES[extension] ?? 'application/octet-stream';
-
-  return new NextResponse(fileBuffer, {
-    status: 200,
-    headers: {
-      'Content-Type': contentType,
-      'Cache-Control': 'public, max-age=3600, stale-while-revalidate=86400',
-    },
-  });
+  const base = SUPER_ADMIN_ASSET_ORIGIN.replace(/\/$/, '');
+  const path = pathSegments
+    .map((segment) => encodeURIComponent(segment))
+    .join('/');
+  // Always proxy through the admin's dynamic asset route, which reads
+  // tenant assets from disk on every request. The old behavior of
+  // reading from the tenantapp's local filesystem only worked in the
+  // monorepo layout and broke the moment admin and tenantapp were
+  // deployed to separate paths or servers.
+  return `${base}/api/tenant-assets/${path}`;
 }
 
 export async function GET(
   _request: NextRequest,
   context: { params: Promise<{ path: string[] }> },
 ) {
+  const { path: pathSegments = [] } = await context.params;
+
+  if (pathSegments.length === 0) {
+    return NextResponse.json({ error: 'Asset not found.' }, { status: 404 });
+  }
+
+  const proxyUrl = buildProxyUrl(pathSegments);
+  if (!proxyUrl) {
+    return NextResponse.json(
+      {
+        error:
+          'Tenant assets require NEXT_PUBLIC_SUPER_ADMIN_ASSET_ORIGIN (or INTERNAL_API_BASE_URL) to be set on the tenant runtime.',
+      },
+      { status: 500 },
+    );
+  }
+
   try {
-    const { path: pathSegments = [] } = await context.params;
-    return await serveAsset(pathSegments);
-  } catch (error) {
-    if ((error as NodeJS.ErrnoException).code === 'ENOENT') {
-      return NextResponse.json({ error: 'Asset not found.' }, { status: 404 });
+    const upstream = await fetch(proxyUrl, {
+      // Server-side fetch from the tenantapp to the admin. No need to
+      // forward cookies or auth headers — tenant assets are public.
+      cache: 'no-store',
+      signal: AbortSignal.timeout(PROXY_TIMEOUT_MS),
+    });
+
+    if (!upstream.ok) {
+      const fallback = upstream.status === 404
+        ? 'Asset not found.'
+        : `Upstream returned ${upstream.status}.`;
+      return NextResponse.json({ error: fallback }, { status: upstream.status });
     }
 
-    return NextResponse.json({ error: 'Unable to load asset.' }, { status: 400 });
+    const buffer = await upstream.arrayBuffer();
+    const contentType = upstream.headers.get('content-type') ?? 'application/octet-stream';
+    const contentLength = upstream.headers.get('content-length');
+    const lastModified = upstream.headers.get('last-modified');
+    const cacheControl =
+      upstream.headers.get('cache-control') ??
+      'public, max-age=300, s-maxage=3600';
+
+    const headers: Record<string, string> = {
+      'Content-Type': contentType,
+      'Cache-Control': cacheControl,
+    };
+    if (contentLength) {
+      headers['Content-Length'] = contentLength;
+    }
+    if (lastModified) {
+      headers['Last-Modified'] = lastModified;
+    }
+
+    return new NextResponse(buffer, { status: upstream.status, headers });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : 'Unknown proxy error.';
+    return NextResponse.json(
+      { error: `Unable to load asset: ${message}` },
+      { status: 502 },
+    );
   }
 }
