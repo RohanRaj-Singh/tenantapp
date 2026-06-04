@@ -437,7 +437,7 @@ export default function DashboardFilters({
                 <button
                   type="button"
                   onClick={onApply}
-                  className="inline-flex items-center gap-1.5 rounded-md bg-[#f58220] px-4 py-2 text-sm font-medium text-white shadow-sm transition-colors hover:bg-[#e0731a]"
+                  className="tenant-button inline-flex items-center gap-1.5 rounded-md px-4 py-2 text-sm font-medium shadow-sm"
                 >
                   <Check className="h-3.5 w-3.5" />
                   Apply

@@ -46,6 +46,13 @@ export interface ResolvedTenantTheme {
   fontFamily: string;
   primaryColor: string;
   primaryHoverColor: string;
+  /**
+   * "light" if the primary is dark (so readable text on it is white);
+   * "dark" if the primary is light (so readable text on it is dark).
+   * Used to pick sidebar / surface variants that look balanced against
+   * any brand color.
+   */
+  primaryMode: "light" | "dark";
   secondaryColor: string;
   secondaryHoverColor: string;
   onPrimaryColor: string;
@@ -320,6 +327,7 @@ export function getResolvedThemeForLanguage(
     fontFamily: normalizedBranding.fontFamily,
     primaryColor,
     primaryHoverColor,
+    primaryMode: onPrimaryColor === DEFAULT_DARK_TEXT ? "light" : "dark",
     secondaryColor,
     secondaryHoverColor,
     onPrimaryColor,

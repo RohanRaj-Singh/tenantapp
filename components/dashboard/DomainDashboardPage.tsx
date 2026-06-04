@@ -231,7 +231,9 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
   const scoreIconMap = {
     "clinical-risk-index": <TrendingUp className="h-6 w-6 text-emerald-600" />,
     "psychological-safety": <Shield className="h-6 w-6 text-blue-600" />,
-    "workload-efficiency": <TrendingUp className="h-6 w-6 text-orange-600" />,
+    "workload-efficiency": (
+      <TrendingUp className="h-6 w-6" style={{ color: theme.primaryColor }} />
+    ),
     "leadership-alignment": <Users className="h-6 w-6 text-purple-600" />,
     "satisfaction-engagement": <Smile className="h-6 w-6 text-green-600" />,
   } as const;
@@ -448,9 +450,12 @@ export default function DomainDashboardPage({ pageId }: { pageId: DomainPageKey 
 
           {pageId === "workload-efficiency" ? (
             <>
-              <Card className="border border-amber-200 bg-amber-50 p-6 shadow-sm">
+              <Card className="tenant-soft-panel border p-6 shadow-sm">
                 <div className="mb-3 flex items-center gap-2">
-                  <TrendingUp className="h-4 w-4 text-orange-500" />
+                  <TrendingUp
+                    className="h-4 w-4"
+                    style={{ color: theme.primaryColor }}
+                  />
                   <h3 className="text-sm font-semibold text-slate-900">Workload & Efficiency</h3>
                 </div>
                 <div className="flex items-baseline gap-2">

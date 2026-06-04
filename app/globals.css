@@ -60,6 +60,37 @@ body {
   background-size: cover, cover;
 }
 
+.tenant-main-canvas {
+  background-color: var(--tenant-primary-surface);
+  background-image: var(--tenant-dashboard-gradient);
+  background-position: center;
+  background-repeat: no-repeat;
+  background-size: cover;
+}
+
+.tenant-sidebar-link {
+  color: #475569; /* slate-600 — neutral, readable on white for any brand */
+  background-color: transparent;
+  transition:
+    background-color 0.15s ease,
+    color 0.15s ease;
+}
+
+.tenant-sidebar-link:hover {
+  background-color: var(--tenant-primary-surface);
+  color: var(--tenant-link);
+}
+
+.tenant-sidebar-link--active {
+  background-color: var(--tenant-primary);
+  color: var(--tenant-on-primary);
+}
+
+.tenant-sidebar-link--active:hover {
+  background-color: var(--tenant-primary-hover);
+  color: var(--tenant-on-primary);
+}
+
 .tenant-card-surface {
   background: var(--tenant-card-gradient);
 }

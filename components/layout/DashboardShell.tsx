@@ -1,7 +1,6 @@
 "use client";
 
 import type { ReactNode } from "react";
-import Image from "next/image";
 import { usePathname } from "next/navigation";
 import OrganizationSidebar from "@/components/layout/OrganizationSidebar";
 import { getDashboardMeta } from "@/lib/dashboardMockData";
@@ -33,14 +32,6 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
             style={{ borderColor: theme.borderAccent }}
           >
             <div className="flex min-w-0 items-center gap-3">
-              <Image
-                src={theme.logoUrl || "/images/orgLogo.png"}
-                alt={copy.header.logoAlt(theme.tenantName)}
-                width={150}
-                height={48}
-                unoptimized
-                className="h-10 w-auto object-contain"
-              />
               <div className="hidden min-w-0 md:block">
                 <p className="truncate text-sm font-semibold text-slate-900">
                   {activePageCopy.headerTitle ?? activePageCopy.name}
@@ -58,7 +49,7 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
             </div>
           </header>
 
-          <main className="flex-1 overflow-y-auto bg-[#f5822010] p-4 sm:p-6">
+          <main className="tenant-main-canvas flex-1 overflow-y-auto p-4 sm:p-6">
             <div className="mx-auto max-w-7xl">{children}</div>
           </main>
         </div>

@@ -1,6 +1,7 @@
 "use client";
 
 import { Card } from "@/components/ui/card";
+import { useTheme } from "@/runtime/theme/useTheme";
 import {
   Bar,
   BarChart,
@@ -31,6 +32,7 @@ export function ComparisonChart({
   series2Name,
   description,
 }: ComparisonChartProps) {
+  const theme = useTheme();
   return (
     <Card className="p-6">
       <h3 className="mb-2 font-semibold text-slate-900">{title}</h3>
@@ -42,8 +44,8 @@ export function ComparisonChart({
           <YAxis domain={[0, 100]} tick={{ fontSize: 12 }} />
           <Tooltip />
           <Legend />
-          <Bar dataKey="value1" fill="#f58220" name={series1Name} />
-          <Bar dataKey="value2" fill="#8b5cf6" name={series2Name} />
+          <Bar dataKey="value1" fill={theme.primaryColor} name={series1Name} />
+          <Bar dataKey="value2" fill={theme.secondaryColor} name={series2Name} />
         </BarChart>
       </ResponsiveContainer>
     </Card>

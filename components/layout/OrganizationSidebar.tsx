@@ -27,6 +27,7 @@ import {
   type TenantSurfacePageId,
 } from "@/lib/dashboardMockData";
 import { useLanguage } from "@/runtime/language/LanguageContext";
+import { useTheme } from "@/runtime/theme/useTheme";
 import type { TenantUserProfile } from "@/src/modules/tenant-auth/contracts/types";
 
 const iconMap: Record<TenantSurfacePageId, LucideIcon> = {
@@ -51,6 +52,7 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const pathname = usePathname();
   const { copy } = useLanguage();
+  const theme = useTheme();
 
   useEffect(() => {
     const handleResize = () => {
@@ -87,28 +89,32 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
       <div className="flex h-16 items-center justify-between border-b px-4">
         {sidebarOpen ? (
           <Link href="/dashboard" className="flex min-w-0 items-center gap-3">
-            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-[#f58220]">
+            <div className="relative flex h-10 w-10 items-center justify-center overflow-hidden">
               <Image
-                src="/images/logo.png"
+                src={theme.logoUrl}
                 alt={copy.dashboard.shell.organizationDashboard}
                 fill
                 sizes="40px"
-                className="object-contain p-1.5"
+                unoptimized
+                className="object-contain"
               />
             </div>
             <div className="min-w-0">
-              <p className="truncate text-sm font-semibold text-slate-900">Remedy</p>
+              <p className="truncate text-sm font-semibold text-slate-900">
+                {theme.tenantName}
+              </p>
               <p className="truncate text-xs text-slate-500">{user.username}</p>
             </div>
           </Link>
         ) : (
-          <div className="relative mx-auto flex h-10 w-10 items-center justify-center overflow-hidden rounded-lg bg-[#f58220]">
+          <div className="relative mx-auto flex h-10 w-10 items-center justify-center overflow-hidden">
             <Image
-              src="/images/logo.png"
-              alt="Remedy"
+              src={theme.logoUrl}
+              alt={theme.tenantName}
               fill
               sizes="40px"
-              className="object-contain p-1.5"
+              unoptimized
+              className="object-contain"
             />
           </div>
         )}
@@ -133,8 +139,8 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
                   className={cn(
                     "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
                     isActive
-                      ? "bg-[#f58220] font-medium text-white"
-                      : "text-slate-700 hover:bg-slate-100",
+                      ? "tenant-sidebar-link--active font-medium"
+                      : "tenant-sidebar-link",
                   )}
                   title={copy.dashboard.navigation[item.id].name}
                 >

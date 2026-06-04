@@ -27,7 +27,13 @@ export function RankingTable({ title, items, description }: RankingTableProps) {
             className="flex flex-col items-center justify-between rounded-lg bg-slate-50 p-3 transition-colors md:flex-row"
           >
             <div className="flex flex-1 flex-col items-center gap-4 md:flex-row">
-              <div className="flex h-8 w-8 items-center justify-center rounded-full bg-[#f58220] text-sm font-semibold text-white">
+              <div
+                className="flex h-8 w-8 items-center justify-center rounded-full text-sm font-semibold text-white"
+                style={{
+                  backgroundColor: 'var(--tenant-primary)',
+                  color: 'var(--tenant-on-primary)',
+                }}
+              >
                 {index === 0 ? <Award className="h-4 w-4" /> : index + 1}
               </div>
               <div>
