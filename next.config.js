@@ -14,8 +14,12 @@ const nextConfig = {
 
     return [
       {
-        source: '/assets/:path*',
-        destination: `${superAdminAssetOrigin.replace(/\/$/, '')}/assets/:path*`,
+        // Route legacy /assets/tenants/{slug}/{file} URLs (from old branding
+        // configs) to the admin app's dynamic asset route. The leading
+        // "tenants" segment is part of the legacy path scheme — the admin
+        // app's /api/tenant-assets/[slug]/[file] expects {slug} directly.
+        source: '/assets/tenants/:path*',
+        destination: `${superAdminAssetOrigin.replace(/\/$/, '')}/api/tenant-assets/:path*`,
       },
       {
         source: '/api/tenant-assets/:path*',

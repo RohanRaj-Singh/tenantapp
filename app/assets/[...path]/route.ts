@@ -15,9 +15,23 @@ function buildProxyUrl(pathSegments: string[]): string | null {
     return null;
   }
   const base = SUPER_ADMIN_ASSET_ORIGIN.replace(/\/$/, '');
-  const path = pathSegments
+
+  // Strip the leading "tenants" segment if present — the admin app's
+  // /api/tenant-assets/[slug]/[file] route maps directly to the tenant
+  // slug, without the legacy "tenants" prefix. Legacy URLs stored in
+  // MongoDB branding configs have the form:
+  //   /assets/tenants/{slug}/{file}
+  // which arrives here as pathSegments = ['tenants', slug, file].
+  // The correct proxy target is:
+  //   /api/tenant-assets/{slug}/{file}
+  const normalizedSegments = pathSegments[0] === 'tenants'
+    ? pathSegments.slice(1)
+    : pathSegments;
+
+  const path = normalizedSegments
     .map((segment) => encodeURIComponent(segment))
     .join('/');
+
   // Always proxy through the admin's dynamic asset route, which reads
   // tenant assets from disk on every request. The old behavior of
   // reading from the tenantapp's local filesystem only worked in the
