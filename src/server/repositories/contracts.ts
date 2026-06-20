@@ -2,7 +2,9 @@ import type { DashboardSnapshotFilters } from "@/runtime/contracts/aggregation";
 import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
+  EmployeeDocument,
   RawResponseDocument,
+  ReimbursementDocument,
   RuntimeConfigDocument,
   ScannerVersionDocument,
   TenantDocument,
@@ -73,6 +75,59 @@ export interface SnapshotsRepositoryContract {
   ): Promise<AggregationSnapshotDocument | null>;
 }
 
+export interface FindEmployeesOptions {
+  search?: string;
+  status?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindEmployeesResult {
+  employees: EmployeeDocument[];
+  total: number;
+}
+
+export interface EmployeesRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findByTenantId(
+    tenantId: string,
+    options?: FindEmployeesOptions,
+  ): Promise<FindEmployeesResult>;
+  findById(id: string): Promise<EmployeeDocument | null>;
+  insert(employee: EmployeeDocument): Promise<void>;
+  update(
+    id: string,
+    updates: Partial<EmployeeDocument>,
+  ): Promise<EmployeeDocument | null>;
+}
+
+export interface FindReimbursementsOptions {
+  search?: string;
+  status?: string;
+  employeeId?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindReimbursementsResult {
+  reimbursements: ReimbursementDocument[];
+  total: number;
+}
+
+export interface ReimbursementsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findByTenantId(
+    tenantId: string,
+    options?: FindReimbursementsOptions,
+  ): Promise<FindReimbursementsResult>;
+  findById(id: string): Promise<ReimbursementDocument | null>;
+  insert(reimbursement: ReimbursementDocument): Promise<void>;
+  update(
+    id: string,
+    updates: Partial<ReimbursementDocument>,
+  ): Promise<ReimbursementDocument | null>;
+}
+
 export interface RepositoryContext {
   tenants: TenantsRepositoryContract;
   runtimeConfigs: RuntimeConfigsRepositoryContract;
@@ -80,4 +135,6 @@ export interface RepositoryContext {
   attributeTemplateVersions: AttributeTemplateVersionsRepositoryContract;
   responses: ResponsesRepositoryContract;
   snapshots: SnapshotsRepositoryContract;
+  employees: EmployeesRepositoryContract;
+  reimbursements: ReimbursementsRepositoryContract;
 }

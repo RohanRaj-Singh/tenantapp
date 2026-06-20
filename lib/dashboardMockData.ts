@@ -116,7 +116,9 @@ export type TenantSurfacePageId =
   | "analytics"
   | "reports"
   | "settings"
-  | "change-password";
+  | "change-password"
+  | "employees"
+  | "reimbursements";
 
 export interface DashboardNavigationItem {
   id: TenantSurfacePageId;
@@ -200,6 +202,23 @@ export const tenantAccessNavigation: DashboardNavigationItem[] = [
   },
 ];
 
+export const featureNavigation: DashboardNavigationItem[] = [
+  {
+    id: "employees",
+    name: "Employees",
+    href: "/employees",
+    headerTitle: "Employee Management",
+    description: "Manage tenant employees.",
+  },
+  {
+    id: "reimbursements",
+    name: "Claims",
+    href: "/reimbursements",
+    headerTitle: "Claims Management",
+    description: "Review and manage employee claims.",
+  },
+];
+
 export const tenantAuxiliaryNavigation: DashboardNavigationItem[] = [
   {
     id: "change-password",
@@ -211,6 +230,7 @@ export const tenantAuxiliaryNavigation: DashboardNavigationItem[] = [
 
 export const tenantSurfaceNavigation: DashboardNavigationItem[] = [
   ...dashboardNavigation,
+  ...featureNavigation,
   ...tenantAccessNavigation,
   ...tenantAuxiliaryNavigation,
 ];

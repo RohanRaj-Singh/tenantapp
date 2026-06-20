@@ -4,14 +4,22 @@ import { getMemoryStore } from "@/src/server/db/memoryStore";
 import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
+  EmployeeDocument,
   RawResponseDocument,
+  ReimbursementDocument,
   RuntimeConfigDocument,
   ScannerVersionDocument,
   TenantDocument,
 } from "@/src/server/db/documents";
 import type {
   AttributeTemplateVersionsRepositoryContract,
+  EmployeesRepositoryContract,
+  FindEmployeesOptions,
+  FindEmployeesResult,
+  FindReimbursementsOptions,
+  FindReimbursementsResult,
   RawResponseAggregationQuery,
+  ReimbursementsRepositoryContract,
   RepositoryContext,
   ResponsesRepositoryContract,
   RuntimeConfigsRepositoryContract,
@@ -238,6 +246,130 @@ class MemorySnapshotsRepository implements SnapshotsRepositoryContract {
   }
 }
 
+class MemoryEmployeesRepository implements EmployeesRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findByTenantId(
+    tenantId: string,
+    options: FindEmployeesOptions = {},
+  ): Promise<FindEmployeesResult> {
+    const { search, status, skip = 0, limit = 20 } = options;
+
+    let filtered = Array.from(this.store.employees.values()).filter(
+      (emp) => emp.tenantId === tenantId,
+    );
+
+    if (status) {
+      filtered = filtered.filter((emp) => emp.status === status);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (emp) =>
+          emp.name.toLowerCase().includes(q) ||
+          emp.email.toLowerCase().includes(q) ||
+          emp.employeeCode.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => a.name.localeCompare(b.name));
+
+    const total = filtered.length;
+    const employees = filtered.slice(skip, skip + limit);
+
+    return { employees, total };
+  }
+
+  async findById(id: string): Promise<EmployeeDocument | null> {
+    return this.store.employees.get(id) ?? null;
+  }
+
+  async insert(employee: EmployeeDocument): Promise<void> {
+    this.store.employees.set(employee.employeeId, { ...employee });
+  }
+
+  async update(
+    id: string,
+    updates: Partial<EmployeeDocument>,
+  ): Promise<EmployeeDocument | null> {
+    const current = this.store.employees.get(id);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...updates };
+    this.store.employees.set(id, next);
+    return { ...next };
+  }
+}
+
+class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findByTenantId(
+    tenantId: string,
+    options: FindReimbursementsOptions = {},
+  ): Promise<FindReimbursementsResult> {
+    const { search, status, employeeId, skip = 0, limit = 20 } = options;
+
+    let filtered = Array.from(this.store.reimbursements.values()).filter(
+      (r) => r.tenantId === tenantId,
+    );
+
+    if (status) {
+      filtered = filtered.filter((r) => r.status === status);
+    }
+
+    if (employeeId) {
+      filtered = filtered.filter((r) => r.employeeId === employeeId);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (r) =>
+          r.description.toLowerCase().includes(q) ||
+          r.employeeName.toLowerCase().includes(q) ||
+          r.type.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = filtered.length;
+    const reimbursements = filtered.slice(skip, skip + limit);
+
+    return { reimbursements, total };
+  }
+
+  async findById(id: string): Promise<ReimbursementDocument | null> {
+    return this.store.reimbursements.get(id) ?? null;
+  }
+
+  async insert(reimbursement: ReimbursementDocument): Promise<void> {
+    this.store.reimbursements.set(reimbursement.reimbursementId, { ...reimbursement });
+  }
+
+  async update(
+    id: string,
+    updates: Partial<ReimbursementDocument>,
+  ): Promise<ReimbursementDocument | null> {
+    const current = this.store.reimbursements.get(id);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...updates };
+    this.store.reimbursements.set(id, next);
+    return { ...next };
+  }
+}
+
 let seeded = false;
 let memoryRepositoryContext: RepositoryContext | null = null;
 
@@ -265,6 +397,8 @@ export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
       attributeTemplateVersions: new MemoryAttributeTemplateVersionsRepository(),
       responses: new MemoryResponsesRepository(),
       snapshots: new MemorySnapshotsRepository(),
+      employees: new MemoryEmployeesRepository(),
+      reimbursements: new MemoryReimbursementsRepository(),
     };
   }
 

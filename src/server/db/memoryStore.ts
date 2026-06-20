@@ -1,7 +1,9 @@
 import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
+  EmployeeDocument,
   RawResponseDocument,
+  ReimbursementDocument,
   RuntimeConfigDocument,
   ScannerVersionDocument,
   TenantDocument,
@@ -17,6 +19,8 @@ interface MemoryStore {
   aggregationSnapshots: AggregationSnapshotDocument[];
   tenantDashboardUsers: Map<string, TenantUser>;
   tenantDashboardSessions: Map<string, TenantSession>;
+  employees: Map<string, EmployeeDocument>;
+  reimbursements: Map<string, ReimbursementDocument>;
 }
 
 declare global {
@@ -33,6 +37,8 @@ function createMemoryStore(): MemoryStore {
     aggregationSnapshots: [],
     tenantDashboardUsers: new Map<string, TenantUser>(),
     tenantDashboardSessions: new Map<string, TenantSession>(),
+    employees: new Map<string, EmployeeDocument>(),
+    reimbursements: new Map<string, ReimbursementDocument>(),
   };
 }
 

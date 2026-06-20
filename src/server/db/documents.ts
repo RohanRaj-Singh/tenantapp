@@ -26,6 +26,8 @@ export const COLLECTION_NAMES = {
   attributeTemplateVersions: "attributeTemplateVersions",
   rawResponses: "rawResponses",
   aggregationSnapshots: "aggregationSnapshots",
+  employees: "employees",
+  reimbursements: "reimbursements",
 } as const;
 
 export interface TimestampFields {
@@ -107,5 +109,29 @@ export interface RawResponseDocument extends TimestampFields {
 export interface AggregationSnapshotDocument
   extends DashboardAggregationSnapshot,
     TimestampFields {}
+
+export interface EmployeeDocument extends TimestampFields {
+  employeeId: string;
+  tenantId: string;
+  employeeCode: string;
+  name: string;
+  email: string;
+  status: "active" | "inactive";
+}
+
+export interface ReimbursementDocument extends TimestampFields {
+  reimbursementId: string;
+  tenantId: string;
+  employeeId: string;
+  employeeName: string;
+  type: string;
+  amount: number;
+  description: string;
+  receiptUrl?: string;
+  status: "pending" | "approved" | "rejected" | "frozen";
+  reviewedBy?: string;
+  reviewedAt?: string;
+  notes?: string;
+}
 
 export type DashboardFilterKey = keyof DashboardSnapshotFilters;

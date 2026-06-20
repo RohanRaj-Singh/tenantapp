@@ -2,7 +2,9 @@ import { getMongoDb } from "@/src/server/db/mongodb";
 import { ApiError } from "@/src/server/api/errors";
 import { AttributeTemplateVersionsRepository } from "./attributeTemplateVersionsRepository";
 import type { RepositoryContext } from "./contracts";
+import { EmployeesRepository } from "./employeesRepository";
 import { getMemoryRepositoryContext } from "./memoryRepositoryContext";
+import { ReimbursementsRepository } from "./reimbursementsRepository";
 import { ResponsesRepository } from "./responsesRepository";
 import { RuntimeConfigsRepository } from "./runtimeConfigsRepository";
 import { ScannerVersionsRepository } from "./scannerVersionsRepository";
@@ -23,6 +25,8 @@ async function getMongoRepositoryContext(): Promise<RepositoryContext> {
       attributeTemplateVersions: new AttributeTemplateVersionsRepository(db),
       responses: new ResponsesRepository(db),
       snapshots: new SnapshotsRepository(db),
+      employees: new EmployeesRepository(db),
+      reimbursements: new ReimbursementsRepository(db),
     };
   }
 
@@ -34,6 +38,8 @@ async function getMongoRepositoryContext(): Promise<RepositoryContext> {
       mongoRepositoryContext.attributeTemplateVersions.ensureIndexes(),
       mongoRepositoryContext.responses.ensureIndexes(),
       mongoRepositoryContext.snapshots.ensureIndexes(),
+      mongoRepositoryContext.employees.ensureIndexes(),
+      mongoRepositoryContext.reimbursements.ensureIndexes(),
     ]).then(() => undefined);
   }
 

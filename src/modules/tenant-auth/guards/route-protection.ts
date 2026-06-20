@@ -15,6 +15,8 @@ const TENANT_PROTECTED_PAGE_PREFIXES = [
   "/reports",
   "/settings",
   TENANT_PASSWORD_CHANGE_PATH,
+  "/employees",
+  "/reimbursements",
 ] as const;
 
 export function isTenantProtectedPath(pathname: string): boolean {

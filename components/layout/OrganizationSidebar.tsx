@@ -8,6 +8,7 @@ import {
   Flame,
   Mail,
   Menu,
+  Receipt,
   Settings,
   Shield,
   ShieldCheck,
@@ -18,14 +19,15 @@ import {
   X,
   type LucideIcon,
 } from "lucide-react";
-import Link from "next/link";
-import { usePathname } from "next/navigation";
-import { cn } from "@/lib/utils";
 import {
   dashboardNavigation,
+  featureNavigation,
   tenantAccessNavigation,
   type TenantSurfacePageId,
 } from "@/lib/dashboardMockData";
+import Link from "next/link";
+import { usePathname } from "next/navigation";
+import { cn } from "@/lib/utils";
 import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 import type { TenantUserProfile } from "@/src/modules/tenant-auth/contracts/types";
@@ -42,6 +44,8 @@ const iconMap: Record<TenantSurfacePageId, LucideIcon> = {
   reports: FileText,
   settings: Settings,
   "change-password": Shield,
+  employees: Users,
+  reimbursements: Receipt,
 };
 
 interface OrganizationSidebarProps {
@@ -72,6 +76,10 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
     {
       title: null,
       items: dashboardNavigation,
+    },
+    {
+      title: null,
+      items: featureNavigation,
     },
     {
       title: null,
