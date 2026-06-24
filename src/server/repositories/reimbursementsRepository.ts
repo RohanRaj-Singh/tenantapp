@@ -111,7 +111,7 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
 
   async incrementCounter(counterId: string): Promise<number> {
     const result = await this.db.collection(COLLECTION_NAMES.counters).findOneAndUpdate(
-      { _id: counterId },
+      { _id: counterId as any },
       { $inc: { value: 1 } },
       { returnDocument: "after", upsert: true },
     );
