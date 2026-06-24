@@ -69,7 +69,7 @@ async function main() {
     for (const doc of toUpdate) {
       // Atomically claim the next sequence number — same pattern used by the live app.
       const result = await counters.findOneAndUpdate(
-        { _id: COUNTER_ID },
+        { _id: COUNTER_ID as any },
         { $inc: { value: 1 } },
         { returnDocument: "after", upsert: true },
       );
