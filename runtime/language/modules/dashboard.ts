@@ -61,11 +61,11 @@ export const dashboardCopy: Record<AppLanguage, DashboardCopySection> = {
           headerTitle: "Employee Management",
           description: "Manage tenant employees.",
         },
-        reimbursements: {
-          name: "Claims",
-          headerTitle: "Claims Management",
-          description: "Review and manage employee claims.",
-        },
+reimbursements: {
+           name: "Claims",
+           headerTitle: "Claims Management",
+           description: "Review and manage employee claims.",
+         },
       },
       shell: {
         badge: "Organization Dashboard",
@@ -484,12 +484,12 @@ export const dashboardCopy: Record<AppLanguage, DashboardCopySection> = {
           headerTitle: "إدارة الموظفين",
           description: "إدارة موظفي المستأجر.",
         },
-        reimbursements: {
-          name: "المطالبات",
-          headerTitle: "إدارة المطالبات",
-          description: "مراجعة وإدارة مطالبات الموظفين.",
-        },
-      },
+reimbursements: {
+           name: "المطالبات",
+           headerTitle: "إدارة المطالبات",
+           description: "مراجعة وإدارة مطالبات الموظفين.",
+         },
+       },
       shell: {
         badge: "لوحة المؤسسة",
         organizationDashboard: "لوحة المؤسسة",

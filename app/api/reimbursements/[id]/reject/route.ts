@@ -7,7 +7,7 @@ export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
 export async function POST(
-  _request: Request,
+  request: Request,
   context: { params: Promise<{ id: string }> },
 ) {
   const auth = await requireTenantApiAuth();
@@ -17,10 +17,12 @@ export async function POST(
 
   try {
     const { id } = await context.params;
+    const body = await request.json().catch(() => ({}));
     const reimbursement = await rejectReimbursement(
       auth.context.tenant.tenantId,
       id,
       auth.context.user.id,
+      body.notes,
     );
 
     if (!reimbursement) {

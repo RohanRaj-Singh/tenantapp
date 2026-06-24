@@ -1,5 +1,4 @@
 import { redirect } from "next/navigation";
-import { clearTenantAuthCookies } from "@/src/modules/tenant-auth/cookies";
 import { TenantLoginPage } from "@/src/modules/tenant-auth/components/TenantLoginPage";
 import {
   TENANT_PASSWORD_CHANGE_PATH,
@@ -45,7 +44,15 @@ export default async function LoginPage({ searchParams }: LoginPageProps) {
   }
 
   if (validation.clearCookies) {
-    await clearTenantAuthCookies();
+    const cleanupParams = new URLSearchParams();
+    if (requestedNextPath && requestedNextPath !== "/dashboard") {
+      cleanupParams.set("next", requestedNextPath);
+    }
+    if (providedMessage) {
+      cleanupParams.set("message", providedMessage);
+    }
+    const qs = cleanupParams.toString();
+    redirect(`/api/clear-session${qs ? `?${qs}` : ""}`);
   }
 
   const requestScope = await getCurrentTenantRequestScope();

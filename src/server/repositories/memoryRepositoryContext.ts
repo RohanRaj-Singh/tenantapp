@@ -4,6 +4,7 @@ import { getMemoryStore } from "@/src/server/db/memoryStore";
 import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
+  AuditEventDocument,
   EmployeeDocument,
   RawResponseDocument,
   ReimbursementDocument,
@@ -73,6 +74,12 @@ class MemoryTenantsRepository implements TenantsRepositoryContract {
 
   async findByTenantId(tenantId: string) {
     return this.store.tenants.get(tenantId) ?? null;
+  }
+
+  async findAllActive() {
+    return Array.from(this.store.tenants.values()).filter(
+      (tenant) => tenant.status === "active",
+    );
   }
 
   async upsertSeed(document: TenantDocument) {
@@ -287,6 +294,17 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     return this.store.employees.get(id) ?? null;
   }
 
+  async findByEmployeeCode(
+    tenantId: string,
+    employeeCode: string,
+  ): Promise<EmployeeDocument | null> {
+    return (
+      Array.from(this.store.employees.values()).find(
+        (e) => e.tenantId === tenantId && e.employeeCode === employeeCode,
+      ) ?? null
+    );
+  }
+
   async insert(employee: EmployeeDocument): Promise<void> {
     this.store.employees.set(employee.employeeId, { ...employee });
   }
@@ -304,6 +322,10 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     this.store.employees.set(id, next);
     return { ...next };
   }
+
+  async insertAuditEvent(event: AuditEventDocument): Promise<void> {
+    this.store.auditEvents.push(event);
+  }
 }
 
 class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract {
@@ -315,11 +337,19 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
     tenantId: string,
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, skip = 0, limit = 20 } = options;
+    return this.findAll({ ...options, tenantId });
+  }
 
-    let filtered = Array.from(this.store.reimbursements.values()).filter(
-      (r) => r.tenantId === tenantId,
-    );
+  async findAll(
+    options: FindReimbursementsOptions = {},
+  ): Promise<FindReimbursementsResult> {
+    const { search, status, employeeId, tenantId, skip = 0, limit = 200 } = options;
+
+    let filtered = Array.from(this.store.reimbursements.values());
+
+    if (tenantId) {
+      filtered = filtered.filter((r) => r.tenantId === tenantId);
+    }
 
     if (status) {
       filtered = filtered.filter((r) => r.status === status);
@@ -333,6 +363,7 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
       const q = search.toLowerCase();
       filtered = filtered.filter(
         (r) =>
+          (r.claimNumber ?? "").toLowerCase().includes(q) ||
           r.description.toLowerCase().includes(q) ||
           r.employeeName.toLowerCase().includes(q) ||
           r.type.toLowerCase().includes(q),
@@ -368,10 +399,21 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
     this.store.reimbursements.set(id, next);
     return { ...next };
   }
+
+  async incrementCounter(counterId: string): Promise<number> {
+    const current = this.store.counters.get(counterId) ?? 0;
+    const next = current + 1;
+    this.store.counters.set(counterId, next);
+    return next;
+  }
 }
 
 let seeded = false;
 let memoryRepositoryContext: RepositoryContext | null = null;
+
+/** Deterministic scrypt hash for PIN "1234" (salt:hash) for development seeding. */
+const DEV_PIN_HASH =
+  "00000000000000000000000000000000:bc3b80e6561d9800a24104f89200e0b49cb0179656a03695dfe3f228abee1158d60811508e571300ee105767166c7606b4912a9329993a82745800ed0da61e22";
 
 function ensureSeededMemoryStore(context: RepositoryContext) {
   if (seeded) {
@@ -384,6 +426,73 @@ function ensureSeededMemoryStore(context: RepositoryContext) {
     void context.scannerVersions.upsertSeed(bundle.scannerVersion);
     void context.attributeTemplateVersions.upsertSeed(bundle.attributeTemplateVersion);
   });
+
+  // ── Seed marketing-site tenants for employee-access dev ───────────────────
+
+  const nowIso = new Date("2026-06-20T00:00:00.000Z").toISOString();
+  const employees = getMemoryStore().employees;
+
+  const seedTenants = [
+    { tenantId: "tenant-omantel", slug: "omantel", name: "Omantel" },
+    { tenantId: "tenant-oq", slug: "oq", name: "OQ" },
+    { tenantId: "tenant-pdo", slug: "pdo", name: "PDO" },
+  ];
+
+  for (const t of seedTenants) {
+    void context.tenants.upsertSeed({
+      tenantId: t.tenantId,
+      name: t.name,
+      slug: t.slug,
+      status: "active" as const,
+      plan: "pro" as const,
+      branding: {},
+      brandingVersionId: `brand_${t.slug}_dev`,
+      activeRuntimeConfigId: `runtime_${t.slug}_dev`,
+      activeRuntimeConfigPublishedAt: nowIso,
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
+  }
+
+  // ── Seed employees for marketing-site tenants ────────────────────────────
+
+  const seedEmployees: Record<string, Array<{ code: string; name: string; email: string }>> = {
+    "tenant-omantel": [
+      { code: "OMT-001", name: "Ahmed Al Balushi", email: "ahmed.balushi@omantel.om" },
+      { code: "OMT-002", name: "Mariam Al Siyabi", email: "mariam.siyabi@omantel.om" },
+    ],
+    "tenant-oq": [
+      { code: "OQ-001", name: "Said Al Hinai", email: "said.hinai@oq.com" },
+      { code: "OQ-002", name: "Noor Al Zadjali", email: "noor.zadjali@oq.com" },
+    ],
+    "tenant-pdo": [
+      { code: "PDO-001", name: "Fatma Al Riyami", email: "fatma.riyami@pdo.co.om" },
+      { code: "PDO-002", name: "Hamed Al Busaidi", email: "hamed.busaidi@pdo.co.om" },
+    ],
+  };
+
+  for (const [tenantId, employeeList] of Object.entries(seedEmployees)) {
+    for (const emp of employeeList) {
+      const employeeId = `emp_${tenantId}_${emp.code.toLowerCase()}`;
+      if (!employees.has(employeeId)) {
+        const doc: EmployeeDocument = {
+          employeeId,
+          tenantId,
+          employeeCode: emp.code,
+          name: emp.name,
+          email: emp.email,
+          status: "active",
+          pinHash: DEV_PIN_HASH,
+          failedLoginAttempts: 0,
+          lockedUntil: null,
+          lastAccessAt: null,
+          createdAt: nowIso,
+          updatedAt: nowIso,
+        };
+        employees.set(employeeId, doc);
+      }
+    }
+  }
 
   seeded = true;
 }

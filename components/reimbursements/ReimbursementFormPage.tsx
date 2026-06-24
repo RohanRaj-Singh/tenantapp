@@ -1,8 +1,9 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw, Upload, X, FileText } from "lucide-react";
+import { clinicsData, type Clinic } from "@/data/clinics";
 
 interface Employee {
   employeeId: string;
@@ -19,6 +20,8 @@ interface FormData {
   employeeId: string;
   employeeName: string;
   type: string;
+  clinicId: string;
+  clinicName: string;
   amount: string;
   description: string;
   receiptUrl: string;
@@ -27,23 +30,20 @@ interface FormData {
 const INITIAL_FORM: FormData = {
   employeeId: "",
   employeeName: "",
-  type: "medical",
+  type: "reimbursement",
+  clinicId: "",
+  clinicName: "",
   amount: "",
   description: "",
   receiptUrl: "",
 };
 
-const CLAIM_TYPES = [
-  { value: "medical", label: "Medical" },
-  { value: "travel", label: "Travel" },
-  { value: "education", label: "Education" },
-  { value: "transport", label: "Transport" },
-  { value: "housing", label: "Housing" },
-  { value: "other", label: "Other" },
-];
+const ACCEPTED_FILE_TYPES = ".pdf,.jpg,.jpeg,.png";
+const MAX_FILE_SIZE = 10 * 1024 * 1024; // 10 MB
 
 export default function ReimbursementFormPage({ mode: _mode }: ReimbursementFormPageProps) {
   const router = useRouter();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
   const [employees, setEmployees] = useState<Employee[]>([]);
@@ -51,6 +51,11 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // File upload state
+  const [file, setFile] = useState<File | null>(null);
+  const [filePreview, setFilePreview] = useState<string | null>(null);
+  const [uploading, setUploading] = useState(false);
 
   // Fetch employee list for dropdown
   const fetchEmployees = useCallback(async () => {
@@ -78,8 +83,8 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
       errors.employeeId = "Please select an employee.";
     }
 
-    if (!form.type) {
-      errors.type = "Claim type is required.";
+    if (!form.clinicId) {
+      errors.clinicId = "Please select a clinic.";
     }
 
     if (!form.amount || parseFloat(form.amount) <= 0) {
@@ -94,6 +99,54 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
     return Object.keys(errors).length === 0;
   }
 
+  // ── File handling ──────────────────────────────────────────────────────────
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const selected = e.target.files?.[0];
+    if (!selected) {
+      setFile(null);
+      setFilePreview(null);
+      return;
+    }
+
+    const ext = "." + selected.name.split(".").pop()?.toLowerCase();
+    const allowed = [".pdf", ".jpg", ".jpeg", ".png"];
+    if (!allowed.includes(ext)) {
+      setFieldErrors((prev) => ({ ...prev, receipt: "Receipt must be a PDF, JPG, or PNG file." }));
+      setFile(null);
+      setFilePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    if (selected.size > MAX_FILE_SIZE) {
+      setFieldErrors((prev) => ({ ...prev, receipt: "Receipt file must be 10 MB or smaller." }));
+      setFile(null);
+      setFilePreview(null);
+      if (fileInputRef.current) fileInputRef.current.value = "";
+      return;
+    }
+
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.receipt;
+      return next;
+    });
+    setFile(selected);
+
+    if (ext === ".jpg" || ext === ".jpeg" || ext === ".png") {
+      setFilePreview(URL.createObjectURL(selected));
+    } else {
+      setFilePreview(null);
+    }
+  }, []);
+
+  const removeFile = useCallback(() => {
+    setFile(null);
+    setFilePreview(null);
+    if (fileInputRef.current) fileInputRef.current.value = "";
+  }, []);
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
 
@@ -103,6 +156,29 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
     setError(null);
 
     try {
+      // 1. Upload file if selected
+      let receiptUrl = form.receiptUrl;
+      if (file) {
+        setUploading(true);
+        const uploadFormData = new FormData();
+        uploadFormData.append("file", file);
+
+        const uploadRes = await fetch("/api/employee/receipts", {
+          method: "POST",
+          body: uploadFormData,
+        });
+
+        if (!uploadRes.ok) {
+          const uploadErr = await uploadRes.json().catch(() => ({ error: "Upload failed." }));
+          throw new Error(uploadErr.error || "Failed to upload receipt.");
+        }
+
+        const uploadData = await uploadRes.json();
+        receiptUrl = uploadData.url;
+        setUploading(false);
+      }
+
+      // 2. Create claim
       const selectedEmployee = employees.find(
         (emp) => emp.employeeId === form.employeeId,
       );
@@ -114,9 +190,11 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           employeeId: form.employeeId,
           employeeName: selectedEmployee?.name ?? form.employeeName,
           type: form.type,
+          clinicId: form.clinicId.trim() || undefined,
+          clinicName: clinicsData.find((c) => c.slug === form.clinicId)?.name ?? "",
           amount: parseFloat(form.amount),
           description: form.description.trim(),
-          receiptUrl: form.receiptUrl.trim() || undefined,
+          receiptUrl: receiptUrl || undefined,
         }),
       });
 
@@ -132,6 +210,7 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
       );
     } finally {
       setSaving(false);
+      setUploading(false);
     }
   }
 
@@ -144,7 +223,6 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
     });
   }
 
-  // Auto-fill employee name when employee is selected
   function handleEmployeeChange(value: string) {
     const selected = employees.find((emp) => emp.employeeId === value);
     setForm((prev) => ({
@@ -155,6 +233,20 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
     setFieldErrors((prev) => {
       const next = { ...prev };
       delete next.employeeId;
+      return next;
+    });
+  }
+
+  function handleClinicChange(value: string) {
+    const selected = clinicsData.find((c) => c.slug === value);
+    setForm((prev) => ({
+      ...prev,
+      clinicId: value,
+      clinicName: selected?.name ?? "",
+    }));
+    setFieldErrors((prev) => {
+      const next = { ...prev };
+      delete next.clinicId;
       return next;
     });
   }
@@ -246,32 +338,33 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           )}
         </div>
 
-        {/* Claim Type */}
+        {/* Clinic Select */}
         <div>
           <label
-            htmlFor="type"
+            htmlFor="clinic"
             className="mb-1.5 block text-sm font-medium text-slate-700"
           >
-            Claim Type <span className="text-red-500">*</span>
+            Clinic <span className="text-red-500">*</span>
           </label>
           <select
-            id="type"
-            value={form.type}
-            onChange={(e) => updateField("type", e.target.value)}
+            id="clinic"
+            value={form.clinicId}
+            onChange={(e) => handleClinicChange(e.target.value)}
             className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 ${
-              fieldErrors.type
+              fieldErrors.clinicId
                 ? "border-red-300"
                 : "border-slate-200 focus:border-blue-300"
             }`}
           >
-            {CLAIM_TYPES.map((t) => (
-              <option key={t.value} value={t.value}>
-                {t.label}
+            <option value="">Select a clinic...</option>
+            {clinicsData.map((clinic) => (
+              <option key={clinic.id} value={clinic.slug}>
+                {clinic.name}
               </option>
             ))}
           </select>
-          {fieldErrors.type && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.type}</p>
+          {fieldErrors.clinicId && (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.clinicId}</p>
           )}
         </div>
 
@@ -285,17 +378,17 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           </label>
           <div className="relative">
             <span className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-sm text-slate-400">
-              $
+              OMR
             </span>
             <input
               id="amount"
               type="number"
-              step="0.01"
-              min="0.01"
+              step="0.001"
+              min="0.001"
               value={form.amount}
               onChange={(e) => updateField("amount", e.target.value)}
-              placeholder="0.00"
-              className={`w-full rounded-lg border bg-white py-2.5 pl-8 pr-3 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
+              placeholder="0.000"
+              className={`w-full rounded-lg border bg-white py-2.5 pl-14 pr-3 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
                 fieldErrors.amount
                   ? "border-red-300"
                   : "border-slate-200 focus:border-blue-300"
@@ -328,28 +421,84 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
             }`}
           />
           {fieldErrors.description && (
-            <p className="mt-1 text-xs text-red-600">
-              {fieldErrors.description}
-            </p>
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.description}</p>
           )}
         </div>
 
-        {/* Receipt URL (optional) */}
+        {/* Receipt Upload */}
         <div>
-          <label
-            htmlFor="receiptUrl"
-            className="mb-1.5 block text-sm font-medium text-slate-700"
-          >
-            Receipt URL (optional)
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Receipt
           </label>
-          <input
-            id="receiptUrl"
-            type="url"
-            value={form.receiptUrl}
-            onChange={(e) => updateField("receiptUrl", e.target.value)}
-            placeholder="https://..."
-            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
-          />
+          <div
+            className={`border-2 border-dashed rounded-lg p-6 text-center cursor-pointer transition-colors ${
+              fieldErrors.receipt
+                ? "border-red-300 bg-red-50"
+                : file
+                  ? "border-green-300 bg-green-50"
+                  : "border-slate-200 hover:border-blue-300 hover:bg-slate-50"
+            }`}
+            onClick={() => fileInputRef.current?.click()}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" || e.key === " ") fileInputRef.current?.click();
+            }}
+            role="button"
+            tabIndex={0}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept={ACCEPTED_FILE_TYPES}
+              onChange={handleFileChange}
+              disabled={saving}
+              className="hidden"
+            />
+
+            {file && filePreview ? (
+              <div className="space-y-2 relative">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeFile(); }}
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-100 hover:bg-red-200 text-red-600 rounded-full flex items-center justify-center transition-colors"
+                  aria-label="Remove receipt"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <img src={filePreview} alt="Receipt preview" className="max-h-40 mx-auto rounded" />
+                <p className="text-sm text-slate-700 font-medium">{file.name}</p>
+              </div>
+            ) : file ? (
+              <div className="space-y-2 relative">
+                <button
+                  type="button"
+                  onClick={(e) => { e.stopPropagation(); removeFile(); }}
+                  className="absolute -top-2 -right-2 w-6 h-6 bg-red-100 hover:bg-red-200 text-red-600 rounded-full flex items-center justify-center transition-colors"
+                  aria-label="Remove receipt"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+                <FileText className="w-10 h-10 text-blue-600 mx-auto" />
+                <p className="text-sm text-slate-700 font-medium">{file.name}</p>
+                <p className="text-xs text-slate-400">{(file.size / 1024 / 1024).toFixed(2)} MB</p>
+              </div>
+            ) : (
+              <div className="space-y-2">
+                <Upload className="w-10 h-10 text-slate-300 mx-auto" />
+                <p className="text-sm text-slate-500">
+                  <span className="font-medium text-blue-600">Click to upload</span> or drag and drop
+                </p>
+                <p className="text-xs text-slate-400">PDF, JPG, or PNG (max 10 MB)</p>
+              </div>
+            )}
+          </div>
+          {fieldErrors.receipt && (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.receipt}</p>
+          )}
+          {form.receiptUrl && !file && (
+            <p className="mt-1 text-xs text-slate-400">
+              Current receipt URL: {form.receiptUrl}
+            </p>
+          )}
         </div>
 
         {/* Actions */}
@@ -363,13 +512,13 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           </button>
           <button
             type="submit"
-            disabled={saving}
+            disabled={saving || uploading}
             className="inline-flex items-center gap-2 rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-60"
           >
-            {saving ? (
+            {saving || uploading ? (
               <>
                 <RefreshCw className="h-4 w-4 animate-spin" />
-                Saving...
+                {uploading ? "Uploading..." : "Saving..."}
               </>
             ) : (
               "Create Claim"

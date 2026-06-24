@@ -9,6 +9,8 @@ import {
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+const MAX_CLAIM_AMOUNT = 999_999_999;
+
 export async function GET(request: Request) {
   const auth = await requireTenantApiAuth();
   if (!auth.success) {
@@ -44,6 +46,20 @@ export async function POST(request: Request) {
     if (!body.employeeId || !body.type || body.amount == null || !body.description) {
       return NextResponse.json(
         { error: "employeeId, type, amount, and description are required." },
+        { status: 400 },
+      );
+    }
+
+    if (typeof body.amount !== "number" || body.amount <= 0) {
+      return NextResponse.json(
+        { error: "Amount must be greater than 0." },
+        { status: 400 },
+      );
+    }
+
+    if (body.amount > MAX_CLAIM_AMOUNT) {
+      return NextResponse.json(
+        { error: `Amount must be ${MAX_CLAIM_AMOUNT.toLocaleString()} or less.` },
         { status: 400 },
       );
     }

@@ -1,6 +1,6 @@
 import type { Db, Filter, ObjectId } from "mongodb";
 import { randomUUID } from "crypto";
-import { COLLECTION_NAMES, type EmployeeDocument } from "@/src/server/db/documents";
+import { COLLECTION_NAMES, type AuditEventDocument, type EmployeeDocument } from "@/src/server/db/documents";
 import type {
   EmployeesRepositoryContract,
   FindEmployeesOptions,
@@ -80,6 +80,17 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
     return record as EmployeeDocument | null;
   }
 
+  async findByEmployeeCode(
+    tenantId: string,
+    employeeCode: string,
+  ): Promise<EmployeeDocument | null> {
+    const record = await this.collection().findOne(
+      { tenantId, employeeCode },
+      { projection: { _id: 0 } },
+    );
+    return record as EmployeeDocument | null;
+  }
+
   async insert(employee: EmployeeDocument): Promise<void> {
     await this.collection().insertOne(employee as EmployeeRecord);
   }
@@ -97,5 +108,11 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
       },
     );
     return record as EmployeeDocument | null;
+  }
+
+  async insertAuditEvent(event: AuditEventDocument): Promise<void> {
+    await this.db
+      .collection<AuditEventDocument>(COLLECTION_NAMES.auditEvents)
+      .insertOne(event);
   }
 }

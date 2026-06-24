@@ -13,13 +13,16 @@ import {
 
 interface Reimbursement {
   reimbursementId: string;
+  claimNumber?: string;
   employeeId: string;
   employeeName: string;
   type: string;
   amount: number;
   description: string;
   receiptUrl?: string;
-  status: "pending" | "approved" | "rejected" | "frozen";
+  clinicId?: string;
+  clinicName?: string;
+  status: "pending" | "approved" | "rejected" | "frozen" | "paid";
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
@@ -39,6 +42,7 @@ const STATUS_COLORS: Record<string, string> = {
   approved: "bg-emerald-100 text-emerald-700",
   rejected: "bg-red-100 text-red-700",
   frozen: "bg-blue-100 text-blue-700",
+  paid: "bg-purple-100 text-purple-700",
 };
 
 export default function ReimbursementListPage() {
@@ -152,6 +156,7 @@ export default function ReimbursementListPage() {
           <option value="approved">Approved</option>
           <option value="rejected">Rejected</option>
           <option value="frozen">Frozen</option>
+          <option value="paid">Paid</option>
         </select>
       </div>
 
@@ -224,11 +229,14 @@ export default function ReimbursementListPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
+                  <th className="hidden px-4 py-3 font-semibold text-slate-600 sm:table-cell">
+                    Claim #
+                  </th>
                   <th className="px-4 py-3 font-semibold text-slate-600">
                     Employee
                   </th>
                   <th className="hidden px-4 py-3 font-semibold text-slate-600 md:table-cell">
-                    Type
+                    Clinic
                   </th>
                   <th className="px-4 py-3 font-semibold text-slate-600">
                     Amount
@@ -250,11 +258,14 @@ export default function ReimbursementListPage() {
                     key={r.reimbursementId}
                     className="border-b border-slate-50 transition hover:bg-slate-50"
                   >
+                    <td className="hidden px-4 py-3 font-mono text-xs text-slate-500 sm:table-cell">
+                      {r.claimNumber ?? "—"}
+                    </td>
                     <td className="px-4 py-3 font-medium text-slate-900">
                       {r.employeeName}
                     </td>
-                    <td className="hidden px-4 py-3 capitalize text-slate-700 md:table-cell">
-                      {r.type}
+                    <td className="hidden px-4 py-3 text-slate-700 md:table-cell">
+                      {r.clinicName || "—"}
                     </td>
                     <td className="px-4 py-3 font-medium text-slate-900">
                       {formatCurrency(r.amount)}

@@ -32,8 +32,18 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
     tenantId: string,
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, skip = 0, limit = 20 } = options;
-    const filter: Filter<ReimbursementRecord> = { tenantId };
+    return this.findAll({ ...options, tenantId });
+  }
+
+  async findAll(
+    options: FindReimbursementsOptions = {},
+  ): Promise<FindReimbursementsResult> {
+    const { search, status, employeeId, tenantId, skip = 0, limit = 200 } = options;
+    const filter: Filter<ReimbursementRecord> = {};
+
+    if (tenantId) {
+      filter.tenantId = tenantId;
+    }
 
     if (status) {
       filter.status = status as ReimbursementDocument["status"];
@@ -47,6 +57,7 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
       const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       const regex = new RegExp(escaped, "i");
       filter.$or = [
+        { claimNumber: { $regex: regex } },
         { description: { $regex: regex } },
         { employeeName: { $regex: regex } },
         { type: { $regex: regex } },
@@ -96,5 +107,14 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
       },
     );
     return record as ReimbursementDocument | null;
+  }
+
+  async incrementCounter(counterId: string): Promise<number> {
+    const result = await this.db.collection(COLLECTION_NAMES.counters).findOneAndUpdate(
+      { _id: counterId },
+      { $inc: { value: 1 } },
+      { returnDocument: "after", upsert: true },
+    );
+    return (result?.value as number) ?? 1;
   }
 }

@@ -46,3 +46,12 @@ coverage/
 # Dev logs
 dev-*.err.log
 dev-*.out.log
+
+# Dev credentials (not for production)
+DEV_CREDENTIALS.md
+
+# Receipt uploads (test data, not for version control)
+public/uploads/
+
+# Claude Code
+.claude/

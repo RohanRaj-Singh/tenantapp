@@ -2,9 +2,10 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/src/server/api/responses";
 import { requireTenantApiAuth } from "@/src/modules/tenant-auth/middleware/tenant-auth";
 import {
-  getEmployee,
+  getEmployeeAccessDetail,
   updateEmployee,
   disableEmployee,
+  hashPin,
 } from "@/src/server/services/employeeService";
 
 export const runtime = "nodejs";
@@ -21,7 +22,7 @@ export async function GET(
 
   try {
     const { id } = await context.params;
-    const employee = await getEmployee(auth.context.tenant.tenantId, id);
+    const employee = await getEmployeeAccessDetail(id, auth.context.tenant.tenantId);
 
     if (!employee) {
       return NextResponse.json(
@@ -49,18 +50,35 @@ export async function PUT(
     const { id } = await context.params;
     const body = await request.json();
 
-    const employee = await updateEmployee(auth.context.tenant.tenantId, id, {
+    const updateData: {
+      employeeCode?: string;
+      name?: string;
+      email?: string;
+      status?: "active" | "inactive";
+    } = {
       employeeCode: body.employeeCode,
       name: body.name,
       email: body.email,
       status: body.status,
-    });
+    };
+
+    const employee = await updateEmployee(auth.context.tenant.tenantId, id, updateData);
 
     if (!employee) {
       return NextResponse.json(
         { error: "Employee not found." },
         { status: 404 },
       );
+    }
+
+    // If a new PIN was provided, hash and update it directly via repository
+    if (body.pin && typeof body.pin === "string" && body.pin.trim().length >= 4) {
+      const { getRepositoryContext } = await import("@/src/server/repositories/context");
+      const repositories = await getRepositoryContext();
+      await repositories.employees.update(id, {
+        pinHash: hashPin(body.pin.trim()),
+        updatedAt: new Date().toISOString(),
+      });
     }
 
     return NextResponse.json(employee, { status: 200 });

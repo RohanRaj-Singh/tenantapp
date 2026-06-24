@@ -40,9 +40,9 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    if (!body.name || !body.email || !body.employeeCode) {
+    if (!body.name || !body.email || !body.employeeCode || !body.pin) {
       return NextResponse.json(
-        { error: "name, email, and employeeCode are required." },
+        { error: "name, email, employeeCode, and pin are required." },
         { status: 400 },
       );
     }
@@ -51,6 +51,7 @@ export async function POST(request: Request) {
       employeeCode: body.employeeCode,
       name: body.name,
       email: body.email,
+      pin: body.pin,
     });
 
     return NextResponse.json(employee, { status: 201 });

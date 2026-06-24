@@ -13,6 +13,7 @@ interface FormData {
   employeeCode: string;
   name: string;
   email: string;
+  pin: string;
   status: "active" | "inactive";
 }
 
@@ -20,6 +21,7 @@ const INITIAL_FORM: FormData = {
   employeeCode: "",
   name: "",
   email: "",
+  pin: "",
   status: "active",
 };
 
@@ -50,6 +52,7 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
         employeeCode: employee.employeeCode,
         name: employee.name,
         email: employee.email,
+        pin: "", // never populate PIN from server
         status: employee.status,
       });
     } catch (err) {
@@ -82,6 +85,14 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
       errors.email = "Please enter a valid email address.";
     }
 
+    if (!isEdit && !form.pin.trim()) {
+      errors.pin = "PIN is required.";
+    } else if (form.pin.trim() && form.pin.trim().length < 4) {
+      errors.pin = "PIN must be at least 4 characters.";
+    } else if (form.pin.trim() && form.pin.trim().length > 20) {
+      errors.pin = "PIN must be 20 characters or less.";
+    }
+
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }
@@ -98,10 +109,24 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
       const url = isEdit ? `/api/employees/${employeeId}` : "/api/employees";
       const method = isEdit ? "PUT" : "POST";
 
+      const body: Record<string, unknown> = {
+        employeeCode: form.employeeCode,
+        name: form.name,
+        email: form.email,
+        status: form.status,
+      };
+
+      if (!isEdit) {
+        body.pin = form.pin;
+      } else if (form.pin.trim()) {
+        // On edit, only send pin if the admin entered a new one
+        body.pin = form.pin;
+      }
+
       const res = await fetch(url, {
         method,
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(form),
+        body: JSON.stringify(body),
       });
 
       if (!res.ok) {
@@ -245,6 +270,33 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
           />
           {fieldErrors.email && (
             <p className="mt-1 text-xs text-red-600">{fieldErrors.email}</p>
+          )}
+        </div>
+
+        {/* PIN */}
+        <div>
+          <label htmlFor="pin" className="mb-1.5 block text-sm font-medium text-slate-700">
+            {isEdit ? "New PIN (leave blank to keep current)" : "PIN"} {!isEdit && <span className="text-red-500">*</span>}
+          </label>
+          <input
+            id="pin"
+            type="password"
+            value={form.pin}
+            onChange={(e) => updateField("pin", e.target.value)}
+            placeholder={isEdit ? "Enter new PIN to reset" : "e.g. 1234"}
+            maxLength={20}
+            autoComplete="new-password"
+            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
+              fieldErrors.pin ? "border-red-300" : "border-slate-200 focus:border-blue-300"
+            }`}
+          />
+          {fieldErrors.pin && (
+            <p className="mt-1 text-xs text-red-600">{fieldErrors.pin}</p>
+          )}
+          {!isEdit && (
+            <p className="mt-1 text-xs text-slate-400">
+              Used by employees to log into the self-service portal.
+            </p>
           )}
         </div>
 

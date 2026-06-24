@@ -30,6 +30,12 @@ export class TenantsRepository implements TenantsRepositoryContract {
     return this.collection().findOne({ tenantId });
   }
 
+  async findAllActive() {
+    return this.collection()
+      .find({ status: "active" })
+      .toArray();
+  }
+
   async upsertSeed(document: TenantDocument) {
     await this.collection().replaceOne({ tenantId: document.tenantId }, document, {
       upsert: true,

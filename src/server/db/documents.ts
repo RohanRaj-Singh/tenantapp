@@ -28,6 +28,8 @@ export const COLLECTION_NAMES = {
   aggregationSnapshots: "aggregationSnapshots",
   employees: "employees",
   reimbursements: "reimbursements",
+  auditEvents: "auditEvents",
+  counters: "counters",
 } as const;
 
 export interface TimestampFields {
@@ -117,10 +119,28 @@ export interface EmployeeDocument extends TimestampFields {
   name: string;
   email: string;
   status: "active" | "inactive";
+  /** scrypt salt:hash string for PIN-based employee authentication */
+  pinHash: string;
+  /** Number of consecutive failed login attempts (resets on success) */
+  failedLoginAttempts: number;
+  /** ISO-8601 timestamp until which the employee is locked out, or null */
+  lockedUntil: string | null;
+  /** ISO-8601 timestamp of the last successful login, or null */
+  lastAccessAt: string | null;
+}
+
+export interface ClaimHistoryEntry {
+  status: "pending" | "approved" | "rejected" | "frozen" | "paid";
+  actorId: string;
+  actorRole: "employee" | "tenantAdmin";
+  note?: string;
+  timestamp: string;
 }
 
 export interface ReimbursementDocument extends TimestampFields {
   reimbursementId: string;
+  /** Human-readable claim reference number (e.g. RMB-2026-000001) */
+  claimNumber?: string;
   tenantId: string;
   employeeId: string;
   employeeName: string;
@@ -128,10 +148,29 @@ export interface ReimbursementDocument extends TimestampFields {
   amount: number;
   description: string;
   receiptUrl?: string;
-  status: "pending" | "approved" | "rejected" | "frozen";
+  /** SHA-256 hex digest of the uploaded receipt file */
+  receiptHash?: string;
+  /** Date of service in YYYY-MM-DD format */
+  serviceDate?: string;
+  /** Clinic slug/identifier the claim relates to */
+  clinicId?: string;
+  /** Denormalized clinic name for display */
+  clinicName?: string;
+  status: "pending" | "approved" | "rejected" | "frozen" | "paid";
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
+  /** Append-only audit trail */
+  history?: ClaimHistoryEntry[];
+}
+
+export interface AuditEventDocument {
+  eventId: string;
+  action: "pin_reset" | "employee_unlock";
+  employeeId: string;
+  tenantId: string;
+  performedBy?: string;
+  timestamp: string;
 }
 
 export type DashboardFilterKey = keyof DashboardSnapshotFilters;

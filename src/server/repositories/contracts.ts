@@ -2,6 +2,7 @@ import type { DashboardSnapshotFilters } from "@/runtime/contracts/aggregation";
 import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
+  AuditEventDocument,
   EmployeeDocument,
   RawResponseDocument,
   ReimbursementDocument,
@@ -36,6 +37,7 @@ export interface TenantsRepositoryContract {
   ensureIndexes(): Promise<void>;
   findBySlug(slug: string): Promise<TenantDocument | null>;
   findByTenantId(tenantId: string): Promise<TenantDocument | null>;
+  findAllActive(): Promise<TenantDocument[]>;
   upsertSeed(document: TenantDocument): Promise<void>;
 }
 
@@ -94,17 +96,23 @@ export interface EmployeesRepositoryContract {
     options?: FindEmployeesOptions,
   ): Promise<FindEmployeesResult>;
   findById(id: string): Promise<EmployeeDocument | null>;
+  findByEmployeeCode(
+    tenantId: string,
+    employeeCode: string,
+  ): Promise<EmployeeDocument | null>;
   insert(employee: EmployeeDocument): Promise<void>;
   update(
     id: string,
     updates: Partial<EmployeeDocument>,
   ): Promise<EmployeeDocument | null>;
+  insertAuditEvent(event: AuditEventDocument): Promise<void>;
 }
 
 export interface FindReimbursementsOptions {
   search?: string;
   status?: string;
   employeeId?: string;
+  tenantId?: string;
   skip?: number;
   limit?: number;
 }
@@ -120,12 +128,14 @@ export interface ReimbursementsRepositoryContract {
     tenantId: string,
     options?: FindReimbursementsOptions,
   ): Promise<FindReimbursementsResult>;
+  findAll(options?: FindReimbursementsOptions): Promise<FindReimbursementsResult>;
   findById(id: string): Promise<ReimbursementDocument | null>;
   insert(reimbursement: ReimbursementDocument): Promise<void>;
   update(
     id: string,
     updates: Partial<ReimbursementDocument>,
   ): Promise<ReimbursementDocument | null>;
+  incrementCounter(counterId: string): Promise<number>;
 }
 
 export interface RepositoryContext {

@@ -10,6 +10,9 @@ interface Employee {
   name: string;
   email: string;
   status: "active" | "inactive";
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
+  lastAccessAt: string | null;
   createdAt: string;
   updatedAt: string;
 }
@@ -20,6 +23,21 @@ interface ListResponse {
 }
 
 const PAGE_SIZE = 20;
+
+function isEmployeeLocked(lockedUntil: string | null): boolean {
+  if (!lockedUntil) return false;
+  return new Date(lockedUntil) > new Date();
+}
+
+function formatDate(dateStr: string) {
+  return new Date(dateStr).toLocaleDateString("en-US", {
+    year: "numeric",
+    month: "short",
+    day: "numeric",
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+}
 
 export default function EmployeeListPage() {
   const router = useRouter();
@@ -194,6 +212,10 @@ export default function EmployeeListPage() {
                     Email
                   </th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
+                  <th className="hidden px-4 py-3 font-semibold text-slate-600 md:table-cell">
+                    Last Access
+                  </th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Access State</th>
                   <th className="px-4 py-3 text-right font-semibold text-slate-600">Actions</th>
                 </tr>
               </thead>
@@ -221,13 +243,29 @@ export default function EmployeeListPage() {
                         {employee.status}
                       </span>
                     </td>
+                    <td className="hidden px-4 py-3 text-slate-600 md:table-cell">
+                      {employee.lastAccessAt
+                        ? formatDate(employee.lastAccessAt)
+                        : <span className="text-slate-400">Never</span>}
+                    </td>
+                    <td className="px-4 py-3">
+                      <span
+                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          isEmployeeLocked(employee.lockedUntil)
+                            ? "bg-red-100 text-red-700"
+                            : "bg-emerald-100 text-emerald-700"
+                        }`}
+                      >
+                        {isEmployeeLocked(employee.lockedUntil) ? "Locked" : "Active"}
+                      </span>
+                    </td>
                     <td className="px-4 py-3 text-right">
                       <button
                         type="button"
-                        onClick={() => router.push(`/employees/${employee.employeeId}/edit`)}
+                        onClick={() => router.push(`/employees/${employee.employeeId}`)}
                         className="text-sm font-medium text-blue-600 transition hover:text-blue-800"
                       >
-                        Edit
+                        View
                       </button>
                     </td>
                   </tr>
