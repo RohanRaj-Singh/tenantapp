@@ -5,7 +5,7 @@ import {
   getEmployeeAccessDetail,
   updateEmployee,
   disableEmployee,
-  hashPin,
+  updateEmployeePin,
 } from "@/src/server/services/employeeService";
 
 export const runtime = "nodejs";
@@ -71,14 +71,16 @@ export async function PUT(
       );
     }
 
-    // If a new PIN was provided, hash and update it directly via repository
-    if (body.pin && typeof body.pin === "string" && body.pin.trim().length >= 4) {
-      const { getRepositoryContext } = await import("@/src/server/repositories/context");
-      const repositories = await getRepositoryContext();
-      await repositories.employees.update(id, {
-        pinHash: hashPin(body.pin.trim()),
-        updatedAt: new Date().toISOString(),
-      });
+    // If a new PIN was provided, update through the centralized PIN service
+    if (body.pin && typeof body.pin === "string") {
+      try {
+        await updateEmployeePin(auth.context.tenant.tenantId, id, body.pin, auth.context.user.id, "pin_reset");
+      } catch (err) {
+        if (err instanceof Error && (err.message.startsWith("PIN must be") || err.message === "PIN is required.")) {
+          return NextResponse.json({ error: err.message }, { status: 400 });
+        }
+        throw err;
+      }
     }
 
     return NextResponse.json(employee, { status: 200 });

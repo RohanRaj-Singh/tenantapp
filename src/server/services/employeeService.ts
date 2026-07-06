@@ -14,6 +14,9 @@ export const MAX_LOGIN_ATTEMPTS = 5;
 /** Duration (in minutes) an employee is locked out after exceeding max attempts. */
 export const LOCKOUT_MINUTES = 15;
 
+/** Minimum PIN length after trimming whitespace. */
+export const MIN_PIN_LENGTH = 4;
+
 // ── PIN Hashing (Node.js crypto.scryptSync) ──────────────────────────────────
 
 /** Length (bytes) of the scrypt derived key. */
@@ -22,11 +25,49 @@ const KEY_LENGTH = 64;
 /**
  * Hash a plain-text PIN using scrypt with a random salt.
  * Returns `salt:hash` (both hex) for storage.
+ *
+ * Note: callers should trim whitespace via normalizePin() before hashing.
  */
 export function hashPin(pin: string): string {
   const salt = randomBytes(16).toString("hex");
   const hash = scryptSync(pin, salt, KEY_LENGTH).toString("hex");
   return `${salt}:${hash}`;
+}
+
+// ── PIN Validation & Normalization ───────────────────────────────────────────
+
+/**
+ * Normalize a PIN by trimming whitespace.
+ * Used consistently across create, update, reset, and login flows.
+ */
+export function normalizePin(pin: string): string {
+  return pin.trim();
+}
+
+/**
+ * Validate a PIN meets server-side requirements.
+ * Returns an error message string, or null if valid.
+ */
+export function validatePin(pin: unknown): string | null {
+  if (typeof pin !== "string" || !pin) {
+    return "PIN is required.";
+  }
+  const trimmed = pin.trim();
+  if (trimmed.length < MIN_PIN_LENGTH) {
+    return `PIN must be at least ${MIN_PIN_LENGTH} characters.`;
+  }
+  return null;
+}
+
+// ── Authentication Logging ───────────────────────────────────────────────────
+
+function logAuthEvent(event: string, detail?: Record<string, unknown>) {
+  const prefix = "[AUTH]";
+  const timestamp = new Date().toISOString();
+  const parts = detail
+    ? Object.entries(detail).map(([k, v]) => `${k}=${v}`)
+    : [];
+  console.log(`${timestamp} ${prefix} ${event}${parts.length ? " " + parts.join(" ") : ""}`);
 }
 
 /**
@@ -138,6 +179,11 @@ export async function createEmployee(
     pin: string;
   },
 ) {
+  const pinError = validatePin(data.pin);
+  if (pinError) {
+    throw new Error(pinError);
+  }
+
   const now = new Date().toISOString();
   const employee: EmployeeDocument = {
     employeeId: `emp_${randomUUID()}`,
@@ -146,7 +192,7 @@ export async function createEmployee(
     name: data.name.trim(),
     email: data.email.trim(),
     status: "active",
-    pinHash: hashPin(data.pin),
+    pinHash: hashPin(normalizePin(data.pin)),
     failedLoginAttempts: 0,
     lockedUntil: null,
     lastAccessAt: null,
@@ -222,6 +268,7 @@ export async function loginEmployee(
   // 1. Find employee by tenantId + employeeCode
   const employee = await repositories.employees.findByEmployeeCode(tenantId, employeeCode);
   if (!employee) {
+    logAuthEvent("LOGIN_FAIL", { tenantId, reason: "employee_not_found" });
     return {
       success: false,
       error: "Invalid employee ID or PIN.",
@@ -231,6 +278,7 @@ export async function loginEmployee(
 
   // 2. Check employee status
   if (employee.status !== "active") {
+    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "inactive", status: employee.status });
     return {
       success: false,
       error: "Your account is not active. Please contact your administrator.",
@@ -243,6 +291,7 @@ export async function loginEmployee(
   if (employee.lockedUntil) {
     const lockedUntil = new Date(employee.lockedUntil);
     if (lockedUntil > now) {
+      logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "locked", lockedUntil: employee.lockedUntil });
       return {
         success: false,
         error: `Too many failed attempts. Please try again later.`,
@@ -261,8 +310,9 @@ export async function loginEmployee(
     employee.lockedUntil = null;
   }
 
-  // 4. Verify PIN
-  const pinValid = verifyPin(employee.pinHash, pin);
+  // 4. Verify PIN (normalize before comparison)
+  const normalizedPin = normalizePin(pin);
+  const pinValid = verifyPin(employee.pinHash, normalizedPin);
 
   if (!pinValid) {
     const newAttempts = employee.failedLoginAttempts + 1;
@@ -277,6 +327,8 @@ export async function loginEmployee(
 
       await repositories.employees.update(employee.employeeId, updates);
 
+      logAuthEvent("LOGIN_LOCKED", { tenantId, employeeId: employee.employeeId, attempts: newAttempts, lockedUntil });
+
       return {
         success: false,
         error: "Too many failed attempts. Your access has been locked for 15 minutes.",
@@ -287,6 +339,7 @@ export async function loginEmployee(
 
     await repositories.employees.update(employee.employeeId, updates);
 
+    logAuthEvent("LOGIN_FAIL", { tenantId, employeeId: employee.employeeId, attempts: newAttempts });
     return {
       success: false,
       error: "Invalid employee ID or PIN.",
@@ -305,6 +358,8 @@ export async function loginEmployee(
   // Fetch fresh employee data after updates
   const fresh = await repositories.employees.findById(employee.employeeId);
 
+  logAuthEvent("LOGIN_OK", { tenantId, employeeId: employee.employeeId });
+
   return {
     success: true,
     employee: toSafeEmployee(fresh ?? employee),
@@ -315,11 +370,24 @@ export async function loginEmployee(
  * Generate a new random 6-digit PIN, hash and store it, reset lockout state.
  * Returns the employee (safe) and the plain-text new PIN.
  */
-export async function resetEmployeePin(
+/**
+ * Update an employee's PIN through the single authoritative path.
+ * Validates, normalizes, hashes, persists, and records audit.
+ *
+ * This is the ONLY place PIN hashes should be written (outside login/reset).
+ */
+export async function updateEmployeePin(
   tenantId: string,
   employeeId: string,
+  pin: string,
   performedBy?: string,
-): Promise<{ employee: SafeEmployee; newPin: string } | null> {
+  auditAction: AuditEventDocument["action"] = "pin_reset",
+): Promise<SafeEmployee | null> {
+  const pinError = validatePin(pin);
+  if (pinError) {
+    throw new Error(pinError);
+  }
+
   const repositories = await getRepositoryContext();
   const existing = await repositories.employees.findById(employeeId);
 
@@ -328,14 +396,14 @@ export async function resetEmployeePin(
   }
 
   if (existing.status === "inactive") {
-    throw new Error("Cannot reset PIN for an inactive employee.");
+    throw new Error("Cannot update PIN for an inactive employee.");
   }
 
-  const newPin = Math.floor(100000 + Math.random() * 900000).toString();
   const now = new Date().toISOString();
+  const normalizedPin = normalizePin(pin);
 
   const updated = await repositories.employees.update(employeeId, {
-    pinHash: hashPin(newPin),
+    pinHash: hashPin(normalizedPin),
     failedLoginAttempts: 0,
     lockedUntil: null,
     updatedAt: now,
@@ -346,7 +414,7 @@ export async function resetEmployeePin(
   // Record audit event
   const auditEvent: AuditEventDocument = {
     eventId: `audit_${randomUUID()}`,
-    action: "pin_reset",
+    action: auditAction,
     employeeId,
     tenantId,
     performedBy,
@@ -354,7 +422,20 @@ export async function resetEmployeePin(
   };
   await repositories.employees.insertAuditEvent(auditEvent);
 
-  return { employee: toSafeEmployee(updated), newPin };
+  return toSafeEmployee(updated);
+}
+
+export async function resetEmployeePin(
+  tenantId: string,
+  employeeId: string,
+  performedBy?: string,
+): Promise<{ employee: SafeEmployee; newPin: string } | null> {
+  const newPin = Math.floor(100000 + Math.random() * 900000).toString();
+
+  const safe = await updateEmployeePin(tenantId, employeeId, newPin, performedBy, "pin_reset");
+  if (!safe) return null;
+
+  return { employee: safe, newPin };
 }
 
 /**

@@ -6,6 +6,10 @@ import {
   getEmployee,
   updateEmployee,
   disableEmployee,
+  updateEmployeePin,
+  validatePin,
+  normalizePin,
+  hashPin,
 } from "@/src/server/services/employeeService";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 
@@ -213,5 +217,115 @@ describe("Employee CRUD — Disable", () => {
 
     const result = await disableEmployee(OTHER_TENANT, emp.employeeId);
     assert.equal(result, null);
+  });
+});
+
+// ── PIN Validation ────────────────────────────────────────────────────────────
+
+describe("Employee PIN — Validation", () => {
+  it("rejects empty PIN on create", async () => {
+    await assert.rejects(
+      () => createEmployee(TENANT_ID, { employeeCode: "PV-001", name: "Pin Test", email: "p@t.com", pin: "" }),
+      { message: "PIN is required." },
+    );
+  });
+
+  it("rejects whitespace-only PIN on create", async () => {
+    await assert.rejects(
+      () => createEmployee(TENANT_ID, { employeeCode: "PV-002", name: "Pin Test", email: "p@t.com", pin: "   " }),
+      (err: Error) => {
+        // After trimming whitespace, "   " becomes "" which is < 4 chars
+        assert.ok(err.message.includes("PIN"), `Expected PIN error, got: ${err.message}`);
+        return true;
+      },
+    );
+  });
+
+  it("rejects PIN shorter than 4 characters", async () => {
+    await assert.rejects(
+      () => createEmployee(TENANT_ID, { employeeCode: "PV-003", name: "Pin Test", email: "p@t.com", pin: "123" }),
+      { message: "PIN must be at least 4 characters." },
+    );
+  });
+
+  it("accepts PIN with whitespace after trimming", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "PV-004", name: "Pin Test", email: "p@t.com", pin: "  1234  " });
+    assert.ok(emp.employeeId);
+  });
+
+  it("validatePin returns null for valid PIN", () => {
+    assert.equal(validatePin("1234"), null);
+  });
+
+  it("validatePin returns error for empty input", () => {
+    assert.ok(validatePin("") !== null, "empty string should be rejected");
+    assert.ok(validatePin("  ") !== null, "whitespace should be rejected");
+    assert.ok(validatePin(null) !== null, "null should be rejected");
+    assert.ok(validatePin(undefined) !== null, "undefined should be rejected");
+  });
+
+  it("validatePin returns error for short PIN", () => {
+    assert.ok(validatePin("12") !== null);
+    assert.ok(validatePin("123") !== null);
+  });
+
+  it("normalizePin trims whitespace", () => {
+    assert.equal(normalizePin("  1234  "), "1234");
+    assert.equal(normalizePin("1234"), "1234");
+    assert.equal(normalizePin("  "), "");
+  });
+});
+
+// ── Centralized PIN Update Service ────────────────────────────────────────────
+
+describe("Employee PIN — Centralized Update Service", () => {
+  it("updateEmployeePin updates PIN and verifies via login", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "CU-001", name: "Central Update", email: "cu@t.com", pin: "111111" });
+
+    const safe = await updateEmployeePin(TENANT_ID, emp.employeeId, "222222", "admin-001");
+    assert.ok(safe, "Expected a safe employee");
+    assert.ok(!("pinHash" in safe!), "pinHash must not be in safe employee");
+
+    // Verify the PIN actually changed by attempting login
+    const { loginEmployee } = await import("@/src/server/services/employeeService");
+    const loginOk = await loginEmployee(TENANT_ID, "CU-001", "222222");
+    assert.ok(loginOk.success, "Should login with new PIN");
+    const loginFail = await loginEmployee(TENANT_ID, "CU-001", "111111");
+    assert.equal(loginFail.success, false, "Should not login with old PIN");
+  });
+
+  it("updateEmployeePin rejects short PIN", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "CU-002", name: "Central Update", email: "cu2@t.com", pin: "111111" });
+
+    await assert.rejects(
+      () => updateEmployeePin(TENANT_ID, emp.employeeId, "12"),
+      { message: "PIN must be at least 4 characters." },
+    );
+  });
+
+  it("updateEmployeePin returns null for cross-tenant", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "CU-003", name: "Central Update", email: "cu3@t.com", pin: "111111" });
+    const result = await updateEmployeePin(OTHER_TENANT, emp.employeeId, "222222");
+    assert.equal(result, null);
+  });
+
+  it("updateEmployeePin rejects inactive employee", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "CU-004", name: "Central Update", email: "cu4@t.com", pin: "111111" });
+    await disableEmployee(TENANT_ID, emp.employeeId);
+
+    await assert.rejects(
+      () => updateEmployeePin(TENANT_ID, emp.employeeId, "222222"),
+      { message: "Cannot update PIN for an inactive employee." },
+    );
+  });
+
+  it("resetEmployeePin returns new PIN through the centralized service", async () => {
+    const { resetEmployeePin } = await import("@/src/server/services/employeeService");
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "CU-005", name: "Reset Test", email: "cu5@t.com", pin: "111111" });
+
+    const result = await resetEmployeePin(TENANT_ID, emp.employeeId, "admin-001");
+    assert.ok(result, "Expected reset result");
+    assert.equal(result!.newPin.length, 6, "New PIN should be 6 digits");
+    assert.ok(!("pinHash" in result!.employee), "pinHash must not be exposed");
   });
 });
