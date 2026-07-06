@@ -326,7 +326,7 @@ export default function ReimbursementDetailPage({
                       src={`/api/reimbursements/${reimbursement.reimbursementId}/receipt`}
                       className="w-full h-[500px] border-0"
                       title="Receipt preview"
-                      sandbox="allow-scripts"
+                      sandbox="allow-scripts allow-same-origin"
                     />
                     <div className="flex items-center justify-between px-4 py-2 bg-white border-t border-slate-200">
                       <span className="text-xs text-slate-400">Secure preview</span>
