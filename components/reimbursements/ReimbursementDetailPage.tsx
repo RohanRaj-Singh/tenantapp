@@ -322,12 +322,19 @@ export default function ReimbursementDetailPage({
                 </button>
                 {showReceipt && (
                   <div className="mt-3 rounded-lg border border-slate-200 overflow-hidden bg-slate-50">
-                    <iframe
-                      src={`/api/reimbursements/${reimbursement.reimbursementId}/receipt`}
-                      className="w-full h-[500px] border-0"
-                      title="Receipt preview"
-                      sandbox="allow-scripts allow-same-origin"
-                    />
+                    {reimbursement.receiptUrl?.toLowerCase().endsWith('.pdf') ? (
+                      <iframe
+                        src={`/api/reimbursements/${reimbursement.reimbursementId}/receipt`}
+                        className="w-full h-[500px] border-0"
+                        title="Receipt preview"
+                      />
+                    ) : (
+                      <img
+                        src={`/api/reimbursements/${reimbursement.reimbursementId}/receipt`}
+                        alt="Receipt"
+                        className="w-full h-auto max-h-[500px] object-contain"
+                      />
+                    )}
                     <div className="flex items-center justify-between px-4 py-2 bg-white border-t border-slate-200">
                       <span className="text-xs text-slate-400">Secure preview</span>
                       <a
