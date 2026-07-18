@@ -40,10 +40,6 @@ export const dashboardCopy: Record<AppLanguage, DashboardCopySection> = {
           name: "Email Invitations",
           description: "Upload employee list, send survey invitations, and monitor completion status.",
         },
-        analytics: {
-          name: "Analytics",
-          description: "Protected organizational analytics and cross-domain insight summaries.",
-        },
         reports: {
           name: "Reports",
           description: "Protected reporting surfaces for downloadable and review-ready summaries.",
@@ -361,29 +357,6 @@ reimbursements: {
         monitorBody:
           "Completion rates, open rates, and per-campaign progress bars require a live invitation tracking backend. No fabricated data is displayed.",
       },
-      analyticsPage: {
-        chip: "Analytics Access",
-        title: "Protected organization analytics with clean tenant boundaries.",
-        description:
-          "This runtime surface exposes analytics only for the authenticated tenant dashboard owner. Public survey pages remain outside this session boundary.",
-        cards: [
-          {
-            title: "Executive Summary",
-            description:
-              "Review the protected organization-wide overview with current wellbeing metrics and filterable rollups.",
-          },
-          {
-            title: "Domain Deep Dives",
-            description:
-              "Open domain dashboards for clinical risk, psychological safety, workload, leadership, and satisfaction.",
-          },
-          {
-            title: "Protected Session Model",
-            description:
-              "Analytics access is isolated to the current tenant owner session and current tenant lifecycle state.",
-          },
-        ],
-      },
       reportsPage: {
         chip: "Reports",
         title: "Reporting access is now protected and ready for future exports.",
@@ -462,10 +435,6 @@ reimbursements: {
           name: "دعوات البريد الإلكتروني",
           description:
             "رفع قائمة الموظفين وإرسال دعوات الاستبيان ومتابعة حالة الإكمال.",
-        },
-        analytics: {
-          name: "التحليلات",
-          description: "تحليلات المؤسسة المحمية وملخصات الرؤى عبر المجالات.",
         },
         reports: {
           name: "التقارير",
@@ -781,29 +750,6 @@ reimbursements: {
           "سيظهر تتبع الإكمال اللحظي هنا بعد تفعيل الخلفية.",
         monitorBody:
           "تحتاج معدلات الإكمال والفتح وأشرطة تقدم الحملات إلى نظام تتبع دعوات مباشر. لا يتم عرض أي بيانات مصطنعة.",
-      },
-      analyticsPage: {
-        chip: "الوصول إلى التحليلات",
-        title: "تحليلات مؤسسة محمية بحدود واضحة للمستأجر.",
-        description:
-          "يعرض هذا السطح التشغيلي التحليلات فقط لمالك لوحة المستأجر المصادق عليه. تبقى صفحات الاستبيان العامة خارج حدود هذه الجلسة.",
-        cards: [
-          {
-            title: "الملخص التنفيذي",
-            description:
-              "راجع النظرة العامة المحمية على مستوى المؤسسة مع مقاييس الرفاهية والتفاصيل القابلة للتصفية.",
-          },
-          {
-            title: "التعمق في المجالات",
-            description:
-              "افتح لوحات المجالات الخاصة بالمخاطر السريرية والسلامة النفسية وعبء العمل والقيادة والرضا.",
-          },
-          {
-            title: "نموذج الجلسة المحمية",
-            description:
-              "يظل الوصول إلى التحليلات معزولًا لجلسة مالك المستأجر الحالية وحالة دورة حياة المستأجر الحالية.",
-          },
-        ],
       },
       reportsPage: {
         chip: "التقارير",

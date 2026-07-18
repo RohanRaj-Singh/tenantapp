@@ -1,31 +1,41 @@
 "use client";
 
 import { AlertTriangle, RefreshCw } from "lucide-react";
-import { Card } from "@/components/ui/card";
 import { SectionCard } from "@/components/dashboard/DashboardPrimitives";
 import { useTheme } from "@/runtime/theme/useTheme";
+
+function SkeletonCard() {
+  return (
+    <div className="animate-pulse rounded-[1.35rem] border border-slate-200 bg-white p-5 shadow-sm">
+      <div className="mb-4 flex items-center justify-between">
+        <div className="h-4 w-24 rounded bg-slate-200" />
+        <div className="h-6 w-6 rounded-full bg-slate-200" />
+      </div>
+      <div className="mb-2 h-8 w-16 rounded bg-slate-200" />
+      <div className="h-3 w-28 rounded bg-slate-200" />
+    </div>
+  );
+}
 
 export function DashboardLoadingState({ label }: { label: string }) {
   const theme = useTheme();
 
   return (
-    <Card
-      className="rounded-[1.5rem] border p-8 shadow-sm"
-      style={{ borderColor: theme.borderAccent, background: theme.cardGradient }}
-    >
-      <div className="flex min-h-[240px] flex-col items-center justify-center gap-4 text-center">
-        <div
-          className="flex h-14 w-14 items-center justify-center rounded-full"
-          style={{ backgroundColor: theme.surfaceAccentStrong, color: theme.primaryColor }}
-        >
-          <RefreshCw className="h-6 w-6 animate-spin" />
-        </div>
-        <div className="space-y-2">
-          <p className="text-base font-semibold text-slate-900">Loading dashboard</p>
-          <p className="text-sm text-slate-500">{label}</p>
-        </div>
+    <div className="space-y-8">
+      <div className="grid grid-cols-1 gap-4 md:grid-cols-2 xl:grid-cols-5">
+        {Array.from({ length: 5 }).map((_, i) => (
+          <SkeletonCard key={i} />
+        ))}
       </div>
-    </Card>
+      <div className="grid grid-cols-1 gap-4">
+        <div className="h-24 animate-pulse rounded-xl border border-slate-200 bg-white p-6 shadow-sm" />
+      </div>
+      <div className="grid grid-cols-1 gap-6 md:grid-cols-2 xl:grid-cols-3">
+        {Array.from({ length: 3 }).map((_, i) => (
+          <div key={i} className="h-56 animate-pulse rounded-xl border border-slate-200 bg-white shadow-sm" />
+        ))}
+      </div>
+    </div>
   );
 }
 

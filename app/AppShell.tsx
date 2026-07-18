@@ -16,7 +16,6 @@ export function AppShell({ children }: AppShellProps) {
   const pathname = usePathname();
   const protectedSurfacePrefixes = [
     "/dashboard",
-    "/analytics",
     "/reports",
     "/settings",
     "/change-password",

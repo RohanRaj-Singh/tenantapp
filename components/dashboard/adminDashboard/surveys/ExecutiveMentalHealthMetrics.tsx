@@ -36,6 +36,20 @@ export default function ExecutiveMentalHealthMetrics({
 }: ExecutiveMentalHealthMetricsProps) {
   const theme = useTheme();
 
+  if (metrics.length === 0 || metrics.every((m) => m.surveyCount === 0)) {
+    return (
+      <section>
+        <div className="mb-4 flex items-center gap-2">
+          <HeartPulse className="h-4 w-4 text-slate-500" />
+          <h2 className="text-lg font-semibold text-slate-900">Mental Health Metrics %</h2>
+        </div>
+        <div className="flex items-center justify-center rounded-xl border border-slate-200 bg-white py-12">
+          <p className="text-sm text-slate-500">No scanner responses available yet.</p>
+        </div>
+      </section>
+    );
+  }
+
   return (
     <section>
       <div className="mb-4 flex items-center gap-2">

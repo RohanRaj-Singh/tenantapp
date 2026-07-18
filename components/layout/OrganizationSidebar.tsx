@@ -5,6 +5,7 @@ import { useEffect, useState } from "react";
 import {
   BarChart3,
   ChartLine,
+  ChevronDown,
   Flame,
   Mail,
   Menu,
@@ -21,8 +22,6 @@ import {
 } from "lucide-react";
 import {
   dashboardNavigation,
-  featureNavigation,
-  tenantAccessNavigation,
   type TenantSurfacePageId,
 } from "@/lib/dashboardMockData";
 import Link from "next/link";
@@ -40,7 +39,6 @@ const iconMap: Record<TenantSurfacePageId, LucideIcon> = {
   "leadership-alignment": Users,
   "satisfaction-engagement": Smile,
   "email-invitations": Mail,
-  analytics: ShieldCheck,
   reports: FileText,
   settings: Settings,
   "change-password": Shield,
@@ -52,8 +50,17 @@ interface OrganizationSidebarProps {
   user: TenantUserProfile;
 }
 
+const EXECUTIVE_IDS: TenantSurfacePageId[] = [
+  "clinical-risk-index",
+  "psychological-safety",
+  "workload-efficiency",
+  "leadership-alignment",
+  "satisfaction-engagement",
+];
+
 export default function OrganizationSidebar({ user }: OrganizationSidebarProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
+  const [executiveExpanded, setExecutiveExpanded] = useState(true);
   const pathname = usePathname();
   const { copy } = useLanguage();
   const theme = useTheme();
@@ -72,20 +79,104 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
     return () => window.removeEventListener("resize", handleResize);
   }, []);
 
-  const navigationSections = [
-    {
-      title: null,
-      items: dashboardNavigation,
-    },
-    {
-      title: null,
-      items: featureNavigation,
-    },
-    {
-      title: null,
-      items: tenantAccessNavigation,
-    },
-  ];
+  const isChildActive = EXECUTIVE_IDS.some((id) =>
+    pathname.startsWith(`/dashboard/${id}`),
+  );
+  const isExecutiveActive = pathname === "/dashboard" || isChildActive;
+
+  function isActive(href: string) {
+    return href === "/dashboard"
+      ? pathname === href
+      : pathname.startsWith(href);
+  }
+
+  function renderExecutiveSummary() {
+    const execItem = dashboardNavigation[0];
+    const Icon = iconMap["executive-summary"];
+
+    return (
+      <div className="space-y-1">
+        <button
+          type="button"
+          onClick={() => setExecutiveExpanded(!executiveExpanded)}
+          className={cn(
+            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+            isExecutiveActive
+              ? "tenant-sidebar-link--active font-medium"
+              : "tenant-sidebar-link",
+          )}
+          title={copy.dashboard.navigation["executive-summary"].name}
+        >
+          <Icon className="h-5 w-5 flex-shrink-0" />
+          {sidebarOpen ? (
+            <>
+              <span className="flex-1 truncate text-left">
+                {copy.dashboard.navigation["executive-summary"].name}
+              </span>
+              <ChevronDown
+                className={cn(
+                  "h-4 w-4 transition-transform",
+                  executiveExpanded ? "rotate-0" : "-rotate-90",
+                )}
+              />
+            </>
+          ) : null}
+        </button>
+
+        {sidebarOpen && executiveExpanded ? (
+          <div className="ml-2 space-y-0.5 border-l border-slate-200 pl-3">
+            {execItem.children?.map((child) => {
+              const ChildIcon = iconMap[child.id];
+
+              return (
+                <Link
+                  key={child.id}
+                  href={child.href}
+                  className={cn(
+                    "flex items-center gap-3 rounded-lg px-3 py-2 text-sm transition-colors",
+                    isActive(child.href)
+                      ? "tenant-sidebar-link--active font-medium"
+                      : "tenant-sidebar-link",
+                  )}
+                  title={copy.dashboard.navigation[child.id].name}
+                >
+                  <ChildIcon className="h-4 w-4 flex-shrink-0" />
+                  <span className="truncate">
+                    {copy.dashboard.navigation[child.id].name}
+                  </span>
+                </Link>
+              );
+            })}
+          </div>
+        ) : null}
+      </div>
+    );
+  }
+
+  function renderFlatItem(
+    item: (typeof dashboardNavigation)[number],
+  ) {
+    const Icon = iconMap[item.id];
+
+    return (
+      <Link
+        key={item.id}
+        href={item.href}
+        className={cn(
+          "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+          isActive(item.href)
+            ? "tenant-sidebar-link--active font-medium"
+            : "tenant-sidebar-link",
+        )}
+        title={copy.dashboard.navigation[item.id].name}
+      >
+        <Icon className="h-5 w-5 flex-shrink-0" />
+        {sidebarOpen ? (
+          <span className="truncate">{copy.dashboard.navigation[item.id].name}</span>
+        ) : null}
+      </Link>
+    );
+  }
 
   return (
     <aside
@@ -128,37 +219,12 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
         )}
       </div>
 
-      <nav className="flex-1 space-y-5 overflow-y-auto p-4">
-        {navigationSections.map((section, index) => (
-          <div key={`nav-section-${index}`} className="space-y-2">
-            {sidebarOpen && section.title ? (
-              <p className="px-3 text-[11px] font-semibold uppercase tracking-[0.18em] text-slate-400">
-                {section.title}
-              </p>
-            ) : null}
-            {section.items.map((item) => {
-              const Icon = iconMap[item.id];
-              const isActive = item.href === "/dashboard" ? pathname === item.href : pathname.startsWith(item.href);
+      <nav className="flex-1 space-y-1 overflow-y-auto p-4">
+        {renderExecutiveSummary()}
 
-              return (
-                <Link
-                  key={item.name}
-                  href={item.href}
-                  className={cn(
-                    "flex items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
-                    isActive
-                      ? "tenant-sidebar-link--active font-medium"
-                      : "tenant-sidebar-link",
-                  )}
-                  title={copy.dashboard.navigation[item.id].name}
-                >
-                  <Icon className="h-5 w-5 flex-shrink-0" />
-                  {sidebarOpen ? <span className="truncate">{copy.dashboard.navigation[item.id].name}</span> : null}
-                </Link>
-              );
-            })}
-          </div>
-        ))}
+        <div className="border-t border-slate-100 pt-1">
+          {dashboardNavigation.slice(1).map((item) => renderFlatItem(item))}
+        </div>
       </nav>
 
       <div className="border-t p-4">

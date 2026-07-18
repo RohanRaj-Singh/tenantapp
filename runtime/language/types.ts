@@ -273,15 +273,6 @@ export interface TenantStaticCopy {
       monitorDescription: string;
       monitorBody: string;
     };
-    analyticsPage: {
-      chip: string;
-      title: string;
-      description: string;
-      cards: Array<{
-        title: string;
-        description: string;
-      }>;
-    };
     reportsPage: {
       chip: string;
       title: string;

@@ -113,7 +113,6 @@ export type DashboardPageId =
 
 export type TenantSurfacePageId =
   | DashboardPageId
-  | "analytics"
   | "reports"
   | "settings"
   | "change-password"
@@ -127,15 +126,10 @@ export interface DashboardNavigationItem {
   headerTitle?: string;
   description: string;
   domainName?: string;
+  children?: DashboardNavigationItem[];
 }
 
-export const dashboardNavigation: DashboardNavigationItem[] = [
-  {
-    id: "executive-summary",
-    name: "Executive Summary",
-    href: "/dashboard",
-    description: "Organization survey statistics and executive-level wellbeing signals.",
-  },
+export const executiveSummaryChildren: DashboardNavigationItem[] = [
   {
     id: "clinical-risk-index",
     name: "Clinical Risk Index",
@@ -173,20 +167,35 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
       "Measure of employee satisfaction with colleagues, personal fulfillment, and workplace environment.",
     domainName: "Satisfaction & Engagement",
   },
+];
+
+export const dashboardNavigation: DashboardNavigationItem[] = [
+  {
+    id: "executive-summary",
+    name: "Executive Summary",
+    href: "/dashboard",
+    description: "Organization survey statistics and executive-level wellbeing signals.",
+    children: executiveSummaryChildren,
+  },
+  {
+    id: "reimbursements",
+    name: "Claims",
+    href: "/reimbursements",
+    headerTitle: "Claims Management",
+    description: "Review and manage employee claims.",
+  },
+  {
+    id: "employees",
+    name: "Employees",
+    href: "/employees",
+    headerTitle: "Employee Management",
+    description: "Manage tenant employees.",
+  },
   {
     id: "email-invitations",
     name: "Email Invitations",
     href: "/dashboard/email-invitations",
     description: "Upload employee list, send survey invitations, and monitor completion status.",
-  },
-];
-
-export const tenantAccessNavigation: DashboardNavigationItem[] = [
-  {
-    id: "analytics",
-    name: "Analytics",
-    href: "/analytics",
-    description: "Protected organizational analytics and cross-domain insight summaries.",
   },
   {
     id: "reports",
@@ -202,23 +211,6 @@ export const tenantAccessNavigation: DashboardNavigationItem[] = [
   },
 ];
 
-export const featureNavigation: DashboardNavigationItem[] = [
-  {
-    id: "employees",
-    name: "Employees",
-    href: "/employees",
-    headerTitle: "Employee Management",
-    description: "Manage tenant employees.",
-  },
-  {
-    id: "reimbursements",
-    name: "Claims",
-    href: "/reimbursements",
-    headerTitle: "Claims Management",
-    description: "Review and manage employee claims.",
-  },
-];
-
 export const tenantAuxiliaryNavigation: DashboardNavigationItem[] = [
   {
     id: "change-password",
@@ -229,9 +221,7 @@ export const tenantAuxiliaryNavigation: DashboardNavigationItem[] = [
 ];
 
 export const tenantSurfaceNavigation: DashboardNavigationItem[] = [
-  ...dashboardNavigation,
-  ...featureNavigation,
-  ...tenantAccessNavigation,
+  ...dashboardNavigation.flatMap((item) => [item, ...(item.children ?? [])]),
   ...tenantAuxiliaryNavigation,
 ];
 

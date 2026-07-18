@@ -55,3 +55,9 @@ public/uploads/
 
 # Claude Code
 .claude/
+
+# Graphify knowledge graph output
+graphify-out/
+
+# Obsidian vault (graphify export)
+obsidian-vault/
