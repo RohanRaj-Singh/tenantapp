@@ -10,13 +10,26 @@ export const dynamic = "force-dynamic";
 
 /**
  * Authorizes receipt upload requests.
- * Requires a valid x-admin-api-key header matching ADMIN_API_KEY env var.
- * This ensures only trusted server-side callers (marketing site) can upload.
+ * Accepts either:
+ * 1. A valid x-admin-api-key header (for marketing site proxy)
+ * 2. A valid tenant dashboard session (for tenant admin form)
  */
-function authorizeRequest(request: NextRequest): boolean {
+async function authorizeRequest(request: NextRequest): Promise<boolean> {
+  // Check admin API key first
   const apiKey = request.headers.get("x-admin-api-key");
   const expectedKey = process.env.ADMIN_API_KEY;
-  return Boolean(apiKey && expectedKey && apiKey === expectedKey);
+  if (apiKey && expectedKey && apiKey === expectedKey) {
+    return true;
+  }
+
+  // Fall back to tenant dashboard session
+  try {
+    const { requireTenantApiAuth } = await import("@/src/modules/tenant-auth/middleware/tenant-auth");
+    const auth = await requireTenantApiAuth();
+    return auth.success;
+  } catch {
+    return false;
+  }
 }
 
 /** Allowed MIME types for uploaded receipts. */
@@ -42,7 +55,7 @@ function getExtension(filename: string): string {
 }
 
 export async function POST(request: NextRequest) {
-  if (!authorizeRequest(request)) {
+  if (!(await authorizeRequest(request))) {
     return NextResponse.json(
       { error: "Unauthorized. Valid API key required." },
       { status: 401 },

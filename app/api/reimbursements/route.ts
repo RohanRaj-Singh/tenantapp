@@ -28,7 +28,13 @@ export async function GET(request: Request) {
       limit: parseInt(url.searchParams.get("limit") ?? "20", 10),
     });
 
-    return NextResponse.json(result, { status: 200 });
+    // Tenant Admin callers must not see employeeName
+    const reimbursements = result.reimbursements.map((r) => {
+      const { employeeName: _name, ...rest } = r;
+      return rest;
+    });
+
+    return NextResponse.json({ reimbursements, total: result.total }, { status: 200 });
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -71,6 +77,14 @@ export async function POST(request: Request) {
       amount: body.amount,
       description: body.description,
       receiptUrl: body.receiptUrl,
+      sessionCount: body.sessionCount !== undefined ? Number(body.sessionCount) : undefined,
+      sessionTypes: Array.isArray(body.sessionTypes) ? body.sessionTypes : undefined,
+      sessionFor: body.sessionFor || undefined,
+      sessionForOther: body.sessionForOther || undefined,
+      contactCountryCode: body.contactCountryCode || undefined,
+      contactNumber: body.contactNumber || undefined,
+      bankAccountNumber: body.bankAccountNumber || undefined,
+      bankName: body.bankName || undefined,
     });
 
     return NextResponse.json(reimbursement, { status: 201 });

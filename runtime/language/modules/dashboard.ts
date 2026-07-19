@@ -37,8 +37,8 @@ export const dashboardCopy: Record<AppLanguage, DashboardCopySection> = {
             "Measure of employee satisfaction with colleagues, personal fulfillment, and workplace environment.",
         },
         "email-invitations": {
-          name: "Email Invitations",
-          description: "Upload employee list, send survey invitations, and monitor completion status.",
+          name: "Employee Onboarding",
+          description: "Import employees, send invitations, and track registration progress.",
         },
         reports: {
           name: "Reports",
@@ -432,9 +432,9 @@ reimbursements: {
             "قياس رضا الموظفين عن الزملاء والتحقق الذاتي وبيئة العمل.",
         },
         "email-invitations": {
-          name: "دعوات البريد الإلكتروني",
+          name: "إدارة الموظفين",
           description:
-            "رفع قائمة الموظفين وإرسال دعوات الاستبيان ومتابعة حالة الإكمال.",
+            "استيراد الموظفين وإرسال الدعوات وتتبع التسجيل.",
         },
         reports: {
           name: "التقارير",
@@ -722,34 +722,27 @@ reimbursements: {
         },
       },
       emailInvitations: {
-        loginTitle: "تسجيل دخول دعوات البريد الإلكتروني",
+        loginTitle: "إدارة الموظفين والدعوات",
         loginDescription:
-          "يحافظ هذا المسار على نفس مفهوم الوصول المقيد الموجود في لوحة المؤسسة المصدر.",
+          "استيراد الموظفين وإرسال الدعوات وتتبع التسجيل.",
         username: "اسم المستخدم",
         password: "كلمة المرور",
-        usernamePlaceholder: "أدخل اسم مستخدم المؤسسة",
-        passwordPlaceholder: "أدخل كلمة مرور الوصول",
-        unlock: "فتح دعوات البريد الإلكتروني",
-        title: "تحليلات الدعوات قريبًا",
-        description: (tenantName) =>
-          `ستظهر هنا معدلات الإرسال والفتح وإكمال الحملات بمجرد تفعيل نظام تتبع الدعوات لـ ${tenantName}.`,
-        uploadTab: "رفع",
+        usernamePlaceholder: "أدخل اسم المستخدم",
+        passwordPlaceholder: "أدخل كلمة المرور",
+        unlock: "فتح",
+        title: "إدارة الموظفين والدعوات",
+        description: () => "استيراد الموظفين وإرسال الدعوات وتتبع التسجيل.",
+        uploadTab: "استيراد",
         sendTab: "إرسال",
         monitorTab: "متابعة",
         uploadTitle: "رفع قائمة الموظفين",
-        uploadDescription:
-          "ستتوفر آلية الرفع بمجرد تفعيل النظام الخلفي للدعوات.",
-        uploadBody:
-          "الاتصال بنظام إرسال الدعوات لا يزال قيد الانتظار. جميع البيانات المرفوعة تبقى محليًا ولا يتم إرسالها بعد. لن تظهر أي تحليلات حتى يصبح المسار الخلفي مباشرًا.",
-        sendTitle: "إرسال دعوات الاستبيان",
-        sendDescription:
-          "ستتوفر إدارة الحملات بعد تفعيل النظام الخلفي للدعوات.",
-        sendBody:
-          "عناصر إنشاء الحملات وجدولتها وإرسالها ليست موصولة بعد بخدمات الخلفية. أي تفاعل هنا هو مجرد عنصر نائب.",
-        monitorDescription:
-          "سيظهر تتبع الإكمال اللحظي هنا بعد تفعيل الخلفية.",
-        monitorBody:
-          "تحتاج معدلات الإكمال والفتح وأشرطة تقدم الحملات إلى نظام تتبع دعوات مباشر. لا يتم عرض أي بيانات مصطنعة.",
+        uploadDescription: "رفع ملف CSV لاستيراد الموظفين.",
+        uploadBody: "قم بإفلات الملف هنا أو انقر للتصفح.",
+        sendTitle: "إرسال الدعوات",
+        sendDescription: "إدارة وإرسال دعوات التسجيل.",
+        sendBody: "سيتم إرسال الدعوات للموظفين المحددين.",
+        monitorDescription: "تتبع التسجيل",
+        monitorBody: "متابعة حالة تسجيل الموظفين.",
       },
       reportsPage: {
         chip: "التقارير",

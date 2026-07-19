@@ -30,6 +30,9 @@ export const COLLECTION_NAMES = {
   reimbursements: "reimbursements",
   auditEvents: "auditEvents",
   counters: "counters",
+  campaigns: "campaigns",
+  invitations: "invitations",
+  budgets: "budgets",
 } as const;
 
 export interface TimestampFields {
@@ -112,25 +115,27 @@ export interface AggregationSnapshotDocument
   extends DashboardAggregationSnapshot,
     TimestampFields {}
 
+export type EmployeeStatus = "not_registered" | "active" | "inactive" | "suspended";
+
 export interface EmployeeDocument extends TimestampFields {
   employeeId: string;
   tenantId: string;
   employeeCode: string;
-  name: string;
+  name: string | null;
   email: string;
-  status: "active" | "inactive";
-  /** scrypt salt:hash string for PIN-based employee authentication */
-  pinHash: string;
-  /** Number of consecutive failed login attempts (resets on success) */
+  status: EmployeeStatus;
+  passwordHash: string | null;
+  mustChangePassword: boolean;
+  phoneNumber?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
   failedLoginAttempts: number;
-  /** ISO-8601 timestamp until which the employee is locked out, or null */
   lockedUntil: string | null;
-  /** ISO-8601 timestamp of the last successful login, or null */
   lastAccessAt: string | null;
 }
 
 export interface ClaimHistoryEntry {
-  status: "pending" | "approved" | "rejected" | "frozen" | "paid";
+  status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
   actorId: string;
   actorRole: "employee" | "tenantAdmin";
   note?: string;
@@ -139,7 +144,6 @@ export interface ClaimHistoryEntry {
 
 export interface ReimbursementDocument extends TimestampFields {
   reimbursementId: string;
-  /** Human-readable claim reference number (e.g. RMB-2026-000001) */
   claimNumber?: string;
   tenantId: string;
   employeeId: string;
@@ -148,29 +152,71 @@ export interface ReimbursementDocument extends TimestampFields {
   amount: number;
   description: string;
   receiptUrl?: string;
-  /** SHA-256 hex digest of the uploaded receipt file */
   receiptHash?: string;
-  /** Date of service in YYYY-MM-DD format */
   serviceDate?: string;
-  /** Clinic slug/identifier the claim relates to */
+  sessionCount?: number;
+  sessionTypes?: string[];
+  sessionFor?: string;
+  sessionForOther?: string;
+  contactCountryCode?: string;
+  contactNumber?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
   clinicId?: string;
-  /** Denormalized clinic name for display */
   clinicName?: string;
-  status: "pending" | "approved" | "rejected" | "frozen" | "paid";
+  status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
-  /** Append-only audit trail */
   history?: ClaimHistoryEntry[];
 }
 
 export interface AuditEventDocument {
   eventId: string;
-  action: "pin_reset" | "employee_unlock";
+  action: "employee_unlock" | "employee_suspended" | "employee_unsuspended" | "employee_registered" | "password_reset" | "password_changed";
   employeeId: string;
   tenantId: string;
   performedBy?: string;
   timestamp: string;
+}
+
+export type CampaignStatus = "draft" | "scheduled" | "in_progress" | "completed" | "cancelled";
+
+export interface CampaignDocument extends TimestampFields {
+  campaignId: string;
+  tenantId: string;
+  name: string;
+  status: CampaignStatus;
+  scheduledFor: string | null;
+  totalRecipients: number;
+  sentCount: number;
+  openedCount: number;
+  completedCount: number;
+  createdBy: string;
+}
+
+export type InvitationStatus = "pending" | "sent" | "opened" | "completed" | "bounced" | "cancelled" | "expired";
+
+export interface InvitationDocument extends TimestampFields {
+  invitationId: string;
+  campaignId: string;
+  tenantId: string;
+  employeeId: string;
+  email: string;
+  employeeCode: string;
+  token: string;
+  status: InvitationStatus;
+  sentAt: string | null;
+  openedAt: string | null;
+  completedAt: string | null;
+  expiresAt: string | null;
+}
+
+export interface BudgetDocument extends TimestampFields {
+  budgetId: string;
+  tenantId: string;
+  totalAmount: number;
+  createdBy: string;
 }
 
 export type DashboardFilterKey = keyof DashboardSnapshotFilters;

@@ -3,7 +3,10 @@ import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
   AuditEventDocument,
+  BudgetDocument,
+  CampaignDocument,
   EmployeeDocument,
+  InvitationDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -91,6 +94,9 @@ export interface FindEmployeesResult {
 
 export interface EmployeesRepositoryContract {
   ensureIndexes(): Promise<void>;
+  findAll(
+    options?: FindEmployeesOptions & { tenantId?: string },
+  ): Promise<FindEmployeesResult>;
   findByTenantId(
     tenantId: string,
     options?: FindEmployeesOptions,
@@ -99,6 +105,10 @@ export interface EmployeesRepositoryContract {
   findByEmployeeCode(
     tenantId: string,
     employeeCode: string,
+  ): Promise<EmployeeDocument | null>;
+  findByTenantAndEmail(
+    tenantId: string,
+    email: string,
   ): Promise<EmployeeDocument | null>;
   insert(employee: EmployeeDocument): Promise<void>;
   update(
@@ -138,6 +148,80 @@ export interface ReimbursementsRepositoryContract {
   incrementCounter(counterId: string): Promise<number>;
 }
 
+export interface FindCampaignsOptions {
+  tenantId?: string;
+  status?: string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindCampaignsResult {
+  campaigns: CampaignDocument[];
+  total: number;
+}
+
+export interface CampaignsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findByTenantId(
+    tenantId: string,
+    options?: FindCampaignsOptions,
+  ): Promise<FindCampaignsResult>;
+  findById(id: string): Promise<CampaignDocument | null>;
+  insert(campaign: CampaignDocument): Promise<void>;
+  update(
+    id: string,
+    updates: Partial<CampaignDocument>,
+  ): Promise<CampaignDocument | null>;
+}
+
+export interface FindInvitationsOptions {
+  tenantId?: string;
+  campaignId?: string;
+  employeeId?: string;
+  status?: string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindInvitationsResult {
+  invitations: InvitationDocument[];
+  total: number;
+}
+
+export interface InvitationsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findByTenantId(
+    tenantId: string,
+    options?: FindInvitationsOptions,
+  ): Promise<FindInvitationsResult>;
+  findByCampaignId(
+    campaignId: string,
+    options?: FindInvitationsOptions,
+  ): Promise<FindInvitationsResult>;
+  findById(id: string): Promise<InvitationDocument | null>;
+  findByToken(token: string): Promise<InvitationDocument | null>;
+  insert(invitation: InvitationDocument): Promise<void>;
+  insertMany(invitations: InvitationDocument[]): Promise<void>;
+  update(
+    id: string,
+    updates: Partial<InvitationDocument>,
+  ): Promise<InvitationDocument | null>;
+  updateMany(
+    filter: { campaignId?: string; status?: string },
+    updates: Partial<InvitationDocument>,
+  ): Promise<number>;
+  countByStatus(tenantId: string): Promise<Record<string, number>>;
+}
+
+export interface BudgetsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findByTenantId(tenantId: string): Promise<BudgetDocument | null>;
+  insert(budget: BudgetDocument): Promise<void>;
+  update(id: string, updates: Partial<BudgetDocument>): Promise<BudgetDocument | null>;
+}
+
 export interface RepositoryContext {
   tenants: TenantsRepositoryContract;
   runtimeConfigs: RuntimeConfigsRepositoryContract;
@@ -147,4 +231,7 @@ export interface RepositoryContext {
   snapshots: SnapshotsRepositoryContract;
   employees: EmployeesRepositoryContract;
   reimbursements: ReimbursementsRepositoryContract;
+  campaigns: CampaignsRepositoryContract;
+  invitations: InvitationsRepositoryContract;
+  budgets: BudgetsRepositoryContract;
 }

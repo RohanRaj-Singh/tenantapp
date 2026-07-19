@@ -40,21 +40,42 @@ export async function POST(request: Request) {
   try {
     const body = await request.json();
 
-    if (!body.name || !body.email || !body.employeeCode || !body.pin) {
+    // Validate employeeCode
+    if (!body.employeeCode || typeof body.employeeCode !== "string" || !body.employeeCode.trim()) {
       return NextResponse.json(
-        { error: "name, email, employeeCode, and pin are required." },
+        { success: false, error: "Employee code is required.", errorCode: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    // Validate email
+    if (!body.email || typeof body.email !== "string" || !body.email.trim()) {
+      return NextResponse.json(
+        { success: false, error: "Email is required.", errorCode: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
+    if (!emailRegex.test(body.email.trim())) {
+      return NextResponse.json(
+        { success: false, error: "Please enter a valid email address.", errorCode: "VALIDATION_ERROR" },
         { status: 400 },
       );
     }
 
     const employee = await createEmployee(auth.context.tenant.tenantId, {
-      employeeCode: body.employeeCode,
-      name: body.name,
-      email: body.email,
-      pin: body.pin,
+      employeeCode: body.employeeCode.trim(),
+      email: body.email.trim(),
     });
 
-    return NextResponse.json(employee, { status: 201 });
+    return NextResponse.json({
+      employeeId: employee.employeeId,
+      employeeCode: employee.employeeCode,
+      email: employee.email,
+      status: employee.status,
+      createdAt: employee.createdAt,
+    }, { status: 201 });
   } catch (error) {
     return apiErrorResponse(error);
   }

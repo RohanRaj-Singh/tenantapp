@@ -1,96 +1,47 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw } from "lucide-react";
+import { ArrowLeft, RefreshCw, CheckCircle } from "lucide-react";
 
 interface EmployeeFormPageProps {
-  mode: "create" | "edit";
-  employeeId?: string;
+  mode: "create";
+  employeeId?: never;
 }
 
 interface FormData {
   employeeCode: string;
-  name: string;
   email: string;
-  pin: string;
-  status: "active" | "inactive";
 }
 
 const INITIAL_FORM: FormData = {
   employeeCode: "",
-  name: "",
   email: "",
-  pin: "",
-  status: "active",
 };
 
-export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageProps) {
+export default function EmployeeFormPage({ mode: _mode }: EmployeeFormPageProps) {
   const router = useRouter();
-  const isEdit = mode === "edit";
 
   const [form, setForm] = useState<FormData>(INITIAL_FORM);
-  const [loading, setLoading] = useState(isEdit);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
-
-  const fetchEmployee = useCallback(async () => {
-    if (!employeeId) return;
-
-    setLoading(true);
-    setError(null);
-
-    try {
-      const res = await fetch(`/api/employees/${employeeId}`);
-      if (!res.ok) {
-        throw new Error("Employee not found.");
-      }
-
-      const employee = await res.json();
-      setForm({
-        employeeCode: employee.employeeCode,
-        name: employee.name,
-        email: employee.email,
-        pin: "", // never populate PIN from server
-        status: employee.status,
-      });
-    } catch (err) {
-      setError(err instanceof Error ? err.message : "Failed to load employee.");
-    } finally {
-      setLoading(false);
-    }
-  }, [employeeId]);
-
-  useEffect(() => {
-    if (isEdit) {
-      fetchEmployee();
-    }
-  }, [isEdit, fetchEmployee]);
+  const [success, setSuccess] = useState(false);
+  const [createdEmail, setCreatedEmail] = useState("");
 
   function validate(): boolean {
     const errors: Record<string, string> = {};
 
     if (!form.employeeCode.trim()) {
-      errors.employeeCode = "Employee ID is required.";
-    }
-
-    if (!form.name.trim()) {
-      errors.name = "Name is required.";
+      errors.employeeCode = "Employee code is required.";
+    } else if (!/^[a-zA-Z0-9_-]+$/.test(form.employeeCode.trim())) {
+      errors.employeeCode = "Use only letters, numbers, hyphens, and underscores.";
     }
 
     if (!form.email.trim()) {
       errors.email = "Email is required.";
     } else if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(form.email)) {
       errors.email = "Please enter a valid email address.";
-    }
-
-    if (!isEdit && !form.pin.trim()) {
-      errors.pin = "PIN is required.";
-    } else if (form.pin.trim() && form.pin.trim().length < 4) {
-      errors.pin = "PIN must be at least 4 characters.";
-    } else if (form.pin.trim() && form.pin.trim().length > 20) {
-      errors.pin = "PIN must be 20 characters or less.";
     }
 
     setFieldErrors(errors);
@@ -106,27 +57,13 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
     setError(null);
 
     try {
-      const url = isEdit ? `/api/employees/${employeeId}` : "/api/employees";
-      const method = isEdit ? "PUT" : "POST";
-
-      const body: Record<string, unknown> = {
-        employeeCode: form.employeeCode,
-        name: form.name,
-        email: form.email,
-        status: form.status,
-      };
-
-      if (!isEdit) {
-        body.pin = form.pin;
-      } else if (form.pin.trim()) {
-        // On edit, only send pin if the admin entered a new one
-        body.pin = form.pin;
-      }
-
-      const res = await fetch(url, {
-        method,
+      const res = await fetch("/api/employees", {
+        method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify(body),
+        body: JSON.stringify({
+          employeeCode: form.employeeCode.trim(),
+          email: form.email.trim(),
+        }),
       });
 
       if (!res.ok) {
@@ -134,7 +71,8 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
         throw new Error(data.error || "Failed to save employee.");
       }
 
-      router.push("/employees");
+      setCreatedEmail(form.email.trim());
+      setSuccess(true);
     } catch (err) {
       setError(err instanceof Error ? err.message : "An unexpected error occurred.");
     } finally {
@@ -151,30 +89,35 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
     });
   }
 
-  // Loading state (edit mode only)
-  if (loading) {
+  // Success state
+  if (success) {
     return (
-      <div className="flex min-h-[240px] flex-col items-center justify-center gap-4">
-        <RefreshCw className="h-6 w-6 animate-spin text-slate-400" />
-        <p className="text-sm text-slate-500">Loading employee...</p>
-      </div>
-    );
-  }
-
-  // Error state (edit mode fetch failure)
-  if (error && isEdit && !saving) {
-    return (
-      <div className="space-y-6">
-        <div className="rounded-xl border border-red-200 bg-red-50 p-4">
-          <p className="text-sm font-medium text-red-800">{error}</p>
+      <div className="mx-auto max-w-2xl space-y-6">
+        <div className="rounded-2xl border border-emerald-200 bg-emerald-50 p-8 text-center">
+          <div className="mx-auto flex h-16 w-16 items-center justify-center rounded-full bg-emerald-100">
+            <CheckCircle className="h-8 w-8 text-emerald-600" />
+          </div>
+          <h2 className="mt-4 text-xl font-semibold text-emerald-900">Employee Added</h2>
+          <p className="mt-2 text-sm text-emerald-700">
+            An invitation has been created for {createdEmail}. The employee can visit the portal and register using their employee code and email address.
+          </p>
+          <div className="mt-6 flex items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => { setSuccess(false); setForm(INITIAL_FORM); }}
+              className="rounded-lg border border-emerald-200 bg-white px-4 py-2.5 text-sm font-medium text-emerald-700 transition hover:bg-emerald-50"
+            >
+              Add Another
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/employees")}
+              className="rounded-lg bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+            >
+              Back to List
+            </button>
+          </div>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/employees")}
-          className="text-sm font-medium text-blue-600 hover:text-blue-800"
-        >
-          &larr; Back to employees
-        </button>
       </div>
     );
   }
@@ -194,10 +137,10 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
       {/* Header */}
       <div>
         <p className="text-sm font-medium uppercase tracking-[0.18em] text-teal-700">
-          {isEdit ? "Edit Employee" : "New Employee"}
+          Add Employee
         </p>
         <h2 className="mt-1 text-2xl font-semibold text-slate-900">
-          {isEdit ? "Update Employee Information" : "Create New Employee"}
+          Add Employee
         </h2>
       </div>
 
@@ -213,10 +156,10 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
         onSubmit={handleSubmit}
         className="space-y-6 rounded-2xl border border-slate-200 bg-white p-6 shadow-sm"
       >
-        {/* Employee ID */}
+        {/* Employee Code */}
         <div>
           <label htmlFor="employeeCode" className="mb-1.5 block text-sm font-medium text-slate-700">
-            Employee ID <span className="text-red-500">*</span>
+            Employee Code <span className="text-red-500">*</span>
           </label>
           <input
             id="employeeCode"
@@ -230,26 +173,6 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
           />
           {fieldErrors.employeeCode && (
             <p className="mt-1 text-xs text-red-600">{fieldErrors.employeeCode}</p>
-          )}
-        </div>
-
-        {/* Name */}
-        <div>
-          <label htmlFor="name" className="mb-1.5 block text-sm font-medium text-slate-700">
-            Name <span className="text-red-500">*</span>
-          </label>
-          <input
-            id="name"
-            type="text"
-            value={form.name}
-            onChange={(e) => updateField("name", e.target.value)}
-            placeholder="e.g. John Doe"
-            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
-              fieldErrors.name ? "border-red-300" : "border-slate-200 focus:border-blue-300"
-            }`}
-          />
-          {fieldErrors.name && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.name}</p>
           )}
         </div>
 
@@ -273,56 +196,6 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
           )}
         </div>
 
-        {/* PIN */}
-        <div>
-          <label htmlFor="pin" className="mb-1.5 block text-sm font-medium text-slate-700">
-            {isEdit ? "New PIN (leave blank to keep current)" : "PIN"} {!isEdit && <span className="text-red-500">*</span>}
-          </label>
-          <input
-            id="pin"
-            type="password"
-            value={form.pin}
-            onChange={(e) => updateField("pin", e.target.value)}
-            placeholder={isEdit ? "Enter new PIN to reset" : "e.g. 1234"}
-            maxLength={20}
-            autoComplete="new-password"
-            className={`w-full rounded-lg border bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
-              fieldErrors.pin ? "border-red-300" : "border-slate-200 focus:border-blue-300"
-            }`}
-          />
-          {fieldErrors.pin && (
-            <p className="mt-1 text-xs text-red-600">{fieldErrors.pin}</p>
-          )}
-          {!isEdit && (
-            <p className="mt-1 text-xs text-slate-400">
-              Used by employees to log into the self-service portal.
-            </p>
-          )}
-        </div>
-
-        {/* Status (edit only) */}
-        {isEdit && (
-          <div>
-            <label htmlFor="status" className="mb-1.5 block text-sm font-medium text-slate-700">
-              Status
-            </label>
-            <select
-              id="status"
-              value={form.status}
-              onChange={(e) => updateField("status", e.target.value)}
-              className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
-            >
-              <option value="active">Active</option>
-              <option value="inactive">Inactive</option>
-            </select>
-            {form.status === "inactive" && (
-              <p className="mt-1.5 text-xs text-amber-600">
-                Setting to inactive will soft-disable this employee. They can be re-enabled later.
-              </p>
-            )}
-          </div>
-        )}
-
         {/* Actions */}
         <div className="flex items-center justify-end gap-3 border-t border-slate-100 pt-5">
           <button
@@ -343,7 +216,7 @@ export default function EmployeeFormPage({ mode, employeeId }: EmployeeFormPageP
                 Saving...
               </>
             ) : (
-              isEdit ? "Save Changes" : "Create Employee"
+              "Add Employee"
             )}
           </button>
         </div>

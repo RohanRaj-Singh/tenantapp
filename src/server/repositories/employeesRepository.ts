@@ -30,7 +30,50 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
       { key: { tenantId: 1 }, name: "employee_tenant_id" },
       { key: { tenantId: 1, employeeCode: 1 }, unique: true, name: "employee_tenant_code_unique" },
       { key: { tenantId: 1, name: 1 }, name: "employee_tenant_name" },
+      { key: { tenantId: 1, email: 1 }, name: "employee_tenant_email" },
     ]);
+  }
+
+  async findAll(
+    options: FindEmployeesOptions & { tenantId?: string } = {},
+  ): Promise<FindEmployeesResult> {
+    const { search, status, tenantId, skip = 0, limit = 20 } = options;
+    const filter: Filter<EmployeeRecord> = {};
+
+    if (tenantId) {
+      filter.tenantId = tenantId;
+    }
+
+    if (status) {
+      filter.status = status as EmployeeDocument["status"];
+    }
+
+    if (search) {
+      const escaped = search.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(escaped, "i");
+      filter.$or = [
+        { name: { $regex: regex } },
+        { email: { $regex: regex } },
+        { employeeCode: { $regex: regex } },
+      ];
+    }
+
+    const projection = { projection: { _id: 0 } } as const;
+
+    const [records, total] = await Promise.all([
+      this.collection()
+        .find(filter, projection)
+        .sort({ name: 1 })
+        .skip(skip)
+        .limit(limit)
+        .toArray(),
+      this.collection().countDocuments(filter),
+    ]);
+
+    return {
+      employees: records as unknown as EmployeeDocument[],
+      total,
+    };
   }
 
   async findByTenantId(
@@ -86,6 +129,17 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
   ): Promise<EmployeeDocument | null> {
     const record = await this.collection().findOne(
       { tenantId, employeeCode },
+      { projection: { _id: 0 } },
+    );
+    return record as EmployeeDocument | null;
+  }
+
+  async findByTenantAndEmail(
+    tenantId: string,
+    email: string,
+  ): Promise<EmployeeDocument | null> {
+    const record = await this.collection().findOne(
+      { tenantId, email: email.toLowerCase().trim() },
       { projection: { _id: 0 } },
     );
     return record as EmployeeDocument | null;

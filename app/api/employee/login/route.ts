@@ -9,7 +9,7 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tenantSlug, employeeCode, pin } = body;
+    const { tenantSlug, email, password } = body;
 
     // ── Validate input ────────────────────────────────────────────────────────
 
@@ -17,30 +17,30 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Corporate selection is required.",
+          error: "Please select your organization.",
           errorCode: "TENANT_NOT_FOUND",
         },
         { status: 400 },
       );
     }
 
-    if (!employeeCode || typeof employeeCode !== "string") {
+    if (!email || typeof email !== "string" || !email.trim()) {
       return NextResponse.json(
         {
           success: false,
-          error: "Employee ID is required.",
-          errorCode: "INVALID_PIN",
+          error: "Email is required.",
+          errorCode: "VALIDATION_ERROR",
         },
         { status: 400 },
       );
     }
 
-    if (!pin || typeof pin !== "string") {
+    if (!password || typeof password !== "string") {
       return NextResponse.json(
         {
           success: false,
-          error: "PIN is required.",
-          errorCode: "INVALID_PIN",
+          error: "Password is required.",
+          errorCode: "VALIDATION_ERROR",
         },
         { status: 400 },
       );
@@ -55,22 +55,22 @@ export async function POST(request: NextRequest) {
       return NextResponse.json(
         {
           success: false,
-          error: "Invalid corporate selection.",
+          error: "Invalid organization. Please try again.",
           errorCode: "TENANT_NOT_FOUND",
         },
         { status: 401 },
       );
     }
 
-    // ── Authenticate ──────────────────────────────────────────────────────────
+    // ── Authenticate with email + password ────────────────────────────────────
 
-    const result = await loginEmployee(tenant.tenantId, employeeCode.trim(), pin);
+    const result = await loginEmployee(tenant.tenantId, email.trim(), password);
 
     if (!result.success) {
       const status =
         result.errorCode === "EMPLOYEE_LOCKED"
           ? 429
-          : result.errorCode === "EMPLOYEE_INACTIVE"
+          : result.errorCode === "EMPLOYEE_INACTIVE" || result.errorCode === "EMPLOYEE_SUSPENDED" || result.errorCode === "NOT_REGISTERED"
             ? 403
             : 401;
 
@@ -85,12 +85,13 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Success ───────────────────────────────────────────────────────────────
+    // ── Success — return LoginResponse ────────────────────────────────────────
 
     return NextResponse.json(
       {
         success: true,
         employee: result.employee,
+        ...(result.mustChangePassword ? { mustChangePassword: true } : {}),
       },
       { status: 200 },
     );

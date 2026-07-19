@@ -1,11 +1,45 @@
 import { randomUUID } from "crypto";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 import { generateClaimNumber } from "@/src/server/services/claimNumberService";
+import { ApiError } from "@/src/server/api/errors";
 import type {
   FindReimbursementsOptions,
   FindReimbursementsResult,
 } from "@/src/server/repositories/contracts";
-import type { ClaimHistoryEntry } from "@/src/server/db/documents";
+import type { ClaimHistoryEntry, ReimbursementDocument } from "@/src/server/db/documents";
+
+type ClaimStatus = ReimbursementDocument["status"];
+
+/**
+ * Validates whether a status transition is allowed by the state machine.
+ *
+ * Rules:
+ *   pending    → in_progress, frozen, approved, rejected
+ *   in_progress → frozen, approved, rejected
+ *   frozen     → in_progress, approved, rejected
+ *   approved   → paid
+ *   paid       → (terminal — no transitions allowed)
+ *   rejected   → (terminal — no transitions allowed; editing still possible via update)
+ */
+function assertValidTransition(current: ClaimStatus, target: ClaimStatus) {
+  const allowed: Record<ClaimStatus, ClaimStatus[]> = {
+    pending: ["in_progress", "frozen", "approved", "rejected"],
+    in_progress: ["frozen", "approved", "rejected"],
+    frozen: ["in_progress", "approved", "rejected"],
+    approved: ["paid"],
+    paid: [],
+    rejected: [],
+  };
+
+  const transitions = allowed[current];
+  if (!transitions || !transitions.includes(target)) {
+    throw new ApiError(
+      400,
+      "INVALID_STATUS_TRANSITION",
+      `Cannot change status from "${current}" to "${target}". Allowed transitions from "${current}": ${(allowed[current] ?? []).join(", ") || "(none — terminal status)"}.`,
+    );
+  }
+}
 
 export async function listReimbursements(
   tenantId: string,
@@ -40,6 +74,14 @@ export async function createReimbursement(
     receiptUrl?: string;
     receiptHash?: string;
     serviceDate?: string;
+    sessionCount?: number;
+    sessionTypes?: string[];
+    sessionFor?: string;
+    sessionForOther?: string;
+    contactCountryCode?: string;
+    contactNumber?: string;
+    bankAccountNumber?: string;
+    bankName?: string;
   },
 ) {
   const now = new Date().toISOString();
@@ -62,6 +104,14 @@ export async function createReimbursement(
     receiptUrl: data.receiptUrl?.trim(),
     ...(data.receiptHash ? { receiptHash: data.receiptHash } : {}),
     ...(data.serviceDate ? { serviceDate: data.serviceDate } : {}),
+    ...(data.sessionCount !== undefined ? { sessionCount: data.sessionCount } : {}),
+    ...(data.sessionTypes !== undefined ? { sessionTypes: data.sessionTypes } : {}),
+    ...(data.sessionFor !== undefined ? { sessionFor: data.sessionFor } : {}),
+    ...(data.sessionForOther !== undefined ? { sessionForOther: data.sessionForOther } : {}),
+    ...(data.contactCountryCode !== undefined ? { contactCountryCode: data.contactCountryCode } : {}),
+    ...(data.contactNumber !== undefined ? { contactNumber: data.contactNumber } : {}),
+    ...(data.bankAccountNumber !== undefined ? { bankAccountNumber: data.bankAccountNumber } : {}),
+    ...(data.bankName !== undefined ? { bankName: data.bankName } : {}),
     status: "pending" as const,
     history: [firstEntry],
     createdAt: now,
@@ -85,6 +135,14 @@ export async function updateReimbursement(
     description?: string;
     receiptUrl?: string;
     notes?: string;
+    sessionCount?: number;
+    sessionTypes?: string[];
+    sessionFor?: string;
+    sessionForOther?: string;
+    contactCountryCode?: string;
+    contactNumber?: string;
+    bankAccountNumber?: string;
+    bankName?: string;
   },
 ) {
   const repositories = await getRepositoryContext();
@@ -102,7 +160,30 @@ export async function updateReimbursement(
   if (data.description !== undefined) updates.description = data.description.trim();
   if (data.receiptUrl !== undefined) updates.receiptUrl = data.receiptUrl.trim();
   if (data.notes !== undefined) updates.notes = data.notes.trim();
-  updates.updatedAt = new Date().toISOString();
+  if (data.sessionCount !== undefined) updates.sessionCount = data.sessionCount;
+  if (data.sessionTypes !== undefined) updates.sessionTypes = data.sessionTypes;
+  if (data.sessionFor !== undefined) updates.sessionFor = data.sessionFor;
+  if (data.sessionForOther !== undefined) updates.sessionForOther = data.sessionForOther;
+  if (data.contactCountryCode !== undefined) updates.contactCountryCode = data.contactCountryCode;
+  if (data.contactNumber !== undefined) updates.contactNumber = data.contactNumber;
+  if (data.bankAccountNumber !== undefined) updates.bankAccountNumber = data.bankAccountNumber;
+  if (data.bankName !== undefined) updates.bankName = data.bankName;
+
+  const now = new Date().toISOString();
+  updates.updatedAt = now;
+
+  // When a rejected claim is edited, resubmit it for review
+  if (existing.status === "rejected") {
+    updates.status = "pending";
+    const historyEntry: ClaimHistoryEntry = {
+      status: "pending",
+      actorId: data.employeeId ?? tenantId,
+      actorRole: "employee",
+      note: data.notes?.trim() ? `Resubmitted: ${data.notes.trim()}` : "Resubmitted after rejection",
+      timestamp: now,
+    };
+    updates.history = [...(existing.history ?? []), historyEntry];
+  }
 
   return repositories.reimbursements.update(reimbursementId, updates);
 }
@@ -119,6 +200,8 @@ export async function approveReimbursement(
   if (!existing || existing.tenantId !== tenantId) {
     return null;
   }
+
+  assertValidTransition(existing.status, "approved");
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "approved", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
@@ -144,6 +227,8 @@ export async function rejectReimbursement(
     return null;
   }
 
+  assertValidTransition(existing.status, "rejected");
+
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "rejected", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
   return repositories.reimbursements.update(reimbursementId, {
@@ -167,6 +252,8 @@ export async function freezeReimbursement(
   if (!existing || existing.tenantId !== tenantId) {
     return null;
   }
+
+  assertValidTransition(existing.status, "frozen");
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "frozen", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
@@ -192,10 +279,7 @@ export async function payReimbursement(
     return null;
   }
 
-  // Only approved claims can be marked as paid
-  if (existing.status !== "approved") {
-    throw new Error("Only approved claims can be marked as paid.");
-  }
+  assertValidTransition(existing.status, "paid");
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "paid", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
@@ -222,6 +306,14 @@ export async function createEmployeeReimbursement(
     receiptUrl?: string;
     receiptHash?: string;
     serviceDate?: string;
+    sessionCount?: number;
+    sessionTypes?: string[];
+    sessionFor?: string;
+    sessionForOther?: string;
+    contactCountryCode?: string;
+    contactNumber?: string;
+    bankAccountNumber?: string;
+    bankName?: string;
   },
 ) {
   const now = new Date().toISOString();
@@ -244,6 +336,14 @@ export async function createEmployeeReimbursement(
     receiptUrl: data.receiptUrl?.trim(),
     ...(data.receiptHash ? { receiptHash: data.receiptHash } : {}),
     ...(data.serviceDate ? { serviceDate: data.serviceDate } : {}),
+    ...(data.sessionCount !== undefined ? { sessionCount: data.sessionCount } : {}),
+    ...(data.sessionTypes !== undefined ? { sessionTypes: data.sessionTypes } : {}),
+    ...(data.sessionFor !== undefined ? { sessionFor: data.sessionFor } : {}),
+    ...(data.sessionForOther !== undefined ? { sessionForOther: data.sessionForOther } : {}),
+    ...(data.contactCountryCode !== undefined ? { contactCountryCode: data.contactCountryCode } : {}),
+    ...(data.contactNumber !== undefined ? { contactNumber: data.contactNumber } : {}),
+    ...(data.bankAccountNumber !== undefined ? { bankAccountNumber: data.bankAccountNumber } : {}),
+    ...(data.bankName !== undefined ? { bankName: data.bankName } : {}),
     clinicId: data.clinicId,
     clinicName: data.clinicName.trim(),
     status: "pending" as const,
@@ -256,4 +356,39 @@ export async function createEmployeeReimbursement(
   await repositories.reimbursements.insert(reimbursement);
 
   return reimbursement;
+}
+
+// ── Progress Update ──────────────────────────────────────────────────────────
+
+/**
+ * Post a progress update message to a claim's history without changing its status.
+ * Used for sending updates like "Currently with finance" or "Almost done."
+ * The message is appended to the claim history so it's visible to the employee/clinic.
+ */
+export async function postProgressUpdate(
+  tenantId: string,
+  reimbursementId: string,
+  message: string,
+  actorId: string,
+) {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.reimbursements.findById(reimbursementId);
+
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+  const entry: ClaimHistoryEntry = {
+    status: existing.status,
+    actorId,
+    actorRole: "tenantAdmin",
+    note: message.trim(),
+    timestamp: now,
+  };
+
+  return repositories.reimbursements.update(reimbursementId, {
+    updatedAt: now,
+    history: [...(existing.history ?? []), entry],
+  });
 }

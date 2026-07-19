@@ -2,7 +2,10 @@ import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
   AuditEventDocument,
+  BudgetDocument,
+  CampaignDocument,
   EmployeeDocument,
+  InvitationDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -24,6 +27,9 @@ interface MemoryStore {
   reimbursements: Map<string, ReimbursementDocument>;
   auditEvents: AuditEventDocument[];
   counters: Map<string, number>;
+  campaigns: Map<string, CampaignDocument>;
+  invitations: Map<string, InvitationDocument>;
+  budgets: Map<string, BudgetDocument>;
 }
 
 declare global {
@@ -44,6 +50,9 @@ function createMemoryStore(): MemoryStore {
     reimbursements: new Map<string, ReimbursementDocument>(),
     auditEvents: [],
     counters: new Map<string, number>(),
+    campaigns: new Map<string, CampaignDocument>(),
+    invitations: new Map<string, InvitationDocument>(),
+    budgets: new Map<string, BudgetDocument>(),
   };
 }
 

@@ -29,7 +29,10 @@ export async function GET(
       );
     }
 
-    return NextResponse.json(reimbursement, { status: 200 });
+    // Tenant Admin callers must not see employeeName
+    const { employeeName: _name, ...rest } = reimbursement;
+
+    return NextResponse.json(rest, { status: 200 });
   } catch (error) {
     return apiErrorResponse(error);
   }
@@ -49,13 +52,21 @@ export async function PUT(
     const body = await request.json();
 
     const reimbursement = await updateReimbursement(auth.context.tenant.tenantId, id, {
-      employeeId: body.employeeId,
+      employeeId: body.employeeId ?? auth.context.user.id,
       employeeName: body.employeeName,
       type: body.type,
       amount: body.amount,
       description: body.description,
       receiptUrl: body.receiptUrl,
       notes: body.notes,
+      sessionCount: body.sessionCount !== undefined ? Number(body.sessionCount) : undefined,
+      sessionTypes: Array.isArray(body.sessionTypes) ? body.sessionTypes : undefined,
+      sessionFor: body.sessionFor,
+      sessionForOther: body.sessionForOther,
+      contactCountryCode: body.contactCountryCode,
+      contactNumber: body.contactNumber,
+      bankAccountNumber: body.bankAccountNumber,
+      bankName: body.bankName,
     });
 
     if (!reimbursement) {

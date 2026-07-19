@@ -1,5 +1,5 @@
-import EmailInvitationsPage from "@/components/dashboard/EmailInvitationsPage";
+import EmployeeOnboardingPage from "@/components/dashboard/EmployeeOnboardingPage";
 
-export default function EmailInvitationsDashboardPage() {
-  return <EmailInvitationsPage />;
+export default function EmployeeOnboardingDashboardPage() {
+  return <EmployeeOnboardingPage />;
 }

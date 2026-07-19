@@ -7,11 +7,8 @@ import { Search, Plus, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight } fro
 interface Employee {
   employeeId: string;
   employeeCode: string;
-  name: string;
   email: string;
-  status: "active" | "inactive";
-  failedLoginAttempts: number;
-  lockedUntil: string | null;
+  status: "not_registered" | "active" | "inactive" | "suspended";
   lastAccessAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -23,6 +20,15 @@ interface ListResponse {
 }
 
 const PAGE_SIZE = 20;
+
+type EmployeeStatus = Employee["status"];
+
+const STATUS_CONFIG: Record<EmployeeStatus, { label: string; color: string }> = {
+  not_registered: { label: "Not Registered", color: "bg-slate-100 text-slate-500" },
+  active: { label: "Active", color: "bg-emerald-100 text-emerald-700" },
+  inactive: { label: "Inactive", color: "bg-amber-100 text-amber-700" },
+  suspended: { label: "Suspended", color: "bg-red-100 text-red-700" },
+};
 
 function formatDate(dateStr: string) {
   return new Date(dateStr).toLocaleDateString("en-US", {
@@ -109,7 +115,7 @@ export default function EmployeeListPage() {
           className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
         >
           <Plus className="h-4 w-4" />
-          New Employee
+          Add Employee
         </button>
       </div>
 
@@ -119,7 +125,7 @@ export default function EmployeeListPage() {
           <Search className="pointer-events-none absolute left-3 top-1/2 h-4 w-4 -translate-y-1/2 text-slate-400" />
           <input
             type="text"
-            placeholder="Search by name, email, or employee ID..."
+            placeholder="Search by employee code or email..."
             value={search}
             onChange={(e) => handleSearchChange(e.target.value)}
             className="w-full rounded-lg border border-slate-200 bg-white py-2.5 pl-10 pr-4 text-sm placeholder-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
@@ -128,11 +134,13 @@ export default function EmployeeListPage() {
         <select
           value={statusFilter}
           onChange={(e) => handleStatusFilterChange(e.target.value)}
-          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-40"
+          className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100 sm:w-44"
         >
           <option value="">All Status</option>
+          <option value="not_registered">Not Registered</option>
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
+          <option value="suspended">Suspended</option>
         </select>
       </div>
 
@@ -178,7 +186,7 @@ export default function EmployeeListPage() {
             <p className="mt-1 text-sm text-slate-500">
               {search || statusFilter
                 ? "Try adjusting your search or filter criteria."
-                : "Add your first employee to get started."}
+                : "No employees yet. Add your first employee to get started."}
             </p>
           </div>
           {!search && !statusFilter && (
@@ -188,7 +196,7 @@ export default function EmployeeListPage() {
               className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
             >
               <Plus className="h-4 w-4" />
-              New Employee
+              Add Employee
             </button>
           )}
         </div>
@@ -201,49 +209,38 @@ export default function EmployeeListPage() {
             <table className="w-full text-left text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  <th className="px-4 py-3 font-semibold text-slate-600">Employee ID</th>
-                  <th className="px-4 py-3 font-semibold text-slate-600">Name</th>
+                  <th className="px-4 py-3 font-semibold text-slate-600">Employee Code</th>
                   <th className="hidden px-4 py-3 font-semibold text-slate-600 sm:table-cell">
                     Email
                   </th>
                   <th className="px-4 py-3 font-semibold text-slate-600">Status</th>
-                  <th className="hidden px-4 py-3 font-semibold text-slate-600 md:table-cell">
-                    Last Access
-                  </th>
                 </tr>
               </thead>
               <tbody>
-                {employees.map((employee) => (
-                  <tr
-                    key={employee.employeeId}
-                    onClick={() => router.push(`/employees/${employee.employeeId}`)}
-                    className="cursor-pointer border-b border-slate-50 transition hover:bg-slate-50"
-                  >
-                    <td className="px-4 py-3 font-mono text-xs text-slate-700">
-                      {employee.employeeCode}
-                    </td>
-                    <td className="px-4 py-3 font-medium text-slate-900">{employee.name}</td>
-                    <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">
-                      {employee.email}
-                    </td>
-                    <td className="px-4 py-3">
-                      <span
-                        className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                          employee.status === "active"
-                            ? "bg-emerald-100 text-emerald-700"
-                            : "bg-slate-100 text-slate-500"
-                        }`}
-                      >
-                        {employee.status}
-                      </span>
-                    </td>
-                    <td className="hidden px-4 py-3 text-slate-600 md:table-cell">
-                      {employee.lastAccessAt
-                        ? formatDate(employee.lastAccessAt)
-                        : <span className="text-slate-400">Never</span>}
-                    </td>
-                  </tr>
-                ))}
+                {employees.map((employee) => {
+                  const statusCfg = STATUS_CONFIG[employee.status] ?? STATUS_CONFIG.not_registered;
+                  return (
+                    <tr
+                      key={employee.employeeId}
+                      onClick={() => router.push(`/employees/${employee.employeeId}`)}
+                      className="cursor-pointer border-b border-slate-50 transition hover:bg-slate-50"
+                    >
+                      <td className="px-4 py-3 font-mono text-xs text-slate-700">
+                        {employee.employeeCode}
+                      </td>
+                      <td className="hidden px-4 py-3 text-slate-600 sm:table-cell">
+                        {employee.email}
+                      </td>
+                      <td className="px-4 py-3">
+                        <span
+                          className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${statusCfg.color}`}
+                        >
+                          {statusCfg.label}
+                        </span>
+                      </td>
+                    </tr>
+                  );
+                })}
               </tbody>
             </table>
           </div>

@@ -1,4 +1,4 @@
-import EmployeeFormPage from "@/components/employees/EmployeeFormPage";
+import { redirect } from "next/navigation";
 
 export default async function EditEmployeePage({
   params,
@@ -6,5 +6,6 @@ export default async function EditEmployeePage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  return <EmployeeFormPage mode="edit" employeeId={id} />;
+  // Edit is no longer a separate page — redirect to detail page
+  redirect(`/employees/${id}`);
 }

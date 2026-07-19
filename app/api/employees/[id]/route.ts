@@ -2,10 +2,9 @@ import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/src/server/api/responses";
 import { requireTenantApiAuth } from "@/src/modules/tenant-auth/middleware/tenant-auth";
 import {
-  getEmployeeAccessDetail,
+  getEmployee,
   updateEmployee,
   disableEmployee,
-  updateEmployeePin,
 } from "@/src/server/services/employeeService";
 
 export const runtime = "nodejs";
@@ -22,7 +21,7 @@ export async function GET(
 
   try {
     const { id } = await context.params;
-    const employee = await getEmployeeAccessDetail(id, auth.context.tenant.tenantId);
+    const employee = await getEmployee(id, auth.context.tenant.tenantId, "tenant_admin");
 
     if (!employee) {
       return NextResponse.json(
@@ -50,18 +49,19 @@ export async function PUT(
     const { id } = await context.params;
     const body = await request.json();
 
+    // Only employeeCode, email, and status can be updated by Tenant Admin
+    // name, phoneNumber, passwordHash — CANNOT be updated
     const updateData: {
       employeeCode?: string;
-      name?: string;
       email?: string;
       status?: "active" | "inactive";
     } = {
-      employeeCode: body.employeeCode,
-      name: body.name,
-      email: body.email,
-      status: body.status,
+      ...(body.employeeCode !== undefined ? { employeeCode: body.employeeCode } : {}),
+      ...(body.email !== undefined ? { email: body.email } : {}),
+      ...(body.status !== undefined ? { status: body.status } : {}),
     };
 
+    // Allow reactivation from PATCH too (status: "active" via updateEmployee)
     const employee = await updateEmployee(auth.context.tenant.tenantId, id, updateData);
 
     if (!employee) {
@@ -69,18 +69,6 @@ export async function PUT(
         { error: "Employee not found." },
         { status: 404 },
       );
-    }
-
-    // If a new PIN was provided, update through the centralized PIN service
-    if (body.pin && typeof body.pin === "string") {
-      try {
-        await updateEmployeePin(auth.context.tenant.tenantId, id, body.pin, auth.context.user.id, "pin_reset");
-      } catch (err) {
-        if (err instanceof Error && (err.message.startsWith("PIN must be") || err.message === "PIN is required.")) {
-          return NextResponse.json({ error: err.message }, { status: 400 });
-        }
-        throw err;
-      }
     }
 
     return NextResponse.json(employee, { status: 200 });
@@ -115,8 +103,22 @@ export async function PATCH(
       return NextResponse.json(employee, { status: 200 });
     }
 
+    // Allow reactivation via PATCH with status: "active"
+    if (body.status === "active") {
+      const employee = await updateEmployee(auth.context.tenant.tenantId, id, { status: "active" });
+
+      if (!employee) {
+        return NextResponse.json(
+          { error: "Employee not found." },
+          { status: 404 },
+        );
+      }
+
+      return NextResponse.json(employee, { status: 200 });
+    }
+
     return NextResponse.json(
-      { error: "Invalid status value." },
+      { error: "Invalid status value. Use 'active' or 'inactive'.", errorCode: "VALIDATION_ERROR" },
       { status: 400 },
     );
   } catch (error) {

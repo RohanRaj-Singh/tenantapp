@@ -113,7 +113,7 @@ export async function POST(request: NextRequest) {
 
   try {
     const body = await request.json();
-    const { tenantId, employeeCode, clinicId, clinicName, amount, description, receiptUrl, receiptHash, serviceDate } = body;
+    const { tenantId, employeeCode, clinicId, clinicName, amount, description, receiptUrl, receiptHash, serviceDate, sessionCount, sessionTypes, sessionFor, sessionForOther, contactCountryCode, contactNumber, bankAccountNumber, bankName } = body;
 
     // ── Validate required fields ───────────────────────────────────────────
 
@@ -194,10 +194,11 @@ export async function POST(request: NextRequest) {
 
     // ── Create claim ───────────────────────────────────────────────────────
 
+    const employeeName = employee.name ?? "";
     const reimbursement = await createEmployeeReimbursement(
       tenantId,
       employee.employeeId,
-      employee.name,
+      employeeName,
       {
         clinicId: clinicId.trim(),
         clinicName: clinicName.trim(),
@@ -206,6 +207,14 @@ export async function POST(request: NextRequest) {
         receiptUrl: receiptUrl?.trim(),
         receiptHash: typeof receiptHash === "string" ? receiptHash : undefined,
         serviceDate: typeof serviceDate === "string" ? serviceDate : undefined,
+        sessionCount: typeof sessionCount === "number" ? sessionCount : undefined,
+        sessionTypes: Array.isArray(sessionTypes) ? sessionTypes : undefined,
+        sessionFor: typeof sessionFor === "string" ? sessionFor : undefined,
+        sessionForOther: typeof sessionForOther === "string" ? sessionForOther : undefined,
+        contactCountryCode: typeof contactCountryCode === "string" ? contactCountryCode : undefined,
+        contactNumber: typeof contactNumber === "string" ? contactNumber : undefined,
+        bankAccountNumber: typeof bankAccountNumber === "string" ? bankAccountNumber : undefined,
+        bankName: typeof bankName === "string" ? bankName : undefined,
       },
     );
 

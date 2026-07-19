@@ -1,10 +1,11 @@
-import { randomUUID, scryptSync, randomBytes, timingSafeEqual } from "crypto";
+import { randomUUID } from "crypto";
+import * as bcrypt from "bcryptjs";
 import { getRepositoryContext } from "@/src/server/repositories/context";
-import type { AuditEventDocument, EmployeeDocument } from "@/src/server/db/documents";
+import type { AuditEventDocument, EmployeeDocument, EmployeeStatus } from "@/src/server/db/documents";
 import type {
   FindEmployeesOptions,
-  FindEmployeesResult,
 } from "@/src/server/repositories/contracts";
+import { completeInvitation } from "@/src/server/services/invitationService";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -14,49 +15,147 @@ export const MAX_LOGIN_ATTEMPTS = 5;
 /** Duration (in minutes) an employee is locked out after exceeding max attempts. */
 export const LOCKOUT_MINUTES = 15;
 
-/** Minimum PIN length after trimming whitespace. */
-export const MIN_PIN_LENGTH = 4;
+/** Minimum password length. */
+export const MIN_PASSWORD_LENGTH = 8;
 
-// ── PIN Hashing (Node.js crypto.scryptSync) ──────────────────────────────────
+// ── Types ────────────────────────────────────────────────────────────────────
 
-/** Length (bytes) of the scrypt derived key. */
-const KEY_LENGTH = 64;
+export type CallerRole = "super_admin" | "tenant_admin";
 
-/**
- * Hash a plain-text PIN using scrypt with a random salt.
- * Returns `salt:hash` (both hex) for storage.
- *
- * Note: callers should trim whitespace via normalizePin() before hashing.
- */
-export function hashPin(pin: string): string {
-  const salt = randomBytes(16).toString("hex");
-  const hash = scryptSync(pin, salt, KEY_LENGTH).toString("hex");
-  return `${salt}:${hash}`;
+/** Employee profile returned to clients — never includes passwordHash. */
+export interface SafeEmployee {
+  employeeId: string;
+  tenantId: string;
+  employeeCode: string;
+  name: string | null;
+  email: string;
+  status: EmployeeStatus;
+  phoneNumber?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
+  mustChangePassword: boolean;
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
+  lastAccessAt: string | null;
+  createdAt: string;
+  updatedAt: string;
 }
 
-// ── PIN Validation & Normalization ───────────────────────────────────────────
+export type LoginErrorCode =
+  | "TENANT_NOT_FOUND"
+  | "EMPLOYEE_NOT_FOUND"
+  | "NOT_REGISTERED"
+  | "EMPLOYEE_INACTIVE"
+  | "EMPLOYEE_SUSPENDED"
+  | "EMPLOYEE_LOCKED"
+  | "INVALID_PASSWORD";
 
-/**
- * Normalize a PIN by trimming whitespace.
- * Used consistently across create, update, reset, and login flows.
- */
-export function normalizePin(pin: string): string {
-  return pin.trim();
+export interface LoginResult {
+  success: boolean;
+  employee?: SafeEmployee;
+  mustChangePassword?: boolean;
+  error?: string;
+  errorCode?: LoginErrorCode;
+  lockedUntil?: string | null;
 }
 
-/**
- * Validate a PIN meets server-side requirements.
- * Returns an error message string, or null if valid.
- */
-export function validatePin(pin: unknown): string | null {
-  if (typeof pin !== "string" || !pin) {
-    return "PIN is required.";
-  }
-  const trimmed = pin.trim();
-  if (trimmed.length < MIN_PIN_LENGTH) {
-    return `PIN must be at least ${MIN_PIN_LENGTH} characters.`;
-  }
-  return null;
+// ── Shared API Contracts (DTOs) ──────────────────────────────────────────────
+
+export interface CreateEmployeeRequest {
+  employeeCode: string;
+  email: string;
+}
+
+export interface CreateEmployeeResponse {
+  employeeId: string;
+  employeeCode: string;
+  email: string;
+  status: "not_registered";
+  createdAt: string;
+}
+
+export interface EmployeeListItem {
+  employeeId: string;
+  employeeCode: string;
+  email: string;
+  status: EmployeeStatus;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ListEmployeesResponse {
+  employees: EmployeeListItem[];
+  total: number;
+}
+
+export interface RegisterEmployeeRequest {
+  tenantSlug: string;
+  employeeCode: string;
+  email: string;
+  password: string;
+  name: string;
+  phone?: string;
+}
+
+export interface RegisterEmployeeResponse {
+  success: true;
+  employee: SafeEmployee;
+}
+
+export interface LoginRequest {
+  tenantSlug: string;
+  email: string;
+  password: string;
+}
+
+export interface LoginResponse {
+  success: true;
+  employee: SafeEmployee;
+  mustChangePassword?: boolean;
+}
+
+export interface ChangePasswordRequest {
+  employeeId: string;
+  currentPassword: string;
+  newPassword: string;
+}
+
+export interface ChangePasswordResponse {
+  success: true;
+  employee: SafeEmployee;
+}
+
+export interface SuperAdminEmployeeListItem {
+  employeeId: string;
+  employeeCode: string;
+  email: string;
+  name: string;
+  phoneNumber?: string | null;
+  status: EmployeeStatus;
+  tenantId: string;
+  tenantName?: string;
+  failedLoginAttempts: number;
+  lockedUntil: string | null;
+  lastAccessAt: string | null;
+  mustChangePassword: boolean;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ResetPasswordResponse {
+  temporaryPassword: string;
+  mustChangePassword: true;
+}
+
+export interface SuperAdminActionResponse {
+  success: true;
+  employee: SuperAdminEmployeeListItem;
+}
+
+export interface ApiErrorResponse {
+  success: false;
+  error: string;
+  errorCode: string;
 }
 
 // ── Authentication Logging ───────────────────────────────────────────────────
@@ -70,57 +169,56 @@ function logAuthEvent(event: string, detail?: Record<string, unknown>) {
   console.log(`${timestamp} ${prefix} ${event}${parts.length ? " " + parts.join(" ") : ""}`);
 }
 
+// ── Password Hashing ─────────────────────────────────────────────────────────
+
 /**
- * Verify a plain-text PIN against a stored `salt:hash` string.
- * Uses timingSafeEqual to prevent timing attacks.
+ * Hash a plain-text password using bcrypt with salt rounds 12.
  */
-export function verifyPin(stored: string, pin: string): boolean {
-  const parts = stored.split(":");
-  if (parts.length !== 2) return false;
-
-  const [salt, hash] = parts;
-  if (!salt || !hash) return false;
-
-  const derived = scryptSync(pin, salt, KEY_LENGTH).toString("hex");
-  const derivedBuf = Buffer.from(derived, "hex");
-  const hashBuf = Buffer.from(hash, "hex");
-
-  if (derivedBuf.length !== hashBuf.length) return false;
-
-  return timingSafeEqual(derivedBuf, hashBuf);
+export function hashPassword(password: string): string {
+  return bcrypt.hashSync(password, 12);
 }
 
-// ── Types ────────────────────────────────────────────────────────────────────
-
-/** Employee profile returned to clients — never includes pinHash. */
-export interface SafeEmployee {
-  employeeId: string;
-  tenantId: string;
-  employeeCode: string;
-  name: string;
-  email: string;
-  status: "active" | "inactive";
-  createdAt: string;
-  updatedAt: string;
-  lastAccessAt: string | null;
+/**
+ * Verify a plain-text password against a stored bcrypt hash.
+ */
+export function verifyPassword(password: string, hash: string): boolean {
+  return bcrypt.compareSync(password, hash);
 }
 
-export type LoginErrorCode =
-  | "TENANT_NOT_FOUND"
-  | "EMPLOYEE_NOT_FOUND"
-  | "EMPLOYEE_INACTIVE"
-  | "EMPLOYEE_LOCKED"
-  | "INVALID_PIN";
-
-export interface LoginResult {
-  success: boolean;
-  employee?: SafeEmployee;
-  error?: string;
-  errorCode?: LoginErrorCode;
-  lockedUntil?: string | null;
+/**
+ * Validate password strength.
+ * Returns an error message string, or null if valid.
+ *
+ * Rules:
+ * - Must be a string
+ * - Minimum 8 characters
+ * - At least 1 uppercase letter
+ * - At least 1 lowercase letter
+ * - At least 1 digit
+ */
+export function validatePasswordStrength(password: unknown): string | null {
+  if (typeof password !== "string" || !password) {
+    return "Password is required.";
+  }
+  if (password.length < MIN_PASSWORD_LENGTH) {
+    return "Password must be at least 8 characters with uppercase, lowercase, and a digit.";
+  }
+  if (!/[A-Z]/.test(password)) {
+    return "Password must be at least 8 characters with uppercase, lowercase, and a digit.";
+  }
+  if (!/[a-z]/.test(password)) {
+    return "Password must be at least 8 characters with uppercase, lowercase, and a digit.";
+  }
+  if (!/\d/.test(password)) {
+    return "Password must be at least 8 characters with uppercase, lowercase, and a digit.";
+  }
+  return null;
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
+
+/** Employee document returned to clients — never includes passwordHash. */
+export type SafeEmployeeDocument = Omit<EmployeeDocument, "passwordHash">;
 
 function toSafeEmployee(employee: EmployeeDocument): SafeEmployee {
   return {
@@ -130,36 +228,67 @@ function toSafeEmployee(employee: EmployeeDocument): SafeEmployee {
     name: employee.name,
     email: employee.email,
     status: employee.status,
+    phoneNumber: employee.phoneNumber,
+    bankAccountNumber: employee.bankAccountNumber,
+    bankName: employee.bankName,
+    mustChangePassword: employee.mustChangePassword,
+    failedLoginAttempts: employee.failedLoginAttempts,
+    lockedUntil: employee.lockedUntil,
+    lastAccessAt: employee.lastAccessAt,
     createdAt: employee.createdAt,
     updatedAt: employee.updatedAt,
-    lastAccessAt: employee.lastAccessAt,
   };
 }
 
-// ── Existing Public API ──────────────────────────────────────────────────────
+/**
+ * Strip sensitive fields from a SafeEmployee for Tenant Admin callers.
+ * Returns a partial employee with only: employeeId, employeeCode, email, status, createdAt, updatedAt.
+ */
+function toSafeEmployeeListItem(employee: SafeEmployee): EmployeeListItem {
+  return {
+    employeeId: employee.employeeId,
+    employeeCode: employee.employeeCode,
+    email: employee.email,
+    status: employee.status,
+    createdAt: employee.createdAt,
+    updatedAt: employee.updatedAt,
+  };
+}
 
-/** Employee document returned to clients — never includes pinHash. */
-export type SafeEmployeeDocument = Omit<EmployeeDocument, "pinHash">;
+// ── Employee CRUD ────────────────────────────────────────────────────────────
 
 export async function listEmployees(
   tenantId: string,
   options?: FindEmployeesOptions,
-): Promise<{ employees: SafeEmployeeDocument[]; total: number }> {
+  callerRole: CallerRole = "tenant_admin",
+): Promise<{ employees: SafeEmployee[]; total: number }> {
   const repositories = await getRepositoryContext();
   const result = await repositories.employees.findByTenantId(tenantId, options);
 
-  // Strip pinHash from every employee before returning to clients
-  const safeEmployees: SafeEmployeeDocument[] = result.employees.map(
-    ({ pinHash: _pinHash, ...safe }) => safe,
-  );
+  const safeEmployees: SafeEmployee[] = result.employees.map(toSafeEmployee);
+
+  if (callerRole === "tenant_admin") {
+    // Strip sensitive fields for Tenant Admin
+    const filtered = safeEmployees.map((emp) => ({
+      employeeId: emp.employeeId,
+      employeeCode: emp.employeeCode,
+      email: emp.email,
+      status: emp.status,
+      createdAt: emp.createdAt,
+      updatedAt: emp.updatedAt,
+    }));
+    // Return as SafeEmployee[] (callers access only the fields they need)
+    return { employees: filtered as SafeEmployee[], total: result.total };
+  }
 
   return { employees: safeEmployees, total: result.total };
 }
 
 export async function getEmployee(
-  tenantId: string,
   employeeId: string,
-) {
+  tenantId: string,
+  callerRole: CallerRole = "tenant_admin",
+): Promise<SafeEmployee | null> {
   const repositories = await getRepositoryContext();
   const employee = await repositories.employees.findById(employeeId);
 
@@ -167,32 +296,37 @@ export async function getEmployee(
     return null;
   }
 
-  return employee;
+  const safe = toSafeEmployee(employee);
+
+  if (callerRole === "tenant_admin") {
+    // Strip sensitive fields for Tenant Admin
+    return {
+      employeeId: safe.employeeId,
+      employeeCode: safe.employeeCode,
+      email: safe.email,
+      status: safe.status,
+      createdAt: safe.createdAt,
+      updatedAt: safe.updatedAt,
+    } as SafeEmployee;
+  }
+
+  return safe;
 }
 
 export async function createEmployee(
   tenantId: string,
-  data: {
-    employeeCode: string;
-    name: string;
-    email: string;
-    pin: string;
-  },
-) {
-  const pinError = validatePin(data.pin);
-  if (pinError) {
-    throw new Error(pinError);
-  }
-
+  data: CreateEmployeeRequest,
+): Promise<EmployeeDocument> {
   const now = new Date().toISOString();
   const employee: EmployeeDocument = {
     employeeId: `emp_${randomUUID()}`,
     tenantId,
     employeeCode: data.employeeCode.trim(),
-    name: data.name.trim(),
-    email: data.email.trim(),
-    status: "active",
-    pinHash: hashPin(normalizePin(data.pin)),
+    name: null,
+    email: data.email.toLowerCase().trim(),
+    status: "not_registered",
+    passwordHash: null,
+    mustChangePassword: false,
     failedLoginAttempts: 0,
     lockedUntil: null,
     lastAccessAt: null,
@@ -250,39 +384,91 @@ export async function disableEmployee(
   });
 }
 
+// ── Profile Update ────────────────────────────────────────────────────────────
+
+/**
+ * Update an employee's own profile fields.
+ * Only the employee themselves (or Super Admin) can update these fields.
+ * Tenant Admin cannot update employee profile data.
+ */
+export async function updateEmployeeProfile(
+  employeeId: string,
+  data: {
+    name?: string;
+    phoneNumber?: string;
+    bankAccountNumber?: string;
+    bankName?: string;
+  },
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  const updates: Partial<EmployeeDocument> = {};
+  if (data.name !== undefined) updates.name = data.name.trim();
+  if (data.phoneNumber !== undefined) updates.phoneNumber = data.phoneNumber.trim();
+  if (data.bankAccountNumber !== undefined) updates.bankAccountNumber = data.bankAccountNumber.trim();
+  if (data.bankName !== undefined) updates.bankName = data.bankName.trim();
+  updates.updatedAt = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employeeId, updates);
+  return updated ? toSafeEmployee(updated) : null;
+}
+
 // ── Employee Auth ────────────────────────────────────────────────────────────
 
 /**
- * Authenticate an employee using employeeCode + PIN.
+ * Authenticate an employee using tenantId + email + password.
  *
  * Handles lockout state, tracks failed attempts, and resets on success.
- * Returns a SafeEmployee (no pinHash) on success.
+ * Returns a SafeEmployee (no passwordHash) on success.
  */
 export async function loginEmployee(
   tenantId: string,
-  employeeCode: string,
-  pin: string,
+  email: string,
+  password: string,
 ): Promise<LoginResult> {
   const repositories = await getRepositoryContext();
 
-  // 1. Find employee by tenantId + employeeCode
-  const employee = await repositories.employees.findByEmployeeCode(tenantId, employeeCode);
+  // 1. Find employee by tenantId + email
+  const employee = await repositories.employees.findByTenantAndEmail(tenantId, email);
   if (!employee) {
     logAuthEvent("LOGIN_FAIL", { tenantId, reason: "employee_not_found" });
     return {
       success: false,
-      error: "Invalid employee ID or PIN.",
-      errorCode: "INVALID_PIN",
+      error: "Invalid email or password.",
+      errorCode: "EMPLOYEE_NOT_FOUND",
     };
   }
 
   // 2. Check employee status
-  if (employee.status !== "active") {
-    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "inactive", status: employee.status });
+  if (employee.status === "not_registered") {
+    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "not_registered" });
+    return {
+      success: false,
+      error: "Please complete registration first.",
+      errorCode: "NOT_REGISTERED",
+    };
+  }
+
+  if (employee.status === "inactive") {
+    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "inactive" });
     return {
       success: false,
       error: "Your account is not active. Please contact your administrator.",
       errorCode: "EMPLOYEE_INACTIVE",
+    };
+  }
+
+  if (employee.status === "suspended") {
+    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "suspended" });
+    return {
+      success: false,
+      error: "This account has been suspended. Please contact your administrator.",
+      errorCode: "EMPLOYEE_SUSPENDED",
     };
   }
 
@@ -294,7 +480,7 @@ export async function loginEmployee(
       logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "locked", lockedUntil: employee.lockedUntil });
       return {
         success: false,
-        error: `Too many failed attempts. Please try again later.`,
+        error: "Too many failed attempts. Please try again later.",
         errorCode: "EMPLOYEE_LOCKED",
         lockedUntil: employee.lockedUntil,
       };
@@ -310,11 +496,19 @@ export async function loginEmployee(
     employee.lockedUntil = null;
   }
 
-  // 4. Verify PIN (normalize before comparison)
-  const normalizedPin = normalizePin(pin);
-  const pinValid = verifyPin(employee.pinHash, normalizedPin);
+  // 4. Verify password
+  if (!employee.passwordHash) {
+    logAuthEvent("LOGIN_FAIL", { tenantId, employeeId: employee.employeeId, reason: "no_password_hash" });
+    return {
+      success: false,
+      error: "Please complete registration first.",
+      errorCode: "NOT_REGISTERED",
+    };
+  }
 
-  if (!pinValid) {
+  const passwordValid = verifyPassword(password, employee.passwordHash);
+
+  if (!passwordValid) {
     const newAttempts = employee.failedLoginAttempts + 1;
     const updates: Partial<EmployeeDocument> = {
       failedLoginAttempts: newAttempts,
@@ -342,8 +536,8 @@ export async function loginEmployee(
     logAuthEvent("LOGIN_FAIL", { tenantId, employeeId: employee.employeeId, attempts: newAttempts });
     return {
       success: false,
-      error: "Invalid employee ID or PIN.",
-      errorCode: "INVALID_PIN",
+      error: "Invalid email or password.",
+      errorCode: "INVALID_PASSWORD",
     };
   }
 
@@ -360,34 +554,326 @@ export async function loginEmployee(
 
   logAuthEvent("LOGIN_OK", { tenantId, employeeId: employee.employeeId });
 
+  const safe = toSafeEmployee(fresh ?? employee);
+
   return {
     success: true,
-    employee: toSafeEmployee(fresh ?? employee),
+    employee: safe,
+    mustChangePassword: safe.mustChangePassword || undefined,
   };
 }
 
+// ── Employee Registration ────────────────────────────────────────────────────
+
 /**
- * Generate a new random 6-digit PIN, hash and store it, reset lockout state.
- * Returns the employee (safe) and the plain-text new PIN.
- */
-/**
- * Update an employee's PIN through the single authoritative path.
- * Validates, normalizes, hashes, persists, and records audit.
+ * Register an employee (complete self-registration).
  *
- * This is the ONLY place PIN hashes should be written (outside login/reset).
+ * Validates:
+ * - Employee exists (tenantId + employeeCode)
+ * - Email matches stored email (case-insensitive)
+ * - Status is not_registered (not already registered)
+ * - Account is not inactive or suspended
+ * - Password meets strength requirements
+ * - Name is provided
  */
-export async function updateEmployeePin(
+export async function registerEmployee(
   tenantId: string,
-  employeeId: string,
-  pin: string,
-  performedBy?: string,
-  auditAction: AuditEventDocument["action"] = "pin_reset",
-): Promise<SafeEmployee | null> {
-  const pinError = validatePin(pin);
-  if (pinError) {
-    throw new Error(pinError);
+  employeeCode: string,
+  email: string,
+  password: string,
+  name: string,
+  phone?: string,
+  inviteToken?: string,
+): Promise<SafeEmployee> {
+  // Validate name
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    throw new Error("Name is required.");
+  }
+  if (name.trim().length > 100) {
+    throw new Error("Name must be 100 characters or fewer.");
   }
 
+  // Validate password strength
+  const pwError = validatePasswordStrength(password);
+  if (pwError) {
+    throw new Error(pwError);
+  }
+
+  const repositories = await getRepositoryContext();
+
+  // Find employee by tenantId + employeeCode
+  const employee = await repositories.employees.findByEmployeeCode(tenantId, employeeCode);
+  if (!employee) {
+    throw new Error("Employee not found.");
+  }
+
+  // Verify email matches (case-insensitive)
+  if (employee.email.toLowerCase() !== email.toLowerCase().trim()) {
+    throw new Error("Email does not match our records.");
+  }
+
+  // Check status
+  if (employee.status === "not_registered") {
+    // This is the expected state — continue
+  } else if (employee.status === "active") {
+    throw new Error("This account has already been registered.");
+  } else if (employee.status === "inactive" || employee.status === "suspended") {
+    throw new Error("This account is not available for registration.");
+  }
+
+  const now = new Date().toISOString();
+
+  // Update employee document
+  const updated = await repositories.employees.update(employee.employeeId, {
+    status: "active",
+    passwordHash: hashPassword(password),
+    name: name.trim(),
+    phoneNumber: phone?.trim() || undefined,
+    mustChangePassword: false,
+    lastAccessAt: now,
+    updatedAt: now,
+  });
+
+  if (!updated) {
+    throw new Error("Registration failed.");
+  }
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "employee_registered",
+    employeeId: employee.employeeId,
+    tenantId,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  // If registration was initiated via an invitation token, mark it as completed
+  if (inviteToken) {
+    await completeInvitation(inviteToken);
+  }
+
+  return toSafeEmployee(updated);
+}
+
+// ── Password Change ──────────────────────────────────────────────────────────
+
+/**
+ * Change an employee's password.
+ * Validates current password, then sets new password and clears mustChangePassword.
+ */
+export async function changePassword(
+  employeeId: string,
+  currentPassword: string,
+  newPassword: string,
+): Promise<SafeEmployee> {
+  // Validate new password strength
+  const pwError = validatePasswordStrength(newPassword);
+  if (pwError) {
+    throw new Error(pwError);
+  }
+
+  const repositories = await getRepositoryContext();
+  const employee = await repositories.employees.findById(employeeId);
+
+  if (!employee) {
+    throw new Error("Employee not found.");
+  }
+
+  if (!employee.passwordHash) {
+    throw new Error("Account has not been registered yet.");
+  }
+
+  // Verify current password
+  if (!verifyPassword(currentPassword, employee.passwordHash)) {
+    throw new Error("Current password is incorrect.");
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employeeId, {
+    passwordHash: hashPassword(newPassword),
+    mustChangePassword: false,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    updatedAt: now,
+  });
+
+  if (!updated) {
+    throw new Error("Password change failed.");
+  }
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "password_changed",
+    employeeId,
+    tenantId: employee.tenantId,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  return toSafeEmployee(updated);
+}
+
+// ── Cross-Tenant Service Functions (Super Admin) ──────────────────────────────
+
+/**
+ * List all employees across all tenants (Super Admin only).
+ * Supports optional tenantId filter, search, and pagination.
+ */
+export async function listAllEmployees(
+  options?: FindEmployeesOptions & { tenantId?: string },
+  callerRole: CallerRole = "super_admin",
+): Promise<{ employees: SafeEmployee[]; total: number; employeesRaw?: EmployeeDocument[] }> {
+  const repositories = await getRepositoryContext();
+  const result = await repositories.employees.findAll(options);
+
+  const safeEmployees: SafeEmployee[] = result.employees.map(toSafeEmployee);
+
+  if (callerRole === "tenant_admin") {
+    const filtered = safeEmployees.map((emp) => ({
+      employeeId: emp.employeeId,
+      employeeCode: emp.employeeCode,
+      email: emp.email,
+      status: emp.status,
+      createdAt: emp.createdAt,
+      updatedAt: emp.updatedAt,
+    })) as SafeEmployee[];
+    return { employees: filtered, total: result.total };
+  }
+
+  return { employees: safeEmployees, total: result.total, employeesRaw: result.employees };
+}
+
+/**
+ * Get employee by ID (cross-tenant, no tenant scope check).
+ * Returns full SafeEmployee for Super Admin, or limited view for Tenant Admin.
+ */
+export async function getEmployeeById(
+  employeeId: string,
+  callerRole: CallerRole = "super_admin",
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const employee = await repositories.employees.findById(employeeId);
+
+  if (!employee) {
+    return null;
+  }
+
+  const safe = toSafeEmployee(employee);
+
+  if (callerRole === "tenant_admin") {
+    return {
+      employeeId: safe.employeeId,
+      employeeCode: safe.employeeCode,
+      email: safe.email,
+      status: safe.status,
+      createdAt: safe.createdAt,
+      updatedAt: safe.updatedAt,
+    } as SafeEmployee;
+  }
+
+  return safe;
+}
+
+/**
+ * Reset employee password by employee ID (cross-tenant).
+ * Looks up the employee's tenantId internally.
+ */
+export async function resetEmployeePasswordById(
+  employeeId: string,
+  performedBy?: string,
+): Promise<{ temporaryPassword: string; employee: SafeEmployee } | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  // Delegate to the tenant-scoped function with the resolved tenantId
+  return resetEmployeePassword(existing.tenantId, employeeId, performedBy);
+}
+
+/**
+ * Unlock employee by employee ID (cross-tenant).
+ * Looks up the employee's tenantId internally.
+ */
+export async function unlockEmployeeById(
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  return unlockEmployee(existing.tenantId, employeeId, performedBy);
+}
+
+/**
+ * Suspend employee by employee ID (cross-tenant).
+ * Looks up the employee's tenantId internally.
+ */
+export async function suspendEmployeeById(
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  return suspendEmployee(existing.tenantId, employeeId, performedBy);
+}
+
+/**
+ * Unsuspend employee by employee ID (cross-tenant).
+ * Looks up the employee's tenantId internally.
+ */
+export async function unsuspendEmployeeById(
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  return unsuspendEmployee(existing.tenantId, employeeId, performedBy);
+}
+
+// ── Super Admin Actions ──────────────────────────────────────────────────────
+
+/**
+ * Generate a 12-character alphanumeric temporary password.
+ */
+function generateTemporaryPassword(): string {
+  const chars = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789";
+  let result = "";
+  for (let i = 0; i < 12; i++) {
+    result += chars.charAt(Math.floor(Math.random() * chars.length));
+  }
+  return result;
+}
+
+/**
+ * Super Admin password reset.
+ * Generates a temporary password, bcrypt hashes it, sets mustChangePassword=true.
+ * Returns the plaintext temporary password ONCE (not stored).
+ */
+export async function resetEmployeePassword(
+  tenantId: string,
+  employeeId: string,
+  performedBy?: string,
+): Promise<{ temporaryPassword: string; employee: SafeEmployee } | null> {
   const repositories = await getRepositoryContext();
   const existing = await repositories.employees.findById(employeeId);
 
@@ -395,15 +881,12 @@ export async function updateEmployeePin(
     return null;
   }
 
-  if (existing.status === "inactive") {
-    throw new Error("Cannot update PIN for an inactive employee.");
-  }
-
+  const temporaryPassword = generateTemporaryPassword();
   const now = new Date().toISOString();
-  const normalizedPin = normalizePin(pin);
 
   const updated = await repositories.employees.update(employeeId, {
-    pinHash: hashPin(normalizedPin),
+    passwordHash: hashPassword(temporaryPassword),
+    mustChangePassword: true,
     failedLoginAttempts: 0,
     lockedUntil: null,
     updatedAt: now,
@@ -414,7 +897,49 @@ export async function updateEmployeePin(
   // Record audit event
   const auditEvent: AuditEventDocument = {
     eventId: `audit_${randomUUID()}`,
-    action: auditAction,
+    action: "password_reset",
+    employeeId,
+    tenantId,
+    performedBy,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  return {
+    temporaryPassword,
+    employee: toSafeEmployee(updated),
+  };
+}
+
+/**
+ * Suspend an employee (Super Admin action).
+ * Sets status to "suspended".
+ */
+export async function suspendEmployee(
+  tenantId: string,
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employeeId, {
+    status: "suspended",
+    updatedAt: now,
+  });
+
+  if (!updated) return null;
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "employee_suspended",
     employeeId,
     tenantId,
     performedBy,
@@ -425,17 +950,43 @@ export async function updateEmployeePin(
   return toSafeEmployee(updated);
 }
 
-export async function resetEmployeePin(
+/**
+ * Unsuspend an employee (Super Admin action).
+ * Sets status back to "active".
+ */
+export async function unsuspendEmployee(
   tenantId: string,
   employeeId: string,
   performedBy?: string,
-): Promise<{ employee: SafeEmployee; newPin: string } | null> {
-  const newPin = Math.floor(100000 + Math.random() * 900000).toString();
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
 
-  const safe = await updateEmployeePin(tenantId, employeeId, newPin, performedBy, "pin_reset");
-  if (!safe) return null;
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
 
-  return { employee: safe, newPin };
+  const now = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employeeId, {
+    status: "active",
+    updatedAt: now,
+  });
+
+  if (!updated) return null;
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "employee_unsuspended",
+    employeeId,
+    tenantId,
+    performedBy,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  return toSafeEmployee(updated);
 }
 
 /**
@@ -489,7 +1040,7 @@ export async function unlockEmployee(
 
 /**
  * Get employee detail with access info — includes failedLoginAttempts and
- * lockedUntil but never exposes pinHash.
+ * lockedUntil but never exposes passwordHash.
  */
 export async function getEmployeeAccessDetail(
   employeeId: string,
@@ -510,7 +1061,7 @@ export async function getEmployeeAccessDetail(
 }
 
 /**
- * Get a safe employee profile (no pinHash) by employeeId + tenantId.
+ * Get a safe employee profile (no passwordHash) by employeeId + tenantId.
  * Returns null if not found or tenant mismatch.
  */
 export async function getSafeEmployee(

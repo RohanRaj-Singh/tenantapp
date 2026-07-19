@@ -5,7 +5,10 @@ import type {
   AggregationSnapshotDocument,
   AttributeTemplateVersionDocument,
   AuditEventDocument,
+  BudgetDocument,
+  CampaignDocument,
   EmployeeDocument,
+  InvitationDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -14,11 +17,18 @@ import type {
 } from "@/src/server/db/documents";
 import type {
   AttributeTemplateVersionsRepositoryContract,
+  BudgetsRepositoryContract,
+  CampaignsRepositoryContract,
   EmployeesRepositoryContract,
+  FindCampaignsOptions,
+  FindCampaignsResult,
   FindEmployeesOptions,
   FindEmployeesResult,
+  FindInvitationsOptions,
+  FindInvitationsResult,
   FindReimbursementsOptions,
   FindReimbursementsResult,
+  InvitationsRepositoryContract,
   RawResponseAggregationQuery,
   ReimbursementsRepositoryContract,
   RepositoryContext,
@@ -258,6 +268,39 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
 
   async ensureIndexes() {}
 
+  async findAll(
+    options: FindEmployeesOptions & { tenantId?: string } = {},
+  ): Promise<FindEmployeesResult> {
+    const { search, status, tenantId, skip = 0, limit = 20 } = options;
+
+    let filtered = Array.from(this.store.employees.values());
+
+    if (tenantId) {
+      filtered = filtered.filter((emp) => emp.tenantId === tenantId);
+    }
+
+    if (status) {
+      filtered = filtered.filter((emp) => emp.status === status);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (emp) =>
+          (emp.name ?? "").toLowerCase().includes(q) ||
+          emp.email.toLowerCase().includes(q) ||
+          emp.employeeCode.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
+
+    const total = filtered.length;
+    const employees = filtered.slice(skip, skip + limit);
+
+    return { employees, total };
+  }
+
   async findByTenantId(
     tenantId: string,
     options: FindEmployeesOptions = {},
@@ -276,13 +319,13 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
       const q = search.toLowerCase();
       filtered = filtered.filter(
         (emp) =>
-          emp.name.toLowerCase().includes(q) ||
+          (emp.name ?? "").toLowerCase().includes(q) ||
           emp.email.toLowerCase().includes(q) ||
           emp.employeeCode.toLowerCase().includes(q),
       );
     }
 
-    filtered.sort((a, b) => a.name.localeCompare(b.name));
+    filtered.sort((a, b) => (a.name ?? "").localeCompare(b.name ?? ""));
 
     const total = filtered.length;
     const employees = filtered.slice(skip, skip + limit);
@@ -301,6 +344,18 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     return (
       Array.from(this.store.employees.values()).find(
         (e) => e.tenantId === tenantId && e.employeeCode === employeeCode,
+      ) ?? null
+    );
+  }
+
+  async findByTenantAndEmail(
+    tenantId: string,
+    email: string,
+  ): Promise<EmployeeDocument | null> {
+    const normalizedEmail = email.toLowerCase().trim();
+    return (
+      Array.from(this.store.employees.values()).find(
+        (e) => e.tenantId === tenantId && e.email.toLowerCase() === normalizedEmail,
       ) ?? null
     );
   }
@@ -411,9 +466,9 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
 let seeded = false;
 let memoryRepositoryContext: RepositoryContext | null = null;
 
-/** Deterministic scrypt hash for PIN "1234" (salt:hash) for development seeding. */
-const DEV_PIN_HASH =
-  "00000000000000000000000000000000:bc3b80e6561d9800a24104f89200e0b49cb0179656a03695dfe3f228abee1158d60811508e571300ee105767166c7606b4912a9329993a82745800ed0da61e22";
+/** bcrypt hash of the known password "Password123" for development seeding (salt rounds 12). */
+const DEV_PASSWORD_HASH =
+  "$2b$12$FAmat16KTC/ptEbziQDHb.yZ9PNlSc9vBjJMPnR0mEMovdHYfeigO";
 
 function ensureSeededMemoryStore(context: RepositoryContext) {
   if (seeded) {
@@ -482,7 +537,8 @@ function ensureSeededMemoryStore(context: RepositoryContext) {
           name: emp.name,
           email: emp.email,
           status: "active",
-          pinHash: DEV_PIN_HASH,
+          passwordHash: DEV_PASSWORD_HASH,
+          mustChangePassword: false,
           failedLoginAttempts: 0,
           lockedUntil: null,
           lastAccessAt: null,
@@ -494,7 +550,225 @@ function ensureSeededMemoryStore(context: RepositoryContext) {
     }
   }
 
+  // ── Seed not_registered employees for registration flow testing ──────────
+
+  const unregisteredEmployees: Array<{
+    tenantId: string;
+    code: string;
+    email: string;
+  }> = [
+    { tenantId: "tenant-omantel", code: "OMT-REG-001", email: "new.employee@omantel.om" },
+    { tenantId: "tenant-oq", code: "OQ-REG-001", email: "new.employee@oq.com" },
+    { tenantId: "tenant-pdo", code: "PDO-REG-001", email: "new.employee@pdo.co.om" },
+  ];
+
+  for (const emp of unregisteredEmployees) {
+    const employeeId = `emp_${emp.tenantId}_${emp.code.toLowerCase()}_reg`;
+    if (!employees.has(employeeId)) {
+      const doc: EmployeeDocument = {
+        employeeId,
+        tenantId: emp.tenantId,
+        employeeCode: emp.code,
+        name: null,
+        email: emp.email,
+        status: "not_registered",
+        passwordHash: null,
+        mustChangePassword: false,
+        failedLoginAttempts: 0,
+        lockedUntil: null,
+        lastAccessAt: null,
+        createdAt: nowIso,
+        updatedAt: nowIso,
+      };
+      employees.set(employeeId, doc);
+    }
+  }
+
   seeded = true;
+}
+
+// ── In-Memory Campaigns Repository ───────────────────────────────────────────
+
+class MemoryCampaignsRepository implements CampaignsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findByTenantId(
+    tenantId: string,
+    options: FindCampaignsOptions = {},
+  ): Promise<FindCampaignsResult> {
+    const { status, search, skip = 0, limit = 20 } = options;
+    let filtered = Array.from(this.store.campaigns.values()).filter(
+      (c) => c.tenantId === tenantId,
+    );
+
+    if (status) {
+      filtered = filtered.filter((c) => c.status === status);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter((c) => c.name.toLowerCase().includes(q));
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = filtered.length;
+    const campaigns = filtered.slice(skip, skip + limit);
+    return { campaigns, total };
+  }
+
+  async findById(id: string): Promise<CampaignDocument | null> {
+    return this.store.campaigns.get(id) ?? null;
+  }
+
+  async insert(campaign: CampaignDocument): Promise<void> {
+    this.store.campaigns.set(campaign.campaignId, { ...campaign });
+  }
+
+  async update(
+    id: string,
+    updates: Partial<CampaignDocument>,
+  ): Promise<CampaignDocument | null> {
+    const current = this.store.campaigns.get(id);
+    if (!current) return null;
+    const next = { ...current, ...updates };
+    this.store.campaigns.set(id, next);
+    return { ...next };
+  }
+}
+
+// ── In-Memory Invitations Repository ─────────────────────────────────────────
+
+class MemoryInvitationsRepository implements InvitationsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findByTenantId(
+    tenantId: string,
+    options: FindInvitationsOptions = {},
+  ): Promise<FindInvitationsResult> {
+    return this.find({ ...options, tenantId });
+  }
+
+  async findByCampaignId(
+    campaignId: string,
+    options: FindInvitationsOptions = {},
+  ): Promise<FindInvitationsResult> {
+    return this.find({ ...options, campaignId });
+  }
+
+  async findById(id: string): Promise<InvitationDocument | null> {
+    return this.store.invitations.get(id) ?? null;
+  }
+
+  async findByToken(token: string): Promise<InvitationDocument | null> {
+    for (const inv of this.store.invitations.values()) {
+      if (inv.token === token) return { ...inv };
+    }
+    return null;
+  }
+
+  async insert(invitation: InvitationDocument): Promise<void> {
+    this.store.invitations.set(invitation.invitationId, { ...invitation });
+  }
+
+  async insertMany(invitations: InvitationDocument[]): Promise<void> {
+    for (const inv of invitations) {
+      this.store.invitations.set(inv.invitationId, { ...inv });
+    }
+  }
+
+  async update(
+    id: string,
+    updates: Partial<InvitationDocument>,
+  ): Promise<InvitationDocument | null> {
+    const current = this.store.invitations.get(id);
+    if (!current) return null;
+    const next = { ...current, ...updates };
+    this.store.invitations.set(id, next);
+    return { ...next };
+  }
+
+  async updateMany(
+    filter: { campaignId?: string; status?: string },
+    updates: Partial<InvitationDocument>,
+  ): Promise<number> {
+    let count = 0;
+    for (const [id, inv] of this.store.invitations) {
+      if (filter.campaignId && inv.campaignId !== filter.campaignId) continue;
+      if (filter.status && inv.status !== filter.status) continue;
+      this.store.invitations.set(id, { ...inv, ...updates });
+      count++;
+    }
+    return count;
+  }
+
+  async countByStatus(tenantId: string): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {};
+    for (const inv of this.store.invitations.values()) {
+      if (inv.tenantId !== tenantId) continue;
+      counts[inv.status] = (counts[inv.status] ?? 0) + 1;
+    }
+    return counts;
+  }
+
+  private find(
+    options: FindInvitationsOptions & { tenantId?: string; campaignId?: string },
+  ): FindInvitationsResult {
+    const { tenantId, campaignId, status, search, employeeId, skip = 0, limit = 50 } = options;
+    let filtered = Array.from(this.store.invitations.values());
+
+    if (tenantId) filtered = filtered.filter((i) => i.tenantId === tenantId);
+    if (campaignId) filtered = filtered.filter((i) => i.campaignId === campaignId);
+    if (status) filtered = filtered.filter((i) => i.status === status);
+    if (employeeId) filtered = filtered.filter((i) => i.employeeId === employeeId);
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (i) => i.email.toLowerCase().includes(q) || i.employeeCode.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = filtered.length;
+    const invitations = filtered.slice(skip, skip + limit);
+    return { invitations, total };
+  }
+}
+
+// ── In-Memory Budgets Repository ─────────────────────────────────────────────
+
+class MemoryBudgetsRepository implements BudgetsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findByTenantId(tenantId: string): Promise<BudgetDocument | null> {
+    for (const budget of this.store.budgets.values()) {
+      if (budget.tenantId === tenantId) return { ...budget };
+    }
+    return null;
+  }
+
+  async insert(budget: BudgetDocument): Promise<void> {
+    this.store.budgets.set(budget.budgetId, { ...budget });
+  }
+
+  async update(
+    id: string,
+    updates: Partial<BudgetDocument>,
+  ): Promise<BudgetDocument | null> {
+    const current = this.store.budgets.get(id);
+    if (!current) return null;
+    const next = { ...current, ...updates };
+    this.store.budgets.set(id, next);
+    return { ...next };
+  }
 }
 
 export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
@@ -508,6 +782,9 @@ export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
       snapshots: new MemorySnapshotsRepository(),
       employees: new MemoryEmployeesRepository(),
       reimbursements: new MemoryReimbursementsRepository(),
+      campaigns: new MemoryCampaignsRepository(),
+      invitations: new MemoryInvitationsRepository(),
+      budgets: new MemoryBudgetsRepository(),
     };
   }
 

@@ -18,6 +18,14 @@ export async function POST(
   try {
     const { id } = await context.params;
     const body = await request.json().catch(() => ({}));
+
+    if (!body.notes || typeof body.notes !== "string" || body.notes.trim() === "") {
+      return NextResponse.json(
+        { error: "A reason is required when freezing a claim.", errorCode: "REASON_REQUIRED" },
+        { status: 400 },
+      );
+    }
+
     const reimbursement = await freezeReimbursement(
       auth.context.tenant.tenantId,
       id,

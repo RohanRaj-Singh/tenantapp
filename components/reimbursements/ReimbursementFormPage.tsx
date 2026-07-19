@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState, useRef } from "react";
 import { useRouter } from "next/navigation";
-import { ArrowLeft, RefreshCw, Upload, X, FileText } from "lucide-react";
+import { ArrowLeft, RefreshCw, Upload, X, FileText, AlertTriangle } from "lucide-react";
 import { clinicsData, type Clinic } from "@/data/clinics";
 
 interface Employee {
@@ -51,6 +51,16 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<Record<string, string>>({});
+
+  // Session & contact state
+  const [sessionCount, setSessionCount] = useState(1);
+  const [sessionTypes, setSessionTypes] = useState<string[]>([]);
+  const [sessionFor, setSessionFor] = useState("");
+  const [sessionForOther, setSessionForOther] = useState("");
+  const [contactCountryCode, setContactCountryCode] = useState("+968");
+  const [contactNumber, setContactNumber] = useState("");
+  const [bankAccountNumber, setBankAccountNumber] = useState("");
+  const [bankName, setBankName] = useState("");
 
   // File upload state
   const [file, setFile] = useState<File | null>(null);
@@ -195,6 +205,14 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           amount: parseFloat(form.amount),
           description: form.description.trim(),
           receiptUrl: receiptUrl || undefined,
+          sessionCount,
+          sessionTypes: sessionTypes.length > 0 ? sessionTypes : undefined,
+          sessionFor: sessionFor || undefined,
+          sessionForOther: sessionForOther || undefined,
+          contactCountryCode: contactCountryCode || undefined,
+          contactNumber: contactNumber || undefined,
+          bankAccountNumber: bankAccountNumber || undefined,
+          bankName: bankName || undefined,
         }),
       });
 
@@ -249,6 +267,14 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
       delete next.clinicId;
       return next;
     });
+  }
+
+  function toggleSessionType(type: string) {
+    setSessionTypes((prev) =>
+      prev.includes(type)
+        ? prev.filter((t) => t !== type)
+        : [...prev, type],
+    );
   }
 
   return (
@@ -313,7 +339,7 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
                 <option value="">Select an employee...</option>
                 {employees.map((emp) => (
                   <option key={emp.employeeId} value={emp.employeeId}>
-                    {emp.name} ({emp.employeeCode})
+                    {emp.employeeCode}
                   </option>
                 ))}
               </select>
@@ -425,6 +451,146 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
           )}
         </div>
 
+        {/* Session Count — Slider */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            How many sessions?
+          </label>
+          <div className="flex items-center gap-4">
+            <input
+              type="range"
+              min={1}
+              max={20}
+              value={sessionCount}
+              onChange={(e) => setSessionCount(Number(e.target.value))}
+              className="flex-1 h-2 rounded-full appearance-none cursor-pointer bg-slate-200 accent-blue-600"
+            />
+            <span className="text-sm font-medium text-slate-700 w-20 text-right">
+              {sessionCount} session{sessionCount !== 1 ? "s" : ""}
+            </span>
+          </div>
+        </div>
+
+        {/* Session Type — Tags */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Type of session?
+          </label>
+          <p className="mb-2 text-xs text-slate-400">Select all that apply</p>
+          <div className="flex flex-wrap gap-2">
+            {["Intake Session", "Assessment", "Individual", "Follow-up"].map((type) => (
+              <button
+                key={type}
+                type="button"
+                onClick={() => toggleSessionType(type)}
+                className={`rounded-full px-3.5 py-1.5 text-sm font-medium transition-colors ${
+                  sessionTypes.includes(type)
+                    ? "bg-blue-600 text-white"
+                    : "bg-slate-100 text-slate-600 hover:bg-slate-200"
+                }`}
+              >
+                {type}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        {/* Session For — Radio */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Who was this session for?
+          </label>
+          <div className="space-y-2">
+            {[
+              { value: "myself", label: "Myself" },
+              { value: "family_member", label: "Family member" },
+              { value: "other", label: "Other" },
+            ].map((option) => (
+              <label
+                key={option.value}
+                className="flex items-center gap-2 cursor-pointer"
+              >
+                <input
+                  type="radio"
+                  name="sessionFor"
+                  value={option.value}
+                  checked={sessionFor === option.value}
+                  onChange={(e) => setSessionFor(e.target.value)}
+                  className="h-4 w-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                />
+                <span className="text-sm text-slate-700">{option.label}</span>
+              </label>
+            ))}
+          </div>
+          {sessionFor === "other" && (
+            <input
+              type="text"
+              value={sessionForOther}
+              onChange={(e) => setSessionForOther(e.target.value)}
+              placeholder="Please specify..."
+              className="mt-2 w-full rounded-lg border border-slate-200 bg-white px-3 py-2 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+            />
+          )}
+        </div>
+
+        {/* Contact Number */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Contact number
+          </label>
+          <div className="flex gap-2">
+            <select
+              value={contactCountryCode}
+              onChange={(e) => setContactCountryCode(e.target.value)}
+              className="w-28 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+            >
+              {["+968", "+971", "+966", "+973", "+974", "+965", "+44", "+1", "+other"].map((code) => (
+                <option key={code} value={code}>
+                  {code}
+                </option>
+              ))}
+            </select>
+            <input
+              type="tel"
+              value={contactNumber}
+              onChange={(e) => setContactNumber(e.target.value)}
+              placeholder="Phone number"
+              className="flex-1 rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+            />
+          </div>
+        </div>
+
+        {/* Bank Details */}
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Bank account number
+          </label>
+          <input
+            type="text"
+            value={bankAccountNumber}
+            onChange={(e) => setBankAccountNumber(e.target.value)}
+            placeholder="Enter account number"
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+          />
+        </div>
+        <div>
+          <label className="mb-1.5 block text-sm font-medium text-slate-700">
+            Which bank?
+          </label>
+          <select
+            value={bankName}
+            onChange={(e) => setBankName(e.target.value)}
+            className="w-full rounded-lg border border-slate-200 bg-white px-3 py-2.5 text-sm focus:outline-none focus:ring-2 focus:ring-blue-100 focus:border-blue-300"
+          >
+            <option value="">Select a bank...</option>
+            {["Bank Dhofar", "Bank Muscat", "National Bank of Oman", "Oman Arab Bank", "Ahli Bank", "HSBC Oman", "Other"].map((bank) => (
+              <option key={bank} value={bank}>
+                {bank}
+              </option>
+            ))}
+          </select>
+        </div>
+
         {/* Receipt Upload */}
         <div>
           <label className="mb-1.5 block text-sm font-medium text-slate-700">
@@ -491,6 +657,14 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
               </div>
             )}
           </div>
+          {file && (
+            <div className="mt-3 flex items-start gap-2 rounded-lg border border-amber-200 bg-amber-50 p-3">
+              <AlertTriangle className="mt-0.5 h-4 w-4 shrink-0 text-amber-500" />
+              <p className="text-xs text-amber-700">
+                Please make sure everything is visible, and that your name does not show.
+              </p>
+            </div>
+          )}
           {fieldErrors.receipt && (
             <p className="mt-1 text-xs text-red-600">{fieldErrors.receipt}</p>
           )}

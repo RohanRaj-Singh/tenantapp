@@ -6,8 +6,25 @@ import { getRepositoryContext } from "@/src/server/repositories/context";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+/**
+ * GET /api/employee/me
+ *
+ * Auth: x-admin-api-key header (proxied from marketing site)
+ *
+ * Returns the employee's own profile including name, phoneNumber, and mustChangePassword.
+ */
 export async function GET(request: NextRequest) {
   try {
+    // ── Validate API key ──────────────────────────────────────────────────────
+    const apiKey = request.headers.get("x-admin-api-key");
+    const expectedKey = process.env.ADMIN_API_KEY;
+    if (!apiKey || !expectedKey || apiKey !== expectedKey) {
+      return NextResponse.json(
+        { success: false, error: "Unauthorized.", errorCode: "NOT_AUTHENTICATED" },
+        { status: 401 },
+      );
+    }
+
     const { searchParams } = new URL(request.url);
     const tenantSlug = searchParams.get("tenantSlug");
     const employeeCode = searchParams.get("employeeCode");
@@ -43,7 +60,15 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Return safe profile (no pinHash)
+    // Check if employee is suspended or inactive
+    if (employee.status !== "active") {
+      return NextResponse.json(
+        { error: "Employee account is not active.", errorCode: "EMPLOYEE_INACTIVE" },
+        { status: 403 },
+      );
+    }
+
+    // Return safe profile (includes name, phoneNumber, mustChangePassword — no filtering needed for self)
     const safe = await getSafeEmployee(employee.employeeId, tenant.tenantId);
 
     if (!safe) {

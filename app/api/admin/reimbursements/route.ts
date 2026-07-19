@@ -5,24 +5,28 @@ import { getRepositoryContext } from "@/src/server/repositories/context";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
+type CallerRole = "super_admin" | "tenant_admin";
+
 /**
  * Accepts either:
- * 1. An `x-admin-api-key` header matching the ADMIN_API_KEY env var (for admin app server-to-server calls)
- * 2. A valid tenant dashboard session (for tenant-level access)
+ * 1. An `x-admin-api-key` header matching the ADMIN_API_KEY env var (for admin app server-to-server calls) → Super Admin
+ * 2. A valid tenant dashboard session (for tenant-level access) → Tenant Admin
+ *
+ * Returns the caller role along with authorization status.
  */
-async function authorizeRequest(request: NextRequest): Promise<{ authorized: boolean; response?: NextResponse }> {
-  // Check admin API key first (server-to-server from admin app)
+async function authorizeRequest(request: NextRequest): Promise<{ authorized: boolean; callerRole?: CallerRole; response?: NextResponse }> {
+  // Check admin API key first (server-to-server from admin app) → Super Admin
   const apiKey = request.headers.get("x-admin-api-key");
   const expectedKey = process.env.ADMIN_API_KEY;
   if (apiKey && expectedKey && apiKey === expectedKey) {
-    return { authorized: true };
+    return { authorized: true, callerRole: "super_admin" };
   }
 
-  // Fall back to tenant dashboard session
+  // Fall back to tenant dashboard session → Tenant Admin
   const { requireTenantApiAuth } = await import("@/src/modules/tenant-auth/middleware/tenant-auth");
   const auth = await requireTenantApiAuth();
   if (auth.success) {
-    return { authorized: true };
+    return { authorized: true, callerRole: "tenant_admin" };
   }
 
   return { authorized: false, response: auth.response };
@@ -33,6 +37,8 @@ export async function GET(request: NextRequest) {
   if (!auth.authorized) {
     return auth.response!;
   }
+
+  const callerRole = auth.callerRole!;
 
   try {
     const { searchParams } = new URL(request.url);
@@ -76,29 +82,37 @@ export async function GET(request: NextRequest) {
       }
     }
 
-    // Map response with tenant name
-    const mapped = claims.map((c) => ({
-      reimbursementId: c.reimbursementId,
-      claimNumber: c.claimNumber,
-      tenantId: c.tenantId,
-      tenantName: tenantLookup.get(c.tenantId) ?? c.tenantId,
-      employeeId: c.employeeId,
-      employeeName: c.employeeName,
-      clinicId: c.clinicId,
-      clinicName: c.clinicName,
-      amount: c.amount,
-      description: c.description,
-      receiptUrl: c.receiptUrl,
-      receiptHash: c.receiptHash,
-      serviceDate: c.serviceDate,
-      status: c.status,
-      reviewedBy: c.reviewedBy,
-      reviewedAt: c.reviewedAt,
-      notes: c.notes,
-      history: c.history,
-      createdAt: c.createdAt,
-      updatedAt: c.updatedAt,
-    }));
+    // Map response — strip employeeName for Tenant Admin callers
+    const mapped = claims.map((c) => {
+      const base = {
+        reimbursementId: c.reimbursementId,
+        claimNumber: c.claimNumber,
+        tenantId: c.tenantId,
+        tenantName: tenantLookup.get(c.tenantId) ?? c.tenantId,
+        employeeId: c.employeeId,
+        clinicId: c.clinicId,
+        clinicName: c.clinicName,
+        amount: c.amount,
+        description: c.description,
+        receiptUrl: c.receiptUrl,
+        receiptHash: c.receiptHash,
+        serviceDate: c.serviceDate,
+        status: c.status,
+        reviewedBy: c.reviewedBy,
+        reviewedAt: c.reviewedAt,
+        notes: c.notes,
+        history: c.history,
+        createdAt: c.createdAt,
+        updatedAt: c.updatedAt,
+      };
+
+      if (callerRole === "super_admin") {
+        return { ...base, employeeName: c.employeeName };
+      }
+
+      // Tenant Admin — exclude employeeName
+      return base;
+    });
 
     return NextResponse.json({ claims: mapped, total: result.total }, { status: 200 });
   } catch (error) {

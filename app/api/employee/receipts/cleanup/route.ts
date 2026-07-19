@@ -6,10 +6,20 @@ import path from "node:path";
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-function authorizeRequest(request: NextRequest): boolean {
+async function authorizeRequest(request: NextRequest): Promise<boolean> {
   const apiKey = request.headers.get("x-admin-api-key");
   const expectedKey = process.env.ADMIN_API_KEY;
-  return Boolean(apiKey && expectedKey && apiKey === expectedKey);
+  if (apiKey && expectedKey && apiKey === expectedKey) {
+    return true;
+  }
+
+  try {
+    const { requireTenantApiAuth } = await import("@/src/modules/tenant-auth/middleware/tenant-auth");
+    const auth = await requireTenantApiAuth();
+    return auth.success;
+  } catch {
+    return false;
+  }
 }
 
 /**
@@ -22,7 +32,7 @@ function authorizeRequest(request: NextRequest): boolean {
  * Body: { receiptUrl: string }
  */
 export async function DELETE(request: NextRequest) {
-  if (!authorizeRequest(request)) {
+  if (!(await authorizeRequest(request))) {
     return NextResponse.json(
       { error: "Unauthorized. Valid API key required." },
       { status: 401 },

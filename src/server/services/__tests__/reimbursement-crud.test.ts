@@ -24,11 +24,11 @@ const REVIEWER_ID = "admin-user-001";
 async function seedEmployee(suffix: string) {
   return createEmployee(TENANT_ID, {
     employeeCode: `RC-${suffix}`,
-    name: `Test Employee ${suffix}`,
     email: `emp${suffix}@example.com`,
-    pin: "123456",
   });
 }
+
+const EMPLOYEE_NAME = "Test Employee";
 
 // ── Create ──────────────────────────────────────────────────────────────────
 
@@ -37,7 +37,7 @@ describe("Reimbursement CRUD — Create", () => {
     const emp = await seedEmployee("CR1");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 50.500,
       description: "Clinic visit",
@@ -53,7 +53,7 @@ describe("Reimbursement CRUD — Create", () => {
 
   it("createEmployeeReimbursement sets clinicId/clinicName and correct type", async () => {
     const emp = await seedEmployee("CR2");
-    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, emp.name, {
+    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, EMPLOYEE_NAME, {
       clinicId: "clinic_abc",
       clinicName: "Al Shifa Clinic",
       amount: 30.000,
@@ -69,9 +69,9 @@ describe("Reimbursement CRUD — Create", () => {
   it("each created claim gets a unique claimNumber", async () => {
     const emp = await seedEmployee("CR3");
     const [c1, c2, c3] = await Promise.all([
-      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 10, description: "A" }),
-      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 20, description: "B" }),
-      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 30, description: "C" }),
+      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "A" }),
+      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: "B" }),
+      createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 30, description: "C" }),
     ]);
 
     const numbers = [c1.claimNumber, c2.claimNumber, c3.claimNumber];
@@ -87,7 +87,7 @@ describe("Reimbursement CRUD — Read", () => {
     const emp = await seedEmployee("RD1");
     const created = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 15.000,
       description: "Read test",
@@ -103,7 +103,7 @@ describe("Reimbursement CRUD — Read", () => {
     const emp = await seedEmployee("RD2");
     const created = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 10,
       description: "Cross-tenant test",
@@ -115,11 +115,11 @@ describe("Reimbursement CRUD — Read", () => {
 
   it("listReimbursements returns all claims for a tenant with correct total", async () => {
     const subTenant = "tenant-reimb-list-test";
-    const emp = await createEmployee(subTenant, { employeeCode: "RL-001", name: "List User", email: "rl@t.com", pin: "000001" });
+    const emp = await createEmployee(subTenant, { employeeCode: "RL-001", email: "rl@t.com" });
 
-    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 10, description: "A" });
-    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 20, description: "B" });
-    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 30, description: "C" });
+    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "A" });
+    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: "B" });
+    await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 30, description: "C" });
 
     const result = await listReimbursements(subTenant);
     assert.equal(result.total, 3);
@@ -133,10 +133,10 @@ describe("Reimbursement CRUD — Read", () => {
 
   it("listReimbursements filters by status", async () => {
     const subTenant = "tenant-reimb-status-test";
-    const emp = await createEmployee(subTenant, { employeeCode: "RS-001", name: "Status User", email: "rs@t.com", pin: "000001" });
+    const emp = await createEmployee(subTenant, { employeeCode: "RS-001", email: "rs@t.com" });
 
-    const c1 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 10, description: "pending" });
-    const c2 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 20, description: "to approve" });
+    const c1 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "pending" });
+    const c2 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: "to approve" });
 
     await approveReimbursement(subTenant, c2.reimbursementId, REVIEWER_ID);
 
@@ -151,9 +151,9 @@ describe("Reimbursement CRUD — Read", () => {
 
   it("listReimbursements searches by claimNumber", async () => {
     const subTenant = "tenant-reimb-search-test";
-    const emp = await createEmployee(subTenant, { employeeCode: "SRCH-001", name: "Search User", email: "sr@t.com", pin: "000001" });
+    const emp = await createEmployee(subTenant, { employeeCode: "SRCH-001", email: "sr@t.com" });
 
-    const claim = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: emp.name, type: "medical", amount: 10, description: "searchable" });
+    const claim = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "searchable" });
 
     const result = await listReimbursements(subTenant, { search: claim.claimNumber });
     assert.equal(result.total, 1, "Search by claimNumber should find exactly one claim");
@@ -168,7 +168,7 @@ describe("Reimbursement CRUD — Update", () => {
     const emp = await seedEmployee("UP1");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 40,
       description: "Original description",
@@ -192,7 +192,7 @@ describe("Reimbursement CRUD — Update", () => {
     const emp = await seedEmployee("UP2");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 20,
       description: "Guard test",
@@ -210,7 +210,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
     const emp = await seedEmployee("SA1");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 60,
       description: "Approve test",
@@ -228,7 +228,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
     const emp = await seedEmployee("SA2");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 70,
       description: "Reject test",
@@ -245,7 +245,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
     const emp = await seedEmployee("SA3");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 80,
       description: "Freeze test",
@@ -262,7 +262,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
     const emp = await seedEmployee("SA4");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 90,
       description: "Guard test",
@@ -285,7 +285,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
     const emp = await seedEmployee("PA1");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 100,
       description: "Pay test",
@@ -308,7 +308,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
     const emp = await seedEmployee("PA2");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 110,
       description: "Pay history test",
@@ -330,7 +330,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
     const emp = await seedEmployee("PA3");
     const pendingClaim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 120,
       description: "Pay guard test",
@@ -346,7 +346,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
     const emp = await seedEmployee("PA4");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 130,
       description: "Cross-tenant pay guard",
@@ -365,7 +365,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
 describe("Reimbursement — Claim History & Receipt Identity", () => {
   it("createEmployeeReimbursement stores receiptHash and serviceDate when provided", async () => {
     const emp = await seedEmployee("HI1");
-    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, emp.name, {
+    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, EMPLOYEE_NAME, {
       clinicId: "clinic_x",
       clinicName: "Test Clinic",
       amount: 25,
@@ -380,7 +380,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
 
   it("createEmployeeReimbursement omits receiptHash/serviceDate when not provided", async () => {
     const emp = await seedEmployee("HI2");
-    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, emp.name, {
+    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, EMPLOYEE_NAME, {
       clinicId: "clinic_y",
       clinicName: "Another Clinic",
       amount: 10,
@@ -393,7 +393,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
 
   it("createEmployeeReimbursement creates a single pending history entry attributed to the employee", async () => {
     const emp = await seedEmployee("HI3");
-    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, emp.name, {
+    const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, EMPLOYEE_NAME, {
       clinicId: "clinic_z",
       clinicName: "Some Clinic",
       amount: 15,
@@ -413,7 +413,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("HI4");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 20,
       description: "Direct create history test",
@@ -430,7 +430,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("HI5");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 30,
       description: "Approve history test",
@@ -451,7 +451,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("HI6");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 40,
       description: "Reject history test",
@@ -471,7 +471,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("HI7");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 50,
       description: "Freeze history test",
@@ -491,7 +491,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("N1");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 60,
       description: "Notes storage test",
@@ -507,7 +507,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     // Reject with notes
     const claim2 = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 70,
       description: "Notes storage test 2",
@@ -520,7 +520,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     // Freeze with notes
     const claim3 = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 80,
       description: "Notes storage test 3",
@@ -535,7 +535,7 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     const emp = await seedEmployee("N2");
     const claim = await createReimbursement(TENANT_ID, {
       employeeId: emp.employeeId,
-      employeeName: emp.name,
+      employeeName: EMPLOYEE_NAME,
       type: "medical",
       amount: 90,
       description: "No notes test",
