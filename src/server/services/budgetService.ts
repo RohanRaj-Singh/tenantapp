@@ -8,23 +8,12 @@ interface BudgetOverview {
   availableAmount: number;
 }
 
-/**
- * Get budget overview for a tenant.
- *
- * totalAmount = stored budget total (or 0 if not set)
- * committedAmount = sum of all APPROVED claims (awaiting payment)
- * paidAmount = sum of all PAID claims
- * availableAmount = totalAmount - (committedAmount + paidAmount)
- */
 export async function getBudgetOverview(tenantId: string): Promise<BudgetOverview> {
   const repositories = await getRepositoryContext();
 
   const [allClaims, budgetDoc] = await Promise.all([
     repositories.reimbursements.findByTenantId(tenantId, { limit: 10000 }),
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    (repositories as any).budgets?.findByTenantId
-      ? (repositories as any).budgets.findByTenantId(tenantId)
-      : null,
+    repositories.budgets.findByTenantId(tenantId),
   ]);
 
   const totalAmount = budgetDoc?.totalAmount ?? 0;
@@ -43,9 +32,6 @@ export async function getBudgetOverview(tenantId: string): Promise<BudgetOvervie
   };
 }
 
-/**
- * Set or update the total budget for a tenant.
- */
 export async function setBudget(
   tenantId: string,
   totalAmount: number,
@@ -54,19 +40,12 @@ export async function setBudget(
   const repositories = await getRepositoryContext();
   const now = new Date().toISOString();
 
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const budgets = (repositories as any).budgets;
-  if (!budgets) {
-    // Fallback: budget collection not wired yet — skip
-    return { totalAmount };
-  }
-
-  const existing = await budgets.findByTenantId(tenantId);
+  const existing = await repositories.budgets.findByTenantId(tenantId);
 
   if (existing) {
-    await budgets.update(existing.budgetId, { totalAmount, updatedAt: now });
+    await repositories.budgets.update(existing.budgetId, { totalAmount, updatedAt: now });
   } else {
-    await budgets.insert({
+    await repositories.budgets.insert({
       budgetId: `budget_${randomUUID()}`,
       tenantId,
       totalAmount,
@@ -79,26 +58,13 @@ export async function setBudget(
   return { totalAmount };
 }
 
-/**
- * Add funds to an existing budget (Top Up).
- */
 export async function topUpBudget(
   tenantId: string,
   additionalAmount: number,
   createdBy: string,
 ): Promise<BudgetOverview> {
-  const repositories = await getRepositoryContext();
-
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const budgets = (repositories as any).budgets;
-  if (!budgets) {
-    return { totalAmount: 0, committedAmount: 0, paidAmount: 0, availableAmount: 0 };
-  }
-
-  const existing = await budgets.findByTenantId(tenantId);
-  const currentTotal = existing?.totalAmount ?? 0;
-
-  await setBudget(tenantId, currentTotal + additionalAmount, createdBy);
-
+  const current = await getBudgetOverview(tenantId);
+  const newTotal = current.totalAmount + additionalAmount;
+  await setBudget(tenantId, newTotal, createdBy);
   return getBudgetOverview(tenantId);
 }
