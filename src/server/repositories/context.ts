@@ -2,11 +2,14 @@ import { getMongoDb } from "@/src/server/db/mongodb";
 import { ApiError } from "@/src/server/api/errors";
 import { AttributeTemplateVersionsRepository } from "./attributeTemplateVersionsRepository";
 import { BudgetsRepository } from "./budgetsRepository";
+import { ClaimMessagesRepository } from "./claimMessagesRepository";
+import { ClaimRequestsRepository } from "./claimRequestsRepository";
 import { CampaignsRepository } from "./campaignsRepository";
 import type { RepositoryContext } from "./contracts";
 import { EmployeesRepository } from "./employeesRepository";
 import { InvitationsRepository } from "./invitationsRepository";
 import { getMemoryRepositoryContext } from "./memoryRepositoryContext";
+import { NotificationsRepository } from "./notificationsRepository";
 import { ReimbursementsRepository } from "./reimbursementsRepository";
 import { ResponsesRepository } from "./responsesRepository";
 import { RuntimeConfigsRepository } from "./runtimeConfigsRepository";
@@ -33,6 +36,9 @@ async function getMongoRepositoryContext(): Promise<RepositoryContext> {
       campaigns: new CampaignsRepository(db),
       invitations: new InvitationsRepository(db),
       budgets: new BudgetsRepository(db),
+      notifications: new NotificationsRepository(db),
+      claimMessages: new ClaimMessagesRepository(db),
+      claimRequests: new ClaimRequestsRepository(db),
     };
   }
 
@@ -48,6 +54,9 @@ async function getMongoRepositoryContext(): Promise<RepositoryContext> {
       mongoRepositoryContext.reimbursements.ensureIndexes(),
       mongoRepositoryContext.campaigns.ensureIndexes(),
       mongoRepositoryContext.budgets.ensureIndexes(),
+      mongoRepositoryContext.notifications.ensureIndexes(),
+      mongoRepositoryContext.claimMessages.ensureIndexes(),
+      mongoRepositoryContext.claimRequests.ensureIndexes(),
     ]).then(() => undefined);
   }
 

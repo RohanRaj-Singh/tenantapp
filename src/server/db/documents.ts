@@ -33,6 +33,9 @@ export const COLLECTION_NAMES = {
   campaigns: "campaigns",
   invitations: "invitations",
   budgets: "budgets",
+  notifications: "notifications",
+  claimMessages: "claimMessages",
+  claimRequests: "claimRequests",
 } as const;
 
 export interface TimestampFields {
@@ -217,6 +220,80 @@ export interface BudgetDocument extends TimestampFields {
   tenantId: string;
   totalAmount: number;
   createdBy: string;
+}
+
+export type NotificationRecipientType = "employee" | "tenantAdmin" | "superAdmin";
+
+export type NotificationType =
+  | "claim_approved"
+  | "claim_rejected"
+  | "claim_frozen"
+  | "claim_paid"
+  | "claim_in_progress"
+  | "claim_submitted"
+  | "claim_resubmitted"
+  | "progress_update_sent"
+  | "claim_message"
+  | "claim_request";
+
+export interface NotificationDocument extends TimestampFields {
+  notificationId: string;
+  tenantId: string;
+  claimId: string;
+  claimNumber?: string;
+  recipientType: NotificationRecipientType;
+  recipientId: string;
+  type: NotificationType;
+  title: string;
+  body: string;
+  read: boolean;
+  readAt: string | null;
+}
+
+export type ClaimMessageRole = "employee" | "tenantAdmin" | "superAdmin" | "clinic";
+
+export type ClaimMessageType = "text" | "official_update";
+
+export interface ClaimMessageParticipant {
+  role: ClaimMessageRole;
+  id: string;
+  name: string;
+  /** `${role}:${id}` — used for read-tracking queries. */
+  key: string;
+}
+
+export interface ClaimMessageDocument extends TimestampFields {
+  messageId: string;
+  tenantId: string;
+  claimId: string;
+  type: ClaimMessageType;
+  participant: ClaimMessageParticipant;
+  body: string;
+  /** Participant keys that have read this message (author is implicitly read). */
+  readBy: string[];
+}
+
+export type ClaimRequestStatus =
+  | "pending"
+  | "approved"
+  | "rejected"
+  | "more_info"
+  | "converted_to_chat";
+
+export interface ClaimRequestDocument extends TimestampFields {
+  requestId: string;
+  tenantId: string;
+  claimId: string;
+  requester: ClaimMessageParticipant;
+  subject: string;
+  details: string;
+  status: ClaimRequestStatus;
+  decisionNote?: string;
+  /** Participant key of the tenant admin who decided. */
+  decisionBy?: string;
+  decidedAt?: string;
+  /** Set when the request is converted to a chat thread. */
+  convertedToMessageId?: string;
 }
 
 export type DashboardFilterKey = keyof DashboardSnapshotFilters;

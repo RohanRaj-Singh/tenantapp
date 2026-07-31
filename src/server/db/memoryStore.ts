@@ -4,8 +4,11 @@ import type {
   AuditEventDocument,
   BudgetDocument,
   CampaignDocument,
+  ClaimMessageDocument,
+  ClaimRequestDocument,
   EmployeeDocument,
   InvitationDocument,
+  NotificationDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -30,6 +33,9 @@ interface MemoryStore {
   campaigns: Map<string, CampaignDocument>;
   invitations: Map<string, InvitationDocument>;
   budgets: Map<string, BudgetDocument>;
+  notifications: Map<string, NotificationDocument>;
+  claimMessages: Map<string, ClaimMessageDocument>;
+  claimRequests: Map<string, ClaimRequestDocument>;
 }
 
 declare global {
@@ -53,6 +59,9 @@ function createMemoryStore(): MemoryStore {
     campaigns: new Map<string, CampaignDocument>(),
     invitations: new Map<string, InvitationDocument>(),
     budgets: new Map<string, BudgetDocument>(),
+    notifications: new Map<string, NotificationDocument>(),
+    claimMessages: new Map<string, ClaimMessageDocument>(),
+    claimRequests: new Map<string, ClaimRequestDocument>(),
   };
 }
 

@@ -15,7 +15,11 @@ import {
   Send,
   Save,
   X,
+  Clock,
 } from "lucide-react";
+import ClaimTimeline from "./ClaimTimeline";
+import ClaimChat from "./ClaimChat";
+import ClaimRequests from "./ClaimRequests";
 
 interface ClaimHistoryEntry {
   status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
@@ -67,7 +71,7 @@ interface ReimbursementDetailPageProps {
   reimbursementId: string;
 }
 
-type ActionType = "approve" | "reject" | "freeze";
+type ActionType = "approve" | "reject" | "freeze" | "in_progress";
 
 export default function ReimbursementDetailPage({ reimbursementId }: ReimbursementDetailPageProps) {
   const router = useRouter();
@@ -236,9 +240,11 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
   const availableActions: ActionType[] =
     reimbursement.status === "frozen"
       ? ["approve", "reject"]
-      : reimbursement.status === "pending" || reimbursement.status === "in_progress"
-        ? ["approve", "reject", "freeze"]
-        : [];
+      : reimbursement.status === "pending"
+        ? ["approve", "reject", "freeze", "in_progress"]
+        : reimbursement.status === "in_progress"
+          ? ["approve", "reject", "freeze"]
+          : [];
 
   return (
     <div className="mx-auto max-w-3xl space-y-6">
@@ -467,24 +473,31 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
       {reimbursement.history && reimbursement.history.length > 0 && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
           <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 mb-4">Claim History</h3>
-          <ol className="relative border-l border-slate-200 ml-2 space-y-4">
-            {reimbursement.history.map((entry, i) => {
-              const cfg = STATUS_CONFIG[entry.status] ?? STATUS_CONFIG.pending;
-              return (
-                <li key={i} className="pl-5 relative">
-                  <span className={`absolute -left-1.5 top-1 h-3 w-3 rounded-full border-2 border-white ${cfg.dot}`} />
-                  <div className="flex flex-wrap items-center gap-2">
-                    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium capitalize ${cfg.color}`}>{cfg.label}</span>
-                    <span className="text-xs text-slate-400">{entry.actorRole === "employee" ? "Employee" : `Reviewer`}</span>
-                    <span className="text-xs text-slate-400">&middot; {formatDate(entry.timestamp)}</span>
-                  </div>
-                  {entry.note && <p className="mt-1 text-xs text-slate-600">{entry.note}</p>}
-                </li>
-              );
-            })}
-          </ol>
+          <ClaimTimeline history={reimbursement.history} />
         </div>
       )}
+
+      {/* Notes */}
+      {reimbursement.notes && (
+        <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
+          <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500 mb-2">Notes</h3>
+          <p className="text-sm text-slate-700 whitespace-pre-wrap">{reimbursement.notes}</p>
+        </div>
+      )}
+
+      {/* Chat */}
+      <ClaimChat
+        claimId={reimbursement.reimbursementId}
+        apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/messages`}
+      />
+
+      {/* Requests */}
+      <ClaimRequests
+        claimId={reimbursement.reimbursementId}
+        apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/requests`}
+        canCreate
+        canDecide
+      />
 
       {/* Action Form */}
       {canAct && (
@@ -512,6 +525,12 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
           </div>
 
           <div className="mt-4 flex flex-wrap gap-3">
+            {availableActions.includes("in_progress") && (
+              <button type="button" onClick={() => handleAction("in_progress")} disabled={actionLoading !== null} className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60">
+                {actionLoading === "in_progress" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
+                Start Review
+              </button>
+            )}
             {availableActions.includes("approve") && (
               <button type="button" onClick={() => handleAction("approve")} disabled={actionLoading !== null} className="inline-flex items-center gap-2 rounded-lg bg-emerald-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-emerald-700 disabled:cursor-not-allowed disabled:opacity-60">
                 {actionLoading === "approve" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <CheckCircle className="h-4 w-4" />}

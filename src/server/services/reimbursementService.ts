@@ -6,9 +6,48 @@ import type {
   FindReimbursementsOptions,
   FindReimbursementsResult,
 } from "@/src/server/repositories/contracts";
-import type { ClaimHistoryEntry, ReimbursementDocument } from "@/src/server/db/documents";
+import type {
+  ClaimHistoryEntry,
+  NotificationRecipientType,
+  NotificationType,
+  ReimbursementDocument,
+} from "@/src/server/db/documents";
+import { notify, notifyTenantAdmins } from "@/src/server/services/notificationService";
+import { postOfficialUpdate } from "@/src/server/services/claimMessageService";
 
 type ClaimStatus = ReimbursementDocument["status"];
+
+/**
+ * Best-effort notification dispatch. Notification failures must never block a
+ * claim transition, so errors are logged and swallowed.
+ */
+async function fireNotification(dispatch: () => Promise<void>) {
+  try {
+    await dispatch();
+  } catch (error) {
+    console.error("[notifications] failed to create notification:", error);
+  }
+}
+
+async function notifyClaimRecipient(
+  claim: { tenantId: string; reimbursementId: string; claimNumber?: string },
+  recipient: { recipientType: NotificationRecipientType; recipientId: string },
+  input: { type: NotificationType; title: string; body: string },
+  tenantIdOverride?: string,
+) {
+  await fireNotification(() =>
+    notify({
+      // Platform-wide recipients (super admin) use tenantId "" so they are
+      // queryable across all tenants; tenant-scoped recipients use the claim's tenant.
+      tenantId: tenantIdOverride ?? claim.tenantId,
+      claimId: claim.reimbursementId,
+      claimNumber: claim.claimNumber,
+      recipientType: recipient.recipientType,
+      recipientId: recipient.recipientId,
+      ...input,
+    }),
+  );
+}
 
 /**
  * Validates whether a status transition is allowed by the state machine.
@@ -121,6 +160,20 @@ export async function createReimbursement(
   const repositories = await getRepositoryContext();
   await repositories.reimbursements.insert(reimbursement);
 
+  // Notify the employee that a claim was created (e.g. on their behalf by the tenant admin)
+  await fireNotification(() =>
+    notify({
+      tenantId,
+      claimId: reimbursement.reimbursementId,
+      claimNumber: reimbursement.claimNumber,
+      recipientType: "employee",
+      recipientId: reimbursement.employeeId,
+      type: "claim_submitted",
+      title: "Claim submitted",
+      body: `Your claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} has been submitted for review.`,
+    }),
+  );
+
   return reimbursement;
 }
 
@@ -173,7 +226,9 @@ export async function updateReimbursement(
   updates.updatedAt = now;
 
   // When a rejected claim is edited, resubmit it for review
+  let resubmitted = false;
   if (existing.status === "rejected") {
+    resubmitted = true;
     updates.status = "pending";
     const historyEntry: ClaimHistoryEntry = {
       status: "pending",
@@ -185,7 +240,22 @@ export async function updateReimbursement(
     updates.history = [...(existing.history ?? []), historyEntry];
   }
 
-  return repositories.reimbursements.update(reimbursementId, updates);
+  const updated = await repositories.reimbursements.update(reimbursementId, updates);
+
+  if (updated && resubmitted) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_resubmitted",
+        title: "Claim resubmitted",
+        body: `Your claim ${reference} has been resubmitted for review.`,
+      },
+    );
+  }
+
+  return updated;
 }
 
 export async function approveReimbursement(
@@ -205,13 +275,31 @@ export async function approveReimbursement(
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "approved", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
-  return repositories.reimbursements.update(reimbursementId, {
+  const updated = await repositories.reimbursements.update(reimbursementId, {
     status: "approved",
     reviewedBy: reviewerId,
     reviewedAt: now,
     updatedAt: now,
     history: [...(existing.history ?? []), entry],
   });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      { type: "claim_approved", title: "Claim approved", body: `Your claim ${reference} has been approved.` },
+    );
+    // Super Admin sees approved claims as "ready for payout" (platform-wide, tenantId "")
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "superAdmin", recipientId: "super-admin" },
+      { type: "claim_approved", title: "Claim approved", body: `Claim ${reference} is approved and ready for payout.` },
+      "",
+    );
+  }
+
+  return updated;
 }
 
 export async function rejectReimbursement(
@@ -231,13 +319,31 @@ export async function rejectReimbursement(
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "rejected", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
-  return repositories.reimbursements.update(reimbursementId, {
+  const updated = await repositories.reimbursements.update(reimbursementId, {
     status: "rejected",
     reviewedBy: reviewerId,
     reviewedAt: now,
     updatedAt: now,
     history: [...(existing.history ?? []), entry],
   });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    const reason = notes?.trim();
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_rejected",
+        title: "Claim rejected",
+        body: reason
+          ? `Your claim ${reference} was not approved. Reason: ${reason}`
+          : `Your claim ${reference} was not approved.`,
+      },
+    );
+  }
+
+  return updated;
 }
 
 export async function freezeReimbursement(
@@ -257,13 +363,28 @@ export async function freezeReimbursement(
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "frozen", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
-  return repositories.reimbursements.update(reimbursementId, {
+  const updated = await repositories.reimbursements.update(reimbursementId, {
     status: "frozen",
     reviewedBy: reviewerId,
     reviewedAt: now,
     updatedAt: now,
     history: [...(existing.history ?? []), entry],
   });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_frozen",
+        title: "Claim frozen",
+        body: `Your claim ${reference} is temporarily on hold${notes?.trim() ? `: ${notes.trim()}` : ""}.`,
+      },
+    );
+  }
+
+  return updated;
 }
 
 export async function payReimbursement(
@@ -283,13 +404,69 @@ export async function payReimbursement(
 
   const now = new Date().toISOString();
   const entry: ClaimHistoryEntry = { status: "paid", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
-  return repositories.reimbursements.update(reimbursementId, {
+  const updated = await repositories.reimbursements.update(reimbursementId, {
     status: "paid",
     reviewedBy: reviewerId,
     reviewedAt: now,
     updatedAt: now,
     history: [...(existing.history ?? []), entry],
   });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_paid",
+        title: "Claim paid",
+        body: `Your claim ${reference} has been paid.`,
+      },
+    );
+  }
+
+  return updated;
+}
+
+export async function markInProgress(
+  tenantId: string,
+  reimbursementId: string,
+  reviewerId: string,
+  notes?: string,
+) {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.reimbursements.findById(reimbursementId);
+
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
+
+  assertValidTransition(existing.status, "in_progress");
+
+  const now = new Date().toISOString();
+  const entry: ClaimHistoryEntry = { status: "in_progress", actorId: reviewerId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
+  const updated = await repositories.reimbursements.update(reimbursementId, {
+    status: "in_progress",
+    reviewedBy: reviewerId,
+    reviewedAt: now,
+    updatedAt: now,
+    history: [...(existing.history ?? []), entry],
+  });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_in_progress",
+        title: "Claim in progress",
+        body: `Your claim ${reference} is now being reviewed.`,
+      },
+    );
+  }
+
+  return updated;
 }
 
 // ── Employee-Facing Claim Creation ──────────────────────────────────────────
@@ -355,6 +532,30 @@ export async function createEmployeeReimbursement(
   const repositories = await getRepositoryContext();
   await repositories.reimbursements.insert(reimbursement);
 
+  // Notify the employee (submission confirmation) and the tenant admin (awaiting review)
+  await fireNotification(() =>
+    notify({
+      tenantId,
+      claimId: reimbursement.reimbursementId,
+      claimNumber: reimbursement.claimNumber,
+      recipientType: "employee",
+      recipientId: reimbursement.employeeId,
+      type: "claim_submitted",
+      title: "Claim submitted",
+      body: `Your claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} has been submitted for review.`,
+    }),
+  );
+  await fireNotification(() =>
+    notifyTenantAdmins({
+      tenantId,
+      claimId: reimbursement.reimbursementId,
+      claimNumber: reimbursement.claimNumber,
+      type: "claim_submitted",
+      title: "New claim submitted",
+      body: `${employeeName} submitted claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} for review.`,
+    }),
+  );
+
   return reimbursement;
 }
 
@@ -387,8 +588,32 @@ export async function postProgressUpdate(
     timestamp: now,
   };
 
-  return repositories.reimbursements.update(reimbursementId, {
+  const updated = await repositories.reimbursements.update(reimbursementId, {
     updatedAt: now,
     history: [...(existing.history ?? []), entry],
   });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "progress_update_sent",
+        title: "New update on your claim",
+        body: `Update on ${reference}: ${message.trim()}`,
+      },
+    );
+    // Bridge into the claim chat as an official update (best-effort)
+    await fireNotification(() =>
+      postOfficialUpdate({
+        tenantId: existing.tenantId,
+        claimId: existing.reimbursementId,
+        actorId,
+        message,
+      }),
+    );
+  }
+
+  return updated;
 }

@@ -7,8 +7,12 @@ import type {
   AuditEventDocument,
   BudgetDocument,
   CampaignDocument,
+  ClaimMessageDocument,
+  ClaimRequestDocument,
   EmployeeDocument,
   InvitationDocument,
+  NotificationDocument,
+  NotificationRecipientType,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -19,6 +23,8 @@ import type {
   AttributeTemplateVersionsRepositoryContract,
   BudgetsRepositoryContract,
   CampaignsRepositoryContract,
+  ClaimMessagesRepositoryContract,
+  ClaimRequestsRepositoryContract,
   EmployeesRepositoryContract,
   FindCampaignsOptions,
   FindCampaignsResult,
@@ -29,6 +35,8 @@ import type {
   FindReimbursementsOptions,
   FindReimbursementsResult,
   InvitationsRepositoryContract,
+  ListNotificationsOptions,
+  NotificationsRepositoryContract,
   RawResponseAggregationQuery,
   ReimbursementsRepositoryContract,
   RepositoryContext,
@@ -771,6 +779,179 @@ class MemoryBudgetsRepository implements BudgetsRepositoryContract {
   }
 }
 
+// ── In-Memory Claim Messages Repository ──────────────────────────────────────
+
+class MemoryClaimMessagesRepository implements ClaimMessagesRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(message: ClaimMessageDocument): Promise<void> {
+    this.store.claimMessages.set(message.messageId, { ...message });
+  }
+
+  async listByClaimId(
+    claimId: string,
+    options: { limit?: number } = {},
+  ): Promise<ClaimMessageDocument[]> {
+    const { limit = 200 } = options;
+    const matches = Array.from(this.store.claimMessages.values())
+      .filter((m) => m.claimId === claimId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return matches.slice(-limit).map((m) => ({ ...m }));
+  }
+
+  async unreadCount(claimId: string, viewerKey: string): Promise<number> {
+    return Array.from(this.store.claimMessages.values()).filter(
+      (m) =>
+        m.claimId === claimId &&
+        m.participant.key !== viewerKey &&
+        !m.readBy.includes(viewerKey),
+    ).length;
+  }
+
+  async markThreadRead(claimId: string, viewerKey: string): Promise<number> {
+    let count = 0;
+    for (const [id, m] of this.store.claimMessages.entries()) {
+      if (m.claimId === claimId && m.participant.key !== viewerKey && !m.readBy.includes(viewerKey)) {
+        this.store.claimMessages.set(id, { ...m, readBy: [...m.readBy, viewerKey] });
+        count += 1;
+      }
+    }
+    return count;
+  }
+}
+
+// ── In-Memory Claim Requests Repository ──────────────────────────────────────
+
+class MemoryClaimRequestsRepository implements ClaimRequestsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(request: ClaimRequestDocument): Promise<void> {
+    this.store.claimRequests.set(request.requestId, { ...request });
+  }
+
+  async listByClaimId(
+    claimId: string,
+    options: { limit?: number } = {},
+  ): Promise<ClaimRequestDocument[]> {
+    const { limit = 100 } = options;
+    const matches = Array.from(this.store.claimRequests.values())
+      .filter((r) => r.claimId === claimId)
+      .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+    return matches.slice(-limit).map((r) => ({ ...r }));
+  }
+
+  async findById(requestId: string): Promise<ClaimRequestDocument | null> {
+    const current = this.store.claimRequests.get(requestId);
+    return current ? { ...current } : null;
+  }
+
+  async update(
+    requestId: string,
+    updates: Partial<ClaimRequestDocument>,
+  ): Promise<ClaimRequestDocument | null> {
+    const current = this.store.claimRequests.get(requestId);
+    if (!current) return null;
+    const next = { ...current, ...updates };
+    this.store.claimRequests.set(requestId, next);
+    return { ...next };
+  }
+}
+
+// ── In-Memory Notifications Repository ───────────────────────────────────────
+
+class MemoryNotificationsRepository implements NotificationsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(notification: NotificationDocument): Promise<void> {
+    this.store.notifications.set(notification.notificationId, { ...notification });
+  }
+
+  async listForRecipient(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+    options: ListNotificationsOptions = {},
+  ): Promise<NotificationDocument[]> {
+    const { unreadOnly = false, skip = 0, limit = 20 } = options;
+    const matches = Array.from(this.store.notifications.values())
+      .filter(
+        (n) =>
+          n.tenantId === tenantId &&
+          n.recipientType === recipientType &&
+          n.recipientId === recipientId &&
+          (!unreadOnly || !n.read),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return matches.slice(skip, skip + limit).map((n) => ({ ...n }));
+  }
+
+  async countUnread(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<number> {
+    return Array.from(this.store.notifications.values()).filter(
+      (n) =>
+        n.tenantId === tenantId &&
+        n.recipientType === recipientType &&
+        n.recipientId === recipientId &&
+        !n.read,
+    ).length;
+  }
+
+  async markRead(
+    notificationId: string,
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<NotificationDocument | null> {
+    const current = this.store.notifications.get(notificationId);
+    if (
+      !current ||
+      current.tenantId !== tenantId ||
+      current.recipientType !== recipientType ||
+      current.recipientId !== recipientId
+    ) {
+      return null;
+    }
+    const next = {
+      ...current,
+      read: true,
+      readAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    };
+    this.store.notifications.set(notificationId, next);
+    return { ...next };
+  }
+
+  async markAllRead(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<number> {
+    const nowIso = new Date().toISOString();
+    let count = 0;
+    for (const [id, n] of this.store.notifications.entries()) {
+      if (
+        n.tenantId === tenantId &&
+        n.recipientType === recipientType &&
+        n.recipientId === recipientId &&
+        !n.read
+      ) {
+        this.store.notifications.set(id, { ...n, read: true, readAt: nowIso, updatedAt: nowIso });
+        count += 1;
+      }
+    }
+    return count;
+  }
+}
+
 export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
   if (!memoryRepositoryContext) {
     memoryRepositoryContext = {
@@ -785,6 +966,9 @@ export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
       campaigns: new MemoryCampaignsRepository(),
       invitations: new MemoryInvitationsRepository(),
       budgets: new MemoryBudgetsRepository(),
+      notifications: new MemoryNotificationsRepository(),
+      claimMessages: new MemoryClaimMessagesRepository(),
+      claimRequests: new MemoryClaimRequestsRepository(),
     };
   }
 

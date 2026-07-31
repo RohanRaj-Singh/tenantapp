@@ -81,23 +81,37 @@ export async function GET(request: NextRequest) {
       limit: 50,
     });
 
-    // Strip any sensitive fields from response
-    const safe = result.reimbursements.map((r) => ({
-      reimbursementId: r.reimbursementId,
-      claimNumber: r.claimNumber,
-      tenantId: r.tenantId,
-      employeeId: r.employeeId,
-      employeeName: r.employeeName,
-      type: r.type,
-      amount: r.amount,
-      description: r.description,
-      clinicId: r.clinicId,
-      clinicName: r.clinicName,
-      receiptUrl: r.receiptUrl,
-      status: r.status,
-      createdAt: r.createdAt,
-      updatedAt: r.updatedAt,
-    }));
+    // Strip any sensitive fields from response.
+    // `latestUpdate` is the most recent history entry (status change, reviewer note,
+    // or progress update) so the employee portal can surface the latest update in list rows.
+    const safe = result.reimbursements.map((r) => {
+      const history = r.history ?? [];
+      const latest = history[history.length - 1];
+      return {
+        reimbursementId: r.reimbursementId,
+        claimNumber: r.claimNumber,
+        tenantId: r.tenantId,
+        employeeId: r.employeeId,
+        employeeName: r.employeeName,
+        type: r.type,
+        amount: r.amount,
+        description: r.description,
+        clinicId: r.clinicId,
+        clinicName: r.clinicName,
+        receiptUrl: r.receiptUrl,
+        status: r.status,
+        createdAt: r.createdAt,
+        updatedAt: r.updatedAt,
+        latestUpdate: latest
+          ? {
+              status: latest.status,
+              actorRole: latest.actorRole,
+              note: latest.note ?? null,
+              timestamp: latest.timestamp,
+            }
+          : null,
+      };
+    });
 
     return NextResponse.json({ reimbursements: safe, total: result.total }, { status: 200 });
   } catch (error) {

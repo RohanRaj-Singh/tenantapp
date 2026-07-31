@@ -1,7 +1,6 @@
 import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
-export const dynamic = "force-dynamic";
 
 /**
  * Admin app URL for clinic data proxying.
@@ -15,7 +14,10 @@ export async function GET() {
   try {
     const res = await fetch(
       `${ADMIN_API_URL.replace(/\/$/, "")}/api/public/clinics`,
-      { signal: AbortSignal.timeout(10_000) },
+      {
+        next: { revalidate: 300 },
+        signal: AbortSignal.timeout(10_000),
+      },
     );
 
     if (!res.ok) {

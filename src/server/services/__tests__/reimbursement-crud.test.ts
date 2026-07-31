@@ -13,6 +13,7 @@ import {
   rejectReimbursement,
   freezeReimbursement,
   payReimbursement,
+  markInProgress,
 } from "@/src/server/services/reimbursementService";
 
 const TENANT_ID = "tenant-crud-test-reimbursements";
@@ -278,6 +279,80 @@ describe("Reimbursement CRUD — Status Actions", () => {
   });
 });
 
+// ── In-Progress Transition (pending/frozen → in_progress) ─────────────────────
+
+describe("Reimbursement CRUD — In-Progress Transition", () => {
+  it("markInProgress sets status=in_progress with reviewedBy and reviewedAt", async () => {
+    const emp = await seedEmployee("IP1");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 60,
+      description: "In progress test",
+    });
+
+    const inProgress = await markInProgress(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+
+    assert.ok(inProgress);
+    assert.equal(inProgress!.status, "in_progress");
+    assert.equal(inProgress!.reviewedBy, REVIEWER_ID);
+  });
+
+  it("markInProgress appends an in_progress history entry with an optional note", async () => {
+    const emp = await seedEmployee("IP2");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 61,
+      description: "In progress note test",
+    });
+
+    const inProgress = await markInProgress(TENANT_ID, claim.reimbursementId, REVIEWER_ID, "Under review with finance");
+
+    assert.ok(inProgress);
+    const entries = inProgress!.history ?? [];
+    const last = entries[entries.length - 1];
+    assert.equal(last.status, "in_progress");
+    assert.equal(last.actorRole, "tenantAdmin");
+    assert.equal(last.note, "Under review with finance");
+  });
+
+  it("markInProgress throws for non-eligible statuses", async () => {
+    const emp = await seedEmployee("IP3");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 62,
+      description: "In progress guard test",
+    });
+
+    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    assert.ok(approved);
+
+    await assert.rejects(
+      () => markInProgress(TENANT_ID, claim.reimbursementId, REVIEWER_ID),
+      { code: "INVALID_STATUS_TRANSITION" },
+    );
+  });
+
+  it("markInProgress returns null for cross-tenant requests", async () => {
+    const emp = await seedEmployee("IP4");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 63,
+      description: "In progress cross-tenant guard",
+    });
+
+    const result = await markInProgress(OTHER_TENANT, claim.reimbursementId, REVIEWER_ID);
+    assert.equal(result, null);
+  });
+});
+
 // ── Pay Transition (approved → paid) ──────────────────────────────────────────
 
 describe("Reimbursement CRUD — Pay Transition", () => {
@@ -338,7 +413,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
 
     await assert.rejects(
       () => payReimbursement(TENANT_ID, pendingClaim.reimbursementId, REVIEWER_ID),
-      { message: "Only approved claims can be marked as paid." },
+      { code: "INVALID_STATUS_TRANSITION" },
     );
   });
 

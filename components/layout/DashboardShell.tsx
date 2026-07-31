@@ -3,6 +3,7 @@
 import type { ReactNode } from "react";
 import { usePathname } from "next/navigation";
 import OrganizationSidebar from "@/components/layout/OrganizationSidebar";
+import NotificationBell from "@/components/notifications/NotificationBell";
 import { getDashboardMeta } from "@/lib/dashboardMockData";
 import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
@@ -41,6 +42,7 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
             </div>
 
             <div className="flex items-center gap-3">
+              <NotificationBell />
               <div className="hidden text-right md:block">
                 <p className="text-sm font-semibold text-slate-900">{user.username}</p>
                 <p className="text-xs text-slate-500">{user.email}</p>

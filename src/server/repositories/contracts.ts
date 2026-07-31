@@ -5,8 +5,12 @@ import type {
   AuditEventDocument,
   BudgetDocument,
   CampaignDocument,
+  ClaimMessageDocument,
+  ClaimRequestDocument,
   EmployeeDocument,
   InvitationDocument,
+  NotificationDocument,
+  NotificationRecipientType,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -222,6 +226,58 @@ export interface BudgetsRepositoryContract {
   update(id: string, updates: Partial<BudgetDocument>): Promise<BudgetDocument | null>;
 }
 
+export interface ListNotificationsOptions {
+  unreadOnly?: boolean;
+  skip?: number;
+  limit?: number;
+}
+
+export interface ClaimRequestsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(request: ClaimRequestDocument): Promise<void>;
+  listByClaimId(claimId: string, options?: { limit?: number }): Promise<ClaimRequestDocument[]>;
+  findById(requestId: string): Promise<ClaimRequestDocument | null>;
+  update(
+    requestId: string,
+    updates: Partial<ClaimRequestDocument>,
+  ): Promise<ClaimRequestDocument | null>;
+}
+
+export interface ClaimMessagesRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(message: ClaimMessageDocument): Promise<void>;
+  listByClaimId(claimId: string, options?: { limit?: number }): Promise<ClaimMessageDocument[]>;
+  unreadCount(claimId: string, viewerKey: string): Promise<number>;
+  markThreadRead(claimId: string, viewerKey: string): Promise<number>;
+}
+
+export interface NotificationsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(notification: NotificationDocument): Promise<void>;
+  listForRecipient(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+    options?: ListNotificationsOptions,
+  ): Promise<NotificationDocument[]>;
+  countUnread(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<number>;
+  markRead(
+    notificationId: string,
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<NotificationDocument | null>;
+  markAllRead(
+    tenantId: string,
+    recipientType: NotificationRecipientType,
+    recipientId: string,
+  ): Promise<number>;
+}
+
 export interface RepositoryContext {
   tenants: TenantsRepositoryContract;
   runtimeConfigs: RuntimeConfigsRepositoryContract;
@@ -234,4 +290,7 @@ export interface RepositoryContext {
   campaigns: CampaignsRepositoryContract;
   invitations: InvitationsRepositoryContract;
   budgets: BudgetsRepositoryContract;
+  notifications: NotificationsRepositoryContract;
+  claimMessages: ClaimMessagesRepositoryContract;
+  claimRequests: ClaimRequestsRepositoryContract;
 }
