@@ -6,13 +6,18 @@ import type {
   AttributeTemplateVersionDocument,
   AuditEventDocument,
   BudgetDocument,
+  BudgetHistoryDocument,
   CampaignDocument,
   ClaimMessageDocument,
   ClaimRequestDocument,
+  ClinicDirectoryDocument,
+  ClinicUserDocument,
   EmployeeDocument,
   InvitationDocument,
+  InvoiceDocument,
   NotificationDocument,
   NotificationRecipientType,
+  PaymentRecordDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -21,22 +26,32 @@ import type {
 } from "@/src/server/db/documents";
 import type {
   AttributeTemplateVersionsRepositoryContract,
+  BudgetHistoryRepositoryContract,
   BudgetsRepositoryContract,
   CampaignsRepositoryContract,
   ClaimMessagesRepositoryContract,
   ClaimRequestsRepositoryContract,
+  ClinicsRepositoryContract,
+  ClinicUsersRepositoryContract,
   EmployeesRepositoryContract,
   FindCampaignsOptions,
   FindCampaignsResult,
+  FindClinicUsersOptions,
+  FindClinicUsersResult,
   FindEmployeesOptions,
   FindEmployeesResult,
   FindInvitationsOptions,
   FindInvitationsResult,
+  FindInvoicesResult,
   FindReimbursementsOptions,
   FindReimbursementsResult,
+  InvoicesRepositoryContract,
   InvitationsRepositoryContract,
+  ListBudgetHistoryOptions,
+  ListInvoicesOptions,
   ListNotificationsOptions,
   NotificationsRepositoryContract,
+  PaymentRecordsRepositoryContract,
   RawResponseAggregationQuery,
   ReimbursementsRepositoryContract,
   RepositoryContext,
@@ -47,6 +62,11 @@ import type {
   SnapshotsRepositoryContract,
   TenantsRepositoryContract,
 } from "./contracts";
+import {
+  INDIVIDUAL_TENANT_ID,
+  INDIVIDUAL_TENANT_NAME,
+  INDIVIDUAL_TENANT_SLUG,
+} from "@/src/server/constants/individual";
 
 function sortDescendingByDate<T>(items: T[], selector: (item: T) => string) {
   return [...items].sort((left, right) =>
@@ -279,7 +299,7 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
   async findAll(
     options: FindEmployeesOptions & { tenantId?: string } = {},
   ): Promise<FindEmployeesResult> {
-    const { search, status, tenantId, skip = 0, limit = 20 } = options;
+    const { search, status, tenantId, excludeArchived, skip = 0, limit = 20 } = options;
 
     let filtered = Array.from(this.store.employees.values());
 
@@ -289,6 +309,10 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
 
     if (status) {
       filtered = filtered.filter((emp) => emp.status === status);
+    }
+
+    if (excludeArchived) {
+      filtered = filtered.filter((emp) => emp.status !== "archived");
     }
 
     if (search) {
@@ -313,7 +337,7 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     tenantId: string,
     options: FindEmployeesOptions = {},
   ): Promise<FindEmployeesResult> {
-    const { search, status, skip = 0, limit = 20 } = options;
+    const { search, status, excludeArchived, skip = 0, limit = 20 } = options;
 
     let filtered = Array.from(this.store.employees.values()).filter(
       (emp) => emp.tenantId === tenantId,
@@ -321,6 +345,10 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
 
     if (status) {
       filtered = filtered.filter((emp) => emp.status === status);
+    }
+
+    if (excludeArchived) {
+      filtered = filtered.filter((emp) => emp.status !== "archived");
     }
 
     if (search) {
@@ -368,6 +396,14 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     );
   }
 
+  async findByResetToken(token: string): Promise<EmployeeDocument | null> {
+    return (
+      Array.from(this.store.employees.values()).find(
+        (e) => e.passwordResetToken === token,
+      ) ?? null
+    );
+  }
+
   async insert(employee: EmployeeDocument): Promise<void> {
     this.store.employees.set(employee.employeeId, { ...employee });
   }
@@ -406,7 +442,7 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
   async findAll(
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, tenantId, skip = 0, limit = 200 } = options;
+    const { search, status, employeeId, tenantId, clinicId, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
 
     let filtered = Array.from(this.store.reimbursements.values());
 
@@ -422,6 +458,10 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
       filtered = filtered.filter((r) => r.employeeId === employeeId);
     }
 
+    if (clinicId) {
+      filtered = filtered.filter((r) => r.clinicId === clinicId);
+    }
+
     if (search) {
       const q = search.toLowerCase();
       filtered = filtered.filter(
@@ -433,7 +473,15 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
       );
     }
 
-    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const direction = sortOrder === "asc" ? 1 : -1;
+    filtered.sort((a, b) => {
+      const left = a[sortBy];
+      const right = b[sortBy];
+      if (left === right) {
+        return 0;
+      }
+      return left < right ? -direction : direction;
+    });
 
     const total = filtered.length;
     const reimbursements = filtered.slice(skip, skip + limit);
@@ -469,6 +517,115 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
     this.store.counters.set(counterId, next);
     return next;
   }
+
+  async aggregateByStatus(tenantId: string): Promise<Record<string, number>> {
+    const totals: Record<string, number> = {};
+    for (const reimbursement of this.store.reimbursements.values()) {
+      if (reimbursement.tenantId !== tenantId) {
+        continue;
+      }
+      totals[reimbursement.status] =
+        (totals[reimbursement.status] ?? 0) + reimbursement.amount;
+    }
+    return totals;
+  }
+}
+
+// ── In-Memory Clinic Users Repository ─────────────────────────────────────────
+
+class MemoryClinicUsersRepository implements ClinicUsersRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(user: ClinicUserDocument): Promise<void> {
+    this.store.clinicUsers.set(user.clinicUserId, { ...user });
+  }
+
+  async findByEmail(email: string): Promise<ClinicUserDocument | null> {
+    const normalized = email.trim().toLowerCase();
+    const user = Array.from(this.store.clinicUsers.values()).find(
+      (entry) => entry.email === normalized,
+    );
+    return user ? { ...user } : null;
+  }
+
+  async findById(id: string): Promise<ClinicUserDocument | null> {
+    const user = this.store.clinicUsers.get(id);
+    return user ? { ...user } : null;
+  }
+
+  async update(
+    id: string,
+    updates: Partial<ClinicUserDocument>,
+  ): Promise<ClinicUserDocument | null> {
+    const current = this.store.clinicUsers.get(id);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...updates };
+    this.store.clinicUsers.set(id, next);
+    return { ...next };
+  }
+
+  async list(
+    options: FindClinicUsersOptions = {},
+  ): Promise<FindClinicUsersResult> {
+    const {
+      tenantId,
+      clinicId,
+      status,
+      search,
+      skip = 0,
+      limit = 50,
+    } = options;
+
+    let filtered = Array.from(this.store.clinicUsers.values());
+
+    if (tenantId) {
+      filtered = filtered.filter((u) => u.tenantIds.includes(tenantId));
+    }
+
+    if (clinicId) {
+      filtered = filtered.filter((u) => u.clinicIds.includes(clinicId));
+    }
+
+    if (status) {
+      filtered = filtered.filter((u) => u.status === status);
+    }
+
+    if (search) {
+      const q = search.toLowerCase();
+      filtered = filtered.filter(
+        (u) => u.email.toLowerCase().includes(q) || u.name.toLowerCase().includes(q),
+      );
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = filtered.length;
+    const clinicUsers = filtered.slice(skip, skip + limit).map((u) => ({ ...u }));
+
+    return { clinicUsers, total };
+  }
+}
+
+// ── In-Memory Clinics Directory Repository ───────────────────────────────────
+
+class MemoryClinicsRepository implements ClinicsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async findById(clinicId: string): Promise<ClinicDirectoryDocument | null> {
+    const clinic = this.store.clinics.get(clinicId);
+    return clinic ? { ...clinic } : null;
+  }
+
+  async upsert(document: ClinicDirectoryDocument): Promise<void> {
+    this.store.clinics.set(document.clinicId, { ...document });
+  }
 }
 
 let seeded = false;
@@ -499,6 +656,8 @@ function ensureSeededMemoryStore(context: RepositoryContext) {
     { tenantId: "tenant-omantel", slug: "omantel", name: "Omantel" },
     { tenantId: "tenant-oq", slug: "oq", name: "OQ" },
     { tenantId: "tenant-pdo", slug: "pdo", name: "PDO" },
+    // Reserved pool for public / individual sign-ups (FR-079, FR-082).
+    { tenantId: INDIVIDUAL_TENANT_ID, slug: INDIVIDUAL_TENANT_SLUG, name: INDIVIDUAL_TENANT_NAME },
   ];
 
   for (const t of seedTenants) {
@@ -590,6 +749,30 @@ function ensureSeededMemoryStore(context: RepositoryContext) {
       };
       employees.set(employeeId, doc);
     }
+  }
+
+  // ── Seed clinic directory for clinic-portal dev ────────────────────────────
+
+  const seedClinicDirectory: Array<{
+    clinicId: string;
+    name: string;
+    tenantIds: string[];
+  }> = [
+    { clinicId: "clinic-eunoia", name: "Eunoia Clinic", tenantIds: ["tenant-omantel", "tenant-oq"] },
+    { clinicId: "clinic-hayat", name: "Hayat Counseling Center", tenantIds: ["tenant-omantel"] },
+    { clinicId: "clinic-al-harub", name: "Al Harub Medical Center", tenantIds: ["tenant-oq"] },
+    { clinicId: "clinic-pdo-care", name: "PDO Care Center", tenantIds: ["tenant-pdo"] },
+  ];
+
+  for (const clinic of seedClinicDirectory) {
+    void context.clinics.upsert({
+      clinicId: clinic.clinicId,
+      name: clinic.name,
+      tenantIds: clinic.tenantIds,
+      status: "active",
+      createdAt: nowIso,
+      updatedAt: nowIso,
+    });
   }
 
   seeded = true;
@@ -763,6 +946,16 @@ class MemoryBudgetsRepository implements BudgetsRepositoryContract {
     return null;
   }
 
+  async findByTenantAndYear(
+    tenantId: string,
+    year: number,
+  ): Promise<BudgetDocument | null> {
+    for (const budget of this.store.budgets.values()) {
+      if (budget.tenantId === tenantId && budget.year === year) return { ...budget };
+    }
+    return null;
+  }
+
   async insert(budget: BudgetDocument): Promise<void> {
     this.store.budgets.set(budget.budgetId, { ...budget });
   }
@@ -776,6 +969,35 @@ class MemoryBudgetsRepository implements BudgetsRepositoryContract {
     const next = { ...current, ...updates };
     this.store.budgets.set(id, next);
     return { ...next };
+  }
+}
+
+// ── In-Memory Budget History Repository ──────────────────────────────────────
+
+class MemoryBudgetHistoryRepository implements BudgetHistoryRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(history: BudgetHistoryDocument): Promise<void> {
+    this.store.budgetHistory.set(history.historyId, { ...history });
+  }
+
+  async listByTenant(
+    tenantId: string,
+    options: ListBudgetHistoryOptions = {},
+  ): Promise<BudgetHistoryDocument[]> {
+    const { type, skip = 0, limit = 50 } = options;
+    let filtered = Array.from(this.store.budgetHistory.values()).filter(
+      (h) => h.tenantId === tenantId,
+    );
+
+    if (type) {
+      filtered = filtered.filter((h) => h.type === type);
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    return filtered.slice(skip, skip + limit).map((h) => ({ ...h }));
   }
 }
 
@@ -822,7 +1044,7 @@ class MemoryClaimMessagesRepository implements ClaimMessagesRepositoryContract {
   }
 }
 
-// ── In-Memory Claim Requests Repository ──────────────────────────────────────
+// ── In-Memory Claim Requests Repository ────────────────────────────────────────
 
 class MemoryClaimRequestsRepository implements ClaimRequestsRepositoryContract {
   constructor(private readonly store = getMemoryStore()) {}
@@ -833,20 +1055,15 @@ class MemoryClaimRequestsRepository implements ClaimRequestsRepositoryContract {
     this.store.claimRequests.set(request.requestId, { ...request });
   }
 
-  async listByClaimId(
-    claimId: string,
-    options: { limit?: number } = {},
-  ): Promise<ClaimRequestDocument[]> {
-    const { limit = 100 } = options;
+  async findById(requestId: string): Promise<ClaimRequestDocument | null> {
+    return this.store.claimRequests.get(requestId) ?? null;
+  }
+
+  async listByClaimId(claimId: string): Promise<ClaimRequestDocument[]> {
     const matches = Array.from(this.store.claimRequests.values())
       .filter((r) => r.claimId === claimId)
       .sort((a, b) => a.createdAt.localeCompare(b.createdAt));
-    return matches.slice(-limit).map((r) => ({ ...r }));
-  }
-
-  async findById(requestId: string): Promise<ClaimRequestDocument | null> {
-    const current = this.store.claimRequests.get(requestId);
-    return current ? { ...current } : null;
+    return matches.map((r) => ({ ...r }));
   }
 
   async update(
@@ -855,9 +1072,9 @@ class MemoryClaimRequestsRepository implements ClaimRequestsRepositoryContract {
   ): Promise<ClaimRequestDocument | null> {
     const current = this.store.claimRequests.get(requestId);
     if (!current) return null;
-    const next = { ...current, ...updates };
-    this.store.claimRequests.set(requestId, next);
-    return { ...next };
+    const updated = { ...current, ...updates, updatedAt: new Date().toISOString() };
+    this.store.claimRequests.set(requestId, updated);
+    return updated;
   }
 }
 
@@ -952,6 +1169,124 @@ class MemoryNotificationsRepository implements NotificationsRepositoryContract {
   }
 }
 
+// ── In-Memory Invoices Repository ────────────────────────────────────────────
+
+class MemoryInvoicesRepository implements InvoicesRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(invoice: InvoiceDocument): Promise<void> {
+    this.store.invoices.set(invoice.invoiceId, { ...invoice });
+  }
+
+  async findById(id: string): Promise<InvoiceDocument | null> {
+    const invoice = this.store.invoices.get(id);
+    return invoice ? { ...invoice } : null;
+  }
+
+  async listByTenant(
+    tenantId: string,
+    options: ListInvoicesOptions = {},
+  ): Promise<FindInvoicesResult> {
+    return this.findAll({ ...options, tenantId });
+  }
+
+  async findAll(
+    options: ListInvoicesOptions & { tenantId?: string } = {},
+  ): Promise<FindInvoicesResult> {
+    const { tenantId, status, skip = 0, limit = 100 } = options;
+
+    let filtered = Array.from(this.store.invoices.values());
+
+    if (tenantId) {
+      filtered = filtered.filter((inv) => inv.tenantId === tenantId);
+    }
+
+    if (status) {
+      filtered = filtered.filter((inv) => inv.status === status);
+    }
+
+    filtered.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+
+    const total = filtered.length;
+    const invoices = filtered.slice(skip, skip + limit).map((inv) => ({ ...inv }));
+
+    return { invoices, total };
+  }
+
+  async update(
+    id: string,
+    updates: Partial<InvoiceDocument>,
+  ): Promise<InvoiceDocument | null> {
+    const current = this.store.invoices.get(id);
+    if (!current) {
+      return null;
+    }
+
+    const next = { ...current, ...updates };
+    this.store.invoices.set(id, next);
+    return { ...next };
+  }
+
+  async countByStatus(tenantId: string): Promise<Record<string, number>> {
+    const counts: Record<string, number> = {};
+    for (const inv of this.store.invoices.values()) {
+      if (inv.tenantId !== tenantId) {
+        continue;
+      }
+      counts[inv.status] = (counts[inv.status] ?? 0) + 1;
+    }
+    return counts;
+  }
+}
+
+// ── In-Memory Payment Records Repository ────────────────────────────────────
+
+class MemoryPaymentRecordsRepository implements PaymentRecordsRepositoryContract {
+  constructor(private readonly store = getMemoryStore()) {}
+
+  async ensureIndexes() {}
+
+  async insert(record: PaymentRecordDocument): Promise<void> {
+    this.store.paymentRecords.set(record.paymentRecordId, { ...record });
+  }
+
+  async update(
+    id: string,
+    updates: Partial<PaymentRecordDocument>,
+  ): Promise<PaymentRecordDocument | null> {
+    const current = this.store.paymentRecords.get(id);
+    if (!current) {
+      return null;
+    }
+    const next = { ...current, ...updates };
+    this.store.paymentRecords.set(id, next);
+    return { ...next };
+  }
+
+  async findByClaimId(claimId: string): Promise<PaymentRecordDocument | null> {
+    const record = Array.from(this.store.paymentRecords.values()).find(
+      (r) => r.claimId === claimId,
+    );
+    return record ? { ...record } : null;
+  }
+
+  async listByTenant(tenantId: string): Promise<PaymentRecordDocument[]> {
+    return Array.from(this.store.paymentRecords.values())
+      .filter((r) => r.tenantId === tenantId)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((r) => ({ ...r }));
+  }
+
+  async listByStatus(status: PaymentRecordDocument["status"]): Promise<PaymentRecordDocument[]> {
+    return Array.from(this.store.paymentRecords.values())
+      .filter((r) => r.status === status)
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
+      .map((r) => ({ ...r }));
+  }
+}
+
 export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
   if (!memoryRepositoryContext) {
     memoryRepositoryContext = {
@@ -966,9 +1301,14 @@ export async function getMemoryRepositoryContext(): Promise<RepositoryContext> {
       campaigns: new MemoryCampaignsRepository(),
       invitations: new MemoryInvitationsRepository(),
       budgets: new MemoryBudgetsRepository(),
+      budgetHistory: new MemoryBudgetHistoryRepository(),
       notifications: new MemoryNotificationsRepository(),
       claimMessages: new MemoryClaimMessagesRepository(),
       claimRequests: new MemoryClaimRequestsRepository(),
+      invoices: new MemoryInvoicesRepository(),
+      paymentRecords: new MemoryPaymentRecordsRepository(),
+      clinicUsers: new MemoryClinicUsersRepository(),
+      clinics: new MemoryClinicsRepository(),
     };
   }
 

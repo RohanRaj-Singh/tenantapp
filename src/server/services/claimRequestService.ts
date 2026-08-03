@@ -6,36 +6,27 @@ import {
   postChatMessage,
   type ChatAccessContext,
 } from "@/src/server/services/claimMessageService";
-import type { ClaimRequestDocument } from "@/src/server/db/documents";
-
-export type ClaimRequestDecision = "approved" | "rejected" | "more_info" | "converted_to_chat";
-
-async function fireRequestNotification(dispatch: () => Promise<void>) {
-  try {
-    await dispatch();
-  } catch (error) {
-    console.error("[requests] failed to create notification:", error);
-  }
-}
-
-function decisionLabel(decision: ClaimRequestDecision): string {
-  switch (decision) {
-    case "approved":
-      return "Approved";
-    case "rejected":
-      return "Rejected";
-    case "more_info":
-      return "Needs more info";
-    case "converted_to_chat":
-      return "Converted to chat";
-  }
-}
+import type {
+  ClaimRequestDocument,
+  ClaimRequestParticipant,
+  ClaimRequestStatus,
+} from "@/src/server/db/documents";
 
 export interface CreateClaimRequestInput {
   subject: string;
-  details: string;
+  body: string;
 }
 
+export interface ListClaimRequestsResult {
+  requests: ClaimRequestDocument[];
+}
+
+/**
+ * A "Request" (FR-073/FR-074) is when an employee or clinic asks the organization
+ * whether something is possible before proceeding with a claim (e.g. "Can we do an
+ * assessment that costs 1000?"). The organization (tenant admin) can then respond:
+ * approve, reject, ask for more info, or convert the discussion to chat.
+ */
 export async function createClaimRequest(
   context: ChatAccessContext,
   claimId: string,
@@ -46,21 +37,32 @@ export async function createClaimRequest(
     return null;
   }
 
-  const subject = input.subject?.trim();
-  const details = input.details?.trim();
-  if (!subject || !details) {
+  const subject = input.subject.trim();
+  const body = input.body.trim();
+  if (!subject || !body) {
+    return null;
+  }
+  if (subject.length > 200 || body.length > 2000) {
     return null;
   }
 
   const now = new Date().toISOString();
+  const requester: ClaimRequestParticipant = {
+    role: context.participant.role as ClaimRequestParticipant["role"],
+    id: context.participant.id,
+    name: context.participant.name,
+    key: context.participant.key,
+  };
+
   const request: ClaimRequestDocument = {
     requestId: `req_${randomUUID()}`,
     tenantId: claim.tenantId,
     claimId,
-    requester: context.participant,
+    claimNumber: claim.claimNumber,
     subject,
-    details,
+    body,
     status: "pending",
+    requester,
     createdAt: now,
     updatedAt: now,
   };
@@ -68,20 +70,17 @@ export async function createClaimRequest(
   const repositories = await getRepositoryContext();
   await repositories.claimRequests.insert(request);
 
-  // Employee/org requests land with the tenant admin for review
-  const reference = claim.claimNumber ?? claim.reimbursementId;
-  if (context.participant.role === "employee" || context.participant.role === "clinic") {
-    await fireRequestNotification(() =>
-      notifyTenantAdmins({
-        tenantId: claim.tenantId,
-        claimId: claim.reimbursementId,
-        claimNumber: claim.claimNumber,
-        type: "claim_request",
-        title: "New request",
-        body: `${context.participant.name} asked on ${reference}: ${subject}`,
-      }),
-    );
-  }
+  // Notify the organization (tenant admin) that a new request needs their answer.
+  await fireSideEffect(() =>
+    notifyTenantAdmins({
+      tenantId: claim.tenantId,
+      claimId: claim.reimbursementId,
+      claimNumber: claim.claimNumber,
+      type: "claim_request",
+      title: "New request",
+      body: `${requester.name} asked on ${subject}: ${body}`,
+    }),
+  );
 
   return request;
 }
@@ -89,77 +88,77 @@ export async function createClaimRequest(
 export async function listClaimRequests(
   context: ChatAccessContext,
   claimId: string,
-): Promise<ClaimRequestDocument[] | null> {
+): Promise<ListClaimRequestsResult | null> {
   const claim = await assertClaimAccess(context, claimId);
   if (!claim) {
     return null;
   }
 
   const repositories = await getRepositoryContext();
-  return repositories.claimRequests.listByClaimId(claimId);
+  const requests = await repositories.claimRequests.listByClaimId(claimId);
+  return { requests };
 }
+
+export type ClaimRequestDecision =
+  | "approved"
+  | "rejected"
+  | "more_info"
+  | "converted_to_chat";
 
 export async function decideClaimRequest(
   context: ChatAccessContext,
-  claimId: string,
   requestId: string,
   decision: ClaimRequestDecision,
-  note?: string,
+  resolutionNote?: string,
 ): Promise<ClaimRequestDocument | null> {
-  const claim = await assertClaimAccess(context, claimId);
+  const repositories = await getRepositoryContext();
+  const request = await repositories.claimRequests.findById(requestId);
+  if (!request) {
+    return null;
+  }
+
+  // Only a tenant admin of the same tenant can decide.
+  const claim = await assertClaimAccess(context, request.claimId);
   if (!claim) {
     return null;
   }
-
-  // Only the tenant admin (organization) decides requests
   if (context.participant.role !== "tenantAdmin") {
     return null;
   }
-
-  const repositories = await getRepositoryContext();
-  const existing = await repositories.claimRequests.findById(requestId);
-  if (!existing || existing.claimId !== claimId) {
-    return null;
-  }
-  if (existing.status !== "pending") {
+  if (request.status !== "pending") {
     return null;
   }
 
   const now = new Date().toISOString();
-  const trimmedNote = note?.trim();
+  const status = decision as ClaimRequestStatus;
 
+  let convertedToChatMessageId: string | undefined;
   if (decision === "converted_to_chat") {
-    // Seed a chat thread with the request context, then mark the request converted
-    const seeded = await postChatMessage(
+    // Seed a chat thread with the request context so the parties can discuss it.
+    const chatMessage = await postChatMessage(
       context,
-      claimId,
-      `Converted request "${existing.subject}" to chat — ${existing.details}`,
+      request.claimId,
+      `[Request] ${request.subject} — ${request.body}`,
     );
-    if (!seeded) {
-      return null;
-    }
-    return repositories.claimRequests.update(requestId, {
-      status: "converted_to_chat",
-      decisionBy: context.participant.key,
-      decidedAt: now,
-      convertedToMessageId: seeded.messageId,
-      updatedAt: now,
-      ...(trimmedNote ? { decisionNote: trimmedNote } : {}),
-    });
+    convertedToChatMessageId = chatMessage?.messageId;
   }
 
+  const responder: ClaimRequestParticipant = {
+    role: "tenantAdmin",
+    id: context.participant.id,
+    name: context.participant.name,
+    key: context.participant.key,
+  };
+
   const updated = await repositories.claimRequests.update(requestId, {
-    status: decision,
-    decisionBy: context.participant.key,
-    decidedAt: now,
-    updatedAt: now,
-    ...(trimmedNote ? { decisionNote: trimmedNote } : {}),
+    status,
+    responder,
+    resolutionNote: resolutionNote?.trim() || undefined,
+    ...(convertedToChatMessageId ? { convertedToChatMessageId } : {}),
   });
 
   if (updated) {
-    const reference = claim.claimNumber ?? claim.reimbursementId;
-    const label = decisionLabel(decision);
-    await fireRequestNotification(() =>
+    await fireSideEffect(() =>
       notify({
         tenantId: claim.tenantId,
         claimId: claim.reimbursementId,
@@ -167,13 +166,32 @@ export async function decideClaimRequest(
         recipientType: "employee",
         recipientId: claim.employeeId,
         type: "claim_request",
-        title: `Request ${label}`,
-        body: `Your request "${existing.subject}" on ${reference} was ${label.toLowerCase()}.${
-          trimmedNote ? ` ${trimmedNote}` : ""
-        }`,
+        title: `Request ${decisionLabel(decision)}`,
+        body: `Your request "${request.subject}" was ${decisionLabel(decision)}`
+          + (resolutionNote?.trim() ? `: ${resolutionNote.trim()}` : ""),
       }),
     );
   }
 
   return updated;
+}
+
+function decisionLabel(decision: ClaimRequestDecision): string {
+  switch (decision) {
+    case "approved":
+      return "approved";
+    case "rejected":
+      return "rejected";
+    case "more_info":
+      return "needs more info";
+    case "converted_to_chat":
+      return "moved to chat";
+  }
+}
+
+function fireSideEffect<T>(fn: () => Promise<T>): Promise<T> {
+  return fn().catch((error) => {
+    console.error("[request] side effect failed:", error);
+    return undefined as T;
+  });
 }

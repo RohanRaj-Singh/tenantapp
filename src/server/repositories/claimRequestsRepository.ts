@@ -16,7 +16,8 @@ export class ClaimRequestsRepository implements ClaimRequestsRepositoryContract 
   async ensureIndexes() {
     await this.collection().createIndexes([
       { key: { requestId: 1 }, unique: true, name: "claim_request_id_unique" },
-      { key: { claimId: 1, createdAt: 1 }, name: "claim_request_claim_created" },
+      { key: { claimId: 1, createdAt: -1 }, name: "claim_request_claim_created" },
+      { key: { tenantId: 1, claimId: 1, status: 1 }, name: "claim_request_tenant_claim_status" },
     ]);
   }
 
@@ -24,37 +25,37 @@ export class ClaimRequestsRepository implements ClaimRequestsRepositoryContract 
     await this.collection().insertOne(request as ClaimRequestRecord);
   }
 
-  async listByClaimId(
-    claimId: string,
-    options: { limit?: number } = {},
-  ): Promise<ClaimRequestDocument[]> {
-    const { limit = 100 } = options;
-    const records = await this.collection()
-      .find({ claimId }, { projection: { _id: 0 } })
-      .sort({ createdAt: -1 })
-      .limit(limit)
-      .toArray();
-    // Return chronological order for display
-    return (records as ClaimRequestDocument[]).reverse();
-  }
-
   async findById(requestId: string): Promise<ClaimRequestDocument | null> {
     const record = await this.collection().findOne(
       { requestId },
       { projection: { _id: 0 } },
     );
-    return record as ClaimRequestDocument | null;
+    return (record as ClaimRequestDocument) ?? null;
+  }
+
+  async listByClaimId(claimId: string): Promise<ClaimRequestDocument[]> {
+    const records = await this.collection()
+      .find({ claimId }, { projection: { _id: 0 } })
+      .sort({ createdAt: -1 })
+      .toArray();
+    // Return chronological order for display
+    return (records as ClaimRequestDocument[]).reverse();
   }
 
   async update(
     requestId: string,
     updates: Partial<ClaimRequestDocument>,
   ): Promise<ClaimRequestDocument | null> {
-    const record = await this.collection().findOneAndUpdate(
+    const now = new Date().toISOString();
+    const updateDoc = {
+      ...updates,
+      updatedAt: now,
+    };
+    const result = await this.collection().findOneAndUpdate(
       { requestId },
-      { $set: updates },
-      { projection: { _id: 0 }, returnDocument: "after" },
+      { $set: updateDoc },
+      { returnDocument: "after", projection: { _id: 0 } },
     );
-    return record as ClaimRequestDocument | null;
+    return (result as ClaimRequestDocument) ?? null;
   }
 }

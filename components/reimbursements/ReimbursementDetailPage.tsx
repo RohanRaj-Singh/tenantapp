@@ -22,7 +22,7 @@ import ClaimChat from "./ClaimChat";
 import ClaimRequests from "./ClaimRequests";
 
 interface ClaimHistoryEntry {
-  status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
+  status: "pending" | "in_progress" | "approved" | "to_be_paid" | "rejected" | "frozen" | "paid";
   actorId: string;
   actorRole: "employee" | "tenantAdmin";
   note?: string;
@@ -49,7 +49,7 @@ interface Reimbursement {
   bankName?: string;
   clinicId?: string;
   clinicName?: string;
-  status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
+  status: "pending" | "in_progress" | "approved" | "to_be_paid" | "rejected" | "frozen" | "paid";
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
@@ -62,6 +62,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
   approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+  to_be_paid: { label: "To Be Paid", color: "bg-indigo-100 text-indigo-700", dot: "bg-indigo-500" },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700", dot: "bg-red-500" },
   frozen: { label: "Frozen", color: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
   paid: { label: "Paid", color: "bg-purple-100 text-purple-700", dot: "bg-purple-500" },
@@ -88,6 +89,7 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
   const [updateModal, setUpdateModal] = useState(false);
   const [updateMessage, setUpdateMessage] = useState("");
   const [updateSending, setUpdateSending] = useState(false);
+  const [budgetExceeded, setBudgetExceeded] = useState(false);
 
   const fetchReimbursement = useCallback(async () => {
     setLoading(true);
@@ -105,6 +107,22 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
   }, [reimbursementId]);
 
   useEffect(() => { fetchReimbursement(); }, [fetchReimbursement]);
+
+  // Fetch the tenant budget overview so the reviewer sees an informational
+  // warning when the budget is exceeded. This is soft-only — it never blocks
+  // approval.
+  useEffect(() => {
+    async function loadBudget() {
+      try {
+        const res = await fetch("/api/budget");
+        if (res.ok) {
+          const data = await res.json();
+          setBudgetExceeded(data.budgetExceeded === true);
+        }
+      } catch { /* ignore */ }
+    }
+    loadBudget();
+  }, []);
 
   async function handleAction(action: ActionType) {
     const trimmedNotes = notes.trim();
@@ -239,21 +257,24 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
   const canEdit = reimbursement.status === "pending" || reimbursement.status === "in_progress" || reimbursement.status === "frozen" || reimbursement.status === "rejected";
   const availableActions: ActionType[] =
     reimbursement.status === "frozen"
-      ? ["approve", "reject"]
+      ? ["in_progress", "approve", "reject"]
       : reimbursement.status === "pending"
-        ? ["approve", "reject", "freeze", "in_progress"]
+        ? ["in_progress", "reject"]
         : reimbursement.status === "in_progress"
           ? ["approve", "reject", "freeze"]
           : [];
 
   return (
-    <div className="mx-auto max-w-3xl space-y-6">
+    <div className="mx-auto max-w-7xl space-y-6">
       {/* Back link */}
       <button type="button" onClick={() => router.push("/reimbursements")} className="inline-flex items-center gap-1.5 text-sm font-medium text-slate-600 transition hover:text-slate-900">
         <ArrowLeft className="h-4 w-4" />
         Back to claims
       </button>
 
+      <div className="grid gap-6 lg:grid-cols-[minmax(0,1fr)_400px]">
+        {/* Claim content — right column on lg+, first on mobile */}
+        <div className="min-w-0 space-y-6 lg:col-start-1 lg:row-start-1">
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
         <div>
@@ -283,6 +304,14 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
           )}
         </div>
       </div>
+
+      {/* Informational budget warning — visible to the reviewer before acting */}
+      {budgetExceeded && (
+        <div className="flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+          <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-600" />
+          <p className="text-sm font-medium text-red-700">Budget exceeded — Contact Administrator</p>
+        </div>
+      )}
 
       {/* Action error */}
       {error && reimbursement && (
@@ -477,6 +506,15 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
         </div>
       )}
 
+      {/* Requests — below the history timeline */}
+      <div className="min-w-0">
+        <ClaimRequests
+          claimId={reimbursement.reimbursementId}
+          apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/requests`}
+          canDecide
+        />
+      </div>
+
       {/* Notes */}
       {reimbursement.notes && (
         <div className="rounded-2xl border border-slate-200 bg-white p-5 shadow-sm">
@@ -484,20 +522,6 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
           <p className="text-sm text-slate-700 whitespace-pre-wrap">{reimbursement.notes}</p>
         </div>
       )}
-
-      {/* Chat */}
-      <ClaimChat
-        claimId={reimbursement.reimbursementId}
-        apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/messages`}
-      />
-
-      {/* Requests */}
-      <ClaimRequests
-        claimId={reimbursement.reimbursementId}
-        apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/requests`}
-        canCreate
-        canDecide
-      />
 
       {/* Action Form */}
       {canAct && (
@@ -528,7 +552,7 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
             {availableActions.includes("in_progress") && (
               <button type="button" onClick={() => handleAction("in_progress")} disabled={actionLoading !== null} className="inline-flex items-center gap-2 rounded-lg bg-sky-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-sky-700 disabled:cursor-not-allowed disabled:opacity-60">
                 {actionLoading === "in_progress" ? <RefreshCw className="h-4 w-4 animate-spin" /> : <Clock className="h-4 w-4" />}
-                Start Review
+                {reimbursement.status === "frozen" ? "Back to In Progress" : "Start Review"}
               </button>
             )}
             {availableActions.includes("approve") && (
@@ -567,6 +591,17 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
           </div>
         </div>
       )}
+      </div>
+
+      {/* Chat — full-height sticky panel on the right rail */}
+      <div className="min-w-0 lg:col-start-2 lg:row-start-1 lg:row-end-7 lg:self-start lg:sticky lg:top-6 lg:h-[560px]">
+        <ClaimChat
+          claimId={reimbursement.reimbursementId}
+          apiBase={`/api/reimbursements/${reimbursement.reimbursementId}/messages`}
+          variant="panel"
+        />
+      </div>
+      </div>
 
       {/* Update Progress Modal */}
       {updateModal && (

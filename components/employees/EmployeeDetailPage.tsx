@@ -17,7 +17,7 @@ interface Employee {
   employeeId: string;
   employeeCode: string;
   email: string;
-  status: "not_registered" | "active" | "inactive" | "suspended";
+  status: "not_registered" | "active" | "inactive" | "suspended" | "archived";
   lastAccessAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -56,12 +56,14 @@ const STATUS_CONFIG: Record<Employee["status"], { label: string; color: string }
   active: { label: "Active", color: "bg-emerald-100 text-emerald-700" },
   inactive: { label: "Inactive", color: "bg-amber-100 text-amber-700" },
   suspended: { label: "Suspended", color: "bg-red-100 text-red-700" },
+  archived: { label: "Archived", color: "bg-slate-200 text-slate-700" },
 };
 
 const CLAIM_STATUS: Record<string, { label: string; color: string }> = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700" },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700" },
   approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700" },
+  to_be_paid: { label: "To Be Paid", color: "bg-orange-100 text-orange-700" },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700" },
   frozen: { label: "Frozen", color: "bg-sky-100 text-sky-700" },
   paid: { label: "Paid", color: "bg-purple-100 text-purple-700" },

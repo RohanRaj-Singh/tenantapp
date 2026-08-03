@@ -6,13 +6,16 @@ export interface ChatParticipantContext {
   tenantId: string;
   participant: ClaimMessageParticipant;
   canPost: boolean;
+  /** Clinic portal scoping — present when the participant is a clinic user. */
+  clinicScope?: { clinicIds: string[]; tenantIds: string[] };
 }
 
 /**
- * Resolves the claim-chat participant across the three auth silos:
+ * Resolves the claim-chat participant across the four auth silos:
  *  1. `x-admin-api-key` + `tenantId`/`employeeCode`  → employee (marketing portal proxy)
  *  2. `x-admin-api-key` alone                        → super admin (read-only oversight)
  *  3. tenant dashboard session                       → tenant admin
+ *  4. clinic session                                 → clinic (Phase H clinic portal)
  */
 export async function resolveChatParticipant(
   request: NextRequest,
@@ -82,6 +85,30 @@ export async function resolveChatParticipant(
           key: "superAdmin:super-admin",
         },
         canPost: false,
+      },
+    };
+  }
+
+  // Clinic session → clinic participant (Phase H)
+  const { requireClinicApiAuth } = await import("@/src/modules/clinic-auth/middleware/clinic-auth");
+  const clinicAuth = await requireClinicApiAuth();
+  if (clinicAuth.success) {
+    const clinicUser = clinicAuth.context.user;
+    return {
+      success: true,
+      context: {
+        tenantId: clinicUser.tenantIds[0] ?? "",
+        participant: {
+          role: "clinic",
+          id: clinicUser.clinicUserId,
+          name: clinicUser.name,
+          key: `clinic:${clinicUser.clinicUserId}`,
+        },
+        canPost: true,
+        clinicScope: {
+          clinicIds: clinicUser.clinicIds,
+          tenantIds: clinicUser.tenantIds,
+        },
       },
     };
   }

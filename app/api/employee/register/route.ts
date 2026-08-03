@@ -9,7 +9,9 @@ export const dynamic = "force-dynamic";
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { tenantSlug, employeeCode, email, password, name, phone, inviteToken } = body;
+    const { tenantSlug, employeeCode, email, password, name, phone, phoneNumber, bankAccountNumber, bankName, inviteToken } = body;
+    // Accept either `phoneNumber` (marketing register form) or the legacy `phone` field.
+    const contactNumber = typeof phoneNumber === "string" && phoneNumber.trim() ? phoneNumber : phone;
 
     // ── Validate input ────────────────────────────────────────────────────────
 
@@ -78,6 +80,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
+    if (phoneNumber !== undefined && phoneNumber !== null && typeof phoneNumber !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Invalid phone number format.", errorCode: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    if (bankAccountNumber !== undefined && bankAccountNumber !== null && typeof bankAccountNumber !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Invalid bank account number format.", errorCode: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
+    if (bankName !== undefined && bankName !== null && typeof bankName !== "string") {
+      return NextResponse.json(
+        { success: false, error: "Invalid bank name format.", errorCode: "VALIDATION_ERROR" },
+        { status: 400 },
+      );
+    }
+
     // ── Resolve tenant ────────────────────────────────────────────────────────
 
     const repositories = await getRepositoryContext();
@@ -98,8 +121,10 @@ export async function POST(request: NextRequest) {
       email.trim(),
       password,
       name.trim(),
-      phone?.trim() || undefined,
+      typeof contactNumber === "string" && contactNumber.trim() ? contactNumber.trim() : undefined,
       typeof inviteToken === "string" ? inviteToken.trim() : undefined,
+      typeof bankAccountNumber === "string" && bankAccountNumber.trim() ? bankAccountNumber.trim() : undefined,
+      typeof bankName === "string" && bankName.trim() ? bankName.trim() : undefined,
     );
 
     return NextResponse.json(

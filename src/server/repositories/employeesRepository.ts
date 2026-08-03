@@ -31,13 +31,18 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
       { key: { tenantId: 1, employeeCode: 1 }, unique: true, name: "employee_tenant_code_unique" },
       { key: { tenantId: 1, name: 1 }, name: "employee_tenant_name" },
       { key: { tenantId: 1, email: 1 }, name: "employee_tenant_email" },
+      {
+        key: { passwordResetToken: 1 },
+        name: "employee_password_reset_token",
+        sparse: true,
+      },
     ]);
   }
 
   async findAll(
     options: FindEmployeesOptions & { tenantId?: string } = {},
   ): Promise<FindEmployeesResult> {
-    const { search, status, tenantId, skip = 0, limit = 20 } = options;
+    const { search, status, tenantId, excludeArchived, skip = 0, limit = 20 } = options;
     const filter: Filter<EmployeeRecord> = {};
 
     if (tenantId) {
@@ -46,6 +51,16 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
 
     if (status) {
       filter.status = status as EmployeeDocument["status"];
+    }
+
+    if (excludeArchived) {
+      // Combine with any explicit status filter via $and.
+      if (status) {
+        filter.$and = [{ status } as Filter<EmployeeRecord>, { status: { $ne: "archived" } } as Filter<EmployeeRecord>];
+        delete filter.status;
+      } else {
+        filter.status = { $ne: "archived" };
+      }
     }
 
     if (search) {
@@ -80,11 +95,21 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
     tenantId: string,
     options: FindEmployeesOptions = {},
   ): Promise<FindEmployeesResult> {
-    const { search, status, skip = 0, limit = 20 } = options;
+    const { search, status, excludeArchived, skip = 0, limit = 20 } = options;
     const filter: Filter<EmployeeRecord> = { tenantId };
 
     if (status) {
-      filter.status = status as "active" | "inactive";
+      filter.status = status as EmployeeDocument["status"];
+    }
+
+    if (excludeArchived) {
+      // Combine with any explicit status filter via $and.
+      if (status) {
+        filter.$and = [{ status } as Filter<EmployeeRecord>, { status: { $ne: "archived" } } as Filter<EmployeeRecord>];
+        delete filter.status;
+      } else {
+        filter.status = { $ne: "archived" };
+      }
     }
 
     if (search) {
@@ -140,6 +165,14 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
   ): Promise<EmployeeDocument | null> {
     const record = await this.collection().findOne(
       { tenantId, email: email.toLowerCase().trim() },
+      { projection: { _id: 0 } },
+    );
+    return record as EmployeeDocument | null;
+  }
+
+  async findByResetToken(token: string): Promise<EmployeeDocument | null> {
+    const record = await this.collection().findOne(
+      { passwordResetToken: token },
       { projection: { _id: 0 } },
     );
     return record as EmployeeDocument | null;

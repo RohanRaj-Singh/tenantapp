@@ -52,7 +52,11 @@ export async function PUT(
     const body = await request.json();
 
     const reimbursement = await updateReimbursement(auth.context.tenant.tenantId, id, {
-      employeeId: body.employeeId ?? auth.context.user.id,
+      // Only reassign the claim's employee when the edit body explicitly says so.
+      // Falling back to the tenant-admin's user id here would overwrite the real
+      // owner with the reviewer, making the claim vanish from the employee portal
+      // (the employee list filters by the claim's employeeId).
+      employeeId: typeof body.employeeId === "string" ? body.employeeId : undefined,
       employeeName: body.employeeName,
       type: body.type,
       amount: body.amount,

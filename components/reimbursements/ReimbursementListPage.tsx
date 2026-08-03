@@ -32,7 +32,7 @@ interface Reimbursement {
   receiptUrl?: string;
   clinicId?: string;
   clinicName?: string;
-  status: "pending" | "in_progress" | "approved" | "rejected" | "frozen" | "paid";
+  status: "pending" | "in_progress" | "approved" | "to_be_paid" | "rejected" | "frozen" | "paid";
   reviewedBy?: string;
   reviewedAt?: string;
   notes?: string;
@@ -45,16 +45,49 @@ interface ListResponse {
   total: number;
 }
 
+interface BudgetHistoryEntry {
+  historyId: string;
+  type: "created" | "topup" | "adjust" | "override";
+  amount: number;
+  beforeTotal: number;
+  afterTotal: number;
+  reason?: string;
+  actorId: string;
+  actorRole: string;
+  createdAt: string;
+}
+
 const PAGE_SIZE = 20;
+
+const BUDGET_HISTORY_CONFIG: Record<
+  BudgetHistoryEntry["type"],
+  { label: string; color: string }
+> = {
+  created: { label: "Created", color: "bg-emerald-100 text-emerald-700" },
+  topup: { label: "Top Up", color: "bg-blue-100 text-blue-700" },
+  adjust: { label: "Adjusted", color: "bg-amber-100 text-amber-700" },
+  override: { label: "Override", color: "bg-red-100 text-red-700" },
+};
+
+function budgetHistoryTypeLabel(type: BudgetHistoryEntry["type"]) {
+  return BUDGET_HISTORY_CONFIG[type]?.label ?? type;
+}
+
+function budgetHistoryTypeColor(type: BudgetHistoryEntry["type"]) {
+  return BUDGET_HISTORY_CONFIG[type]?.color ?? "bg-slate-100 text-slate-600";
+}
 
 const STATUS_CONFIG: Record<string, { label: string; color: string; icon: typeof Clock }> = {
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700", icon: Clock },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", icon: Clock },
   approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700", icon: CheckCircle2 },
+  to_be_paid: { label: "To Be Paid", color: "bg-indigo-100 text-indigo-700", icon: Banknote },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700", icon: XCircle },
   frozen: { label: "Frozen", color: "bg-sky-100 text-sky-700", icon: Snowflake },
   paid: { label: "Paid", color: "bg-purple-100 text-purple-700", icon: Banknote },
 };
+
+const UPDATE_TEMPLATES = ["Currently with finance", "Reached Remedy", "Almost done"];
 
 function formatCurrency(amount: number) {
   return `OMR ${amount.toFixed(3)}`;
@@ -85,6 +118,8 @@ export default function ReimbursementListPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [dateFrom, setDateFrom] = useState("");
   const [dateTo, setDateTo] = useState("");
+  const [sortBy, setSortBy] = useState<"createdAt" | "updatedAt" | "status">("createdAt");
+  const [sortOrder, setSortOrder] = useState<"asc" | "desc">("desc");
   const [amountMin, setAmountMin] = useState("");
   const [amountMax, setAmountMax] = useState("");
   const [loading, setLoading] = useState(true);
@@ -103,6 +138,8 @@ export default function ReimbursementListPage() {
       if (statusFilter) params.set("status", statusFilter);
       if (dateFrom) params.set("dateFrom", dateFrom);
       if (dateTo) params.set("dateTo", dateTo);
+      params.set("sortBy", sortBy);
+      params.set("sortOrder", sortOrder);
       params.set("skip", String(skip));
       params.set("limit", String(PAGE_SIZE));
 
@@ -129,7 +166,7 @@ export default function ReimbursementListPage() {
     } finally {
       setLoading(false);
     }
-  }, [search, statusFilter, dateFrom, dateTo, amountMin, amountMax, skip]);
+  }, [search, statusFilter, dateFrom, dateTo, sortBy, sortOrder, amountMin, amountMax, skip]);
 
   useEffect(() => {
     fetchReimbursements();
@@ -171,6 +208,8 @@ export default function ReimbursementListPage() {
     setDateTo("");
     setAmountMin("");
     setAmountMax("");
+    setSortBy("createdAt");
+    setSortOrder("desc");
     setSkip(0);
   };
 
@@ -194,18 +233,39 @@ export default function ReimbursementListPage() {
   const [reasonError, setReasonError] = useState("");
   const [bulkProcessing, setBulkProcessing] = useState(false);
 
+  // ── Send Update Modal State ────────────────────────────────────────────────
+  const [updateModal, setUpdateModal] = useState(false);
+  const [updateMessage, setUpdateMessage] = useState("");
+  const [updateError, setUpdateError] = useState("");
+
   // ── Budget State ────────────────────────────────────────────────────────────
   const [budget, setBudget] = useState<{
+    year: number;
     totalAmount: number;
+    reservedAmount: number;
     committedAmount: number;
     paidAmount: number;
     availableAmount: number;
+    budgetExceeded: boolean;
   } | null>(null);
+  const [budgetHistory, setBudgetHistory] = useState<BudgetHistoryEntry[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const [budgetLoading, setBudgetLoading] = useState(true);
   const [budgetModal, setBudgetModal] = useState(false);
   const [budgetAction, setBudgetAction] = useState<"set" | "topup">("set");
   const [budgetAmount, setBudgetAmount] = useState("");
+  const [budgetReason, setBudgetReason] = useState("");
   const [budgetSaving, setBudgetSaving] = useState(false);
+
+  const fetchBudgetHistory = useCallback(async () => {
+    try {
+      const res = await fetch("/api/budget/history");
+      if (res.ok) {
+        const data = await res.json();
+        setBudgetHistory(Array.isArray(data.history) ? data.history : []);
+      }
+    } catch { /* ignore */ }
+  }, []);
 
   async function executeBulkAction(
     action: "approve" | "reject" | "freeze" | "in_progress",
@@ -246,6 +306,44 @@ export default function ReimbursementListPage() {
     executeBulkAction(action, notes);
   }
 
+  function openUpdateModal() {
+    setUpdateMessage("");
+    setUpdateError("");
+    setUpdateModal(true);
+  }
+
+  async function sendUpdate() {
+    const ids = Array.from(selectedIds);
+    if (ids.length === 0) return;
+    if (!updateMessage.trim()) {
+      setUpdateError("Message is required.");
+      return;
+    }
+
+    setBulkProcessing(true);
+    try {
+      const res = await fetch("/api/reimbursements/bulk-update", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ claimIds: ids, message: updateMessage.trim() }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => null);
+        setUpdateError(body?.error ?? "Failed to send update.");
+        return;
+      }
+      setUpdateModal(false);
+      setUpdateMessage("");
+      setUpdateError("");
+      setSelectedIds(new Set());
+      fetchReimbursements();
+    } catch {
+      setUpdateError("Failed to send update.");
+    } finally {
+      setBulkProcessing(false);
+    }
+  }
+
   // Derived summary stats from loaded data
   const summary = useMemo(() => {
     const stats = {
@@ -253,6 +351,7 @@ export default function ReimbursementListPage() {
       pending: { count: 0, amount: 0 },
       in_progress: { count: 0, amount: 0 },
       approved: { count: 0, amount: 0 },
+      to_be_paid: { count: 0, amount: 0 },
       rejected: { count: 0, amount: 0 },
       frozen: { count: 0, amount: 0 },
       paid: { count: 0, amount: 0 },
@@ -272,6 +371,7 @@ export default function ReimbursementListPage() {
     { key: "pending", label: "Pending", count: summary.pending.count },
     { key: "in_progress", label: "In Progress", count: summary.in_progress.count },
     { key: "approved", label: "Approved", count: summary.approved.count },
+    { key: "to_be_paid", label: "To Be Paid", count: summary.to_be_paid.count },
     { key: "rejected", label: "Rejected", count: summary.rejected.count },
     { key: "frozen", label: "Frozen", count: summary.frozen.count },
     { key: "paid", label: "Paid", count: summary.paid.count },
@@ -352,6 +452,11 @@ export default function ReimbursementListPage() {
           <p className="mt-1 text-2xl font-semibold text-emerald-800">{summary.approved.count}</p>
           <p className="mt-0.5 text-xs text-emerald-600">{formatCurrency(summary.approved.amount)}</p>
         </div>
+        <div className="rounded-xl border border-indigo-200 bg-indigo-50 p-4">
+          <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600">To Be Paid</p>
+          <p className="mt-1 text-2xl font-semibold text-indigo-800">{summary.to_be_paid.count}</p>
+          <p className="mt-0.5 text-xs text-indigo-600">{formatCurrency(summary.to_be_paid.amount)}</p>
+        </div>
         <div className="rounded-xl border border-purple-200 bg-purple-50 p-4">
           <p className="text-xs font-semibold uppercase tracking-wider text-purple-600">Paid</p>
           <p className="mt-1 text-2xl font-semibold text-purple-800">{summary.paid.count}</p>
@@ -390,52 +495,80 @@ export default function ReimbursementListPage() {
       {/* Budget Box */}
       {!budgetLoading && budget !== null && (
         <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          {budget.budgetExceeded && (
+            <div className="mb-3 flex items-center gap-2 rounded-lg border border-red-200 bg-red-50 px-3 py-2">
+              <AlertTriangle className="h-4 w-4 flex-shrink-0 text-red-600" />
+              <p className="text-sm font-medium text-red-700">Budget exceeded — Contact Administrator</p>
+            </div>
+          )}
           <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">Budget</p>
+            <p className="text-xs font-semibold uppercase tracking-wider text-slate-500">
+              Budget {budget.year} (Annual)
+            </p>
             <div className="flex gap-2">
-              <button
-                type="button"
-                onClick={() => { setBudgetAction("set"); setBudgetAmount(""); setBudgetModal(true); }}
-                className="text-xs font-medium text-blue-600 hover:text-blue-700"
-              >
-                {budget.totalAmount === 0 ? "Set Budget" : "Edit"}
-              </button>
-              {budget.totalAmount > 0 && (
+              {budget.totalAmount === 0 ? (
                 <button
                   type="button"
-                  onClick={() => { setBudgetAction("topup"); setBudgetAmount(""); setBudgetModal(true); }}
+                  onClick={() => { setBudgetAction("set"); setBudgetAmount(""); setBudgetReason(""); setBudgetModal(true); }}
                   className="text-xs font-medium text-blue-600 hover:text-blue-700"
                 >
-                  Top Up
+                  Set Budget
                 </button>
+              ) : (
+                <>
+                  <button
+                    type="button"
+                    onClick={() => { setBudgetAction("topup"); setBudgetAmount(""); setBudgetReason(""); setBudgetModal(true); }}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    Top Up
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => { fetchBudgetHistory(); setShowHistory(true); }}
+                    className="text-xs font-medium text-blue-600 hover:text-blue-700"
+                  >
+                    History
+                  </button>
+                </>
               )}
             </div>
           </div>
-          <div className="grid grid-cols-3 gap-4">
+          <div className="grid grid-cols-2 gap-4 sm:grid-cols-3">
             <div>
               <p className="text-xs text-slate-400">Available</p>
               <p className="mt-0.5 text-lg font-semibold text-emerald-600">{formatCurrency(budget.availableAmount)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Committed</p>
-              <p className="mt-0.5 text-lg font-semibold text-amber-600">{formatCurrency(budget.committedAmount)}</p>
+              <p className="text-xs text-slate-400">Reserved</p>
+              <p className="mt-0.5 text-lg font-semibold text-yellow-600">{formatCurrency(budget.reservedAmount)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Paid</p>
-              <p className="mt-0.5 text-lg font-semibold text-purple-600">{formatCurrency(budget.paidAmount)}</p>
+              <p className="text-xs text-slate-400">Committed</p>
+              <p className="mt-0.5 text-lg font-semibold text-amber-600">{formatCurrency(budget.committedAmount)}</p>
+              {budget.paidAmount > 0 && (
+                <p className="text-xs text-slate-400">(Paid {formatCurrency(budget.paidAmount)})</p>
+              )}
             </div>
           </div>
-          {budget.totalAmount > 0 && (
-            <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
-              <div
-                className="h-full rounded-full"
-                style={{
-                  width: `${Math.min(100, ((budget.committedAmount + budget.paidAmount) / budget.totalAmount) * 100)}%`,
-                  background: `linear-gradient(90deg, #f59e0b ${(budget.committedAmount / Math.max(1, budget.committedAmount + budget.paidAmount)) * 100}%, #7c3aed)`,
-                }}
-              />
-            </div>
-          )}
+          {budget.totalAmount > 0 && (() => {
+            // Paid lives inside committed, so the used portion is reserved + committed.
+            const used = budget.reservedAmount + budget.committedAmount;
+            const usedPct = Math.min(100, (used / budget.totalAmount) * 100);
+            // Segments of the "used" portion: reserved (yellow) → committed (amber).
+            const reservedEndPct = (budget.reservedAmount / Math.max(1, used)) * 100;
+            return (
+              <div className="mt-3 h-2 rounded-full bg-slate-100 overflow-hidden">
+                <div
+                  className="h-full rounded-full"
+                  style={{
+                    width: `${usedPct}%`,
+                    background: `linear-gradient(90deg, #eab308 0%, #eab308 ${reservedEndPct}%, #f59e0b ${reservedEndPct}%, #f59e0b 100%)`,
+                  }}
+                />
+              </div>
+            );
+          })()}
         </div>
       )}
 
@@ -444,10 +577,12 @@ export default function ReimbursementListPage() {
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4" onClick={() => setBudgetModal(false)}>
           <div className="w-full max-w-sm rounded-2xl bg-white p-6 shadow-2xl" onClick={(e) => e.stopPropagation()}>
             <h3 className="text-lg font-semibold text-slate-900 mb-1">
-              {budgetAction === "set" ? (budget?.totalAmount === 0 ? "Set Budget" : "Edit Budget") : "Top Up Budget"}
+              {budgetAction === "set" ? "Set Budget" : "Top Up Budget"}
             </h3>
             <p className="text-sm text-slate-500 mb-4">
-              {budgetAction === "topup" ? "Add additional funds to your budget." : `Current total: ${formatCurrency(budget?.totalAmount ?? 0)}`}
+              {budgetAction === "topup"
+                ? `Add additional funds to the ${budget?.year ?? "annual"} budget.`
+                : `Set the annual budget for ${budget?.year ?? new Date().getFullYear()}.`}
             </p>
             <input
               type="number"
@@ -459,6 +594,15 @@ export default function ReimbursementListPage() {
               className="w-full rounded-xl border border-slate-200 px-4 py-3 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
               autoFocus
             />
+            {budgetAction === "topup" && (
+              <textarea
+                value={budgetReason}
+                onChange={(e) => setBudgetReason(e.target.value)}
+                placeholder="Reason (optional)..."
+                rows={2}
+                className="mt-3 w-full rounded-xl border border-slate-200 px-4 py-3 text-sm placeholder-slate-400 focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              />
+            )}
             <div className="mt-5 flex justify-end gap-3">
               <button type="button" onClick={() => setBudgetModal(false)} className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50">Cancel</button>
               <button
@@ -470,10 +614,17 @@ export default function ReimbursementListPage() {
                     const res = await fetch("/api/budget", {
                       method: "POST",
                       headers: { "Content-Type": "application/json" },
-                      body: JSON.stringify({ action: budgetAction, amount: parseFloat(budgetAmount) }),
+                      body: JSON.stringify({
+                        action: budgetAction,
+                        amount: parseFloat(budgetAmount),
+                        year: budget?.year,
+                        reason: budgetAction === "topup" ? budgetReason.trim() || undefined : undefined,
+                      }),
                     });
                     if (res.ok) setBudget(await res.json());
                     setBudgetModal(false);
+                    setBudgetReason("");
+                    fetchBudgetHistory();
                   } catch { /* ignore */ }
                   setBudgetSaving(false);
                 }}
@@ -482,6 +633,54 @@ export default function ReimbursementListPage() {
                 {budgetSaving ? "Saving..." : budgetAction === "topup" ? "Add Funds" : "Save Budget"}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* Budget History Drawer */}
+      {showHistory && (
+        <div className="fixed inset-0 z-50 bg-black/50" onClick={() => setShowHistory(false)}>
+          <div
+            className="absolute inset-y-0 right-0 w-full max-w-md overflow-y-auto bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Budget History</h3>
+              <button
+                type="button"
+                onClick={() => setShowHistory(false)}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+            {budgetHistory.length === 0 ? (
+              <p className="text-sm text-slate-500">No budget activity yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {budgetHistory.map((entry) => (
+                  <li key={entry.historyId} className="rounded-xl border border-slate-200 p-4">
+                    <div className="flex items-center justify-between">
+                      <span className={`inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium ${budgetHistoryTypeColor(entry.type)}`}>
+                        {budgetHistoryTypeLabel(entry.type)}
+                      </span>
+                      <span className="text-sm font-semibold text-slate-900">
+                        {entry.type === "topup" ? "+" : ""}{formatCurrency(entry.amount)}
+                      </span>
+                    </div>
+                    <p className="mt-2 text-xs text-slate-500">
+                      {formatDate(entry.createdAt)} · by {entry.actorId} ({entry.actorRole})
+                    </p>
+                    <p className="mt-1 text-xs text-slate-400">
+                      {formatCurrency(entry.beforeTotal)} → {formatCurrency(entry.afterTotal)}
+                    </p>
+                    {entry.reason && (
+                      <p className="mt-1 text-xs text-slate-600">Reason: {entry.reason}</p>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            )}
           </div>
         </div>
       )}
@@ -568,6 +767,33 @@ export default function ReimbursementListPage() {
                 </div>
               </div>
             </div>
+
+            {/* Sort By */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Sort By</label>
+              <select
+                value={sortBy}
+                onChange={(e) => { setSortBy(e.target.value as "createdAt" | "updatedAt" | "status"); setSkip(0); }}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-3 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="createdAt">Created</option>
+                <option value="updatedAt">Updated</option>
+                <option value="status">Status</option>
+              </select>
+            </div>
+
+            {/* Sort Order */}
+            <div>
+              <label className="mb-1 block text-xs font-medium text-slate-500">Order</label>
+              <select
+                value={sortOrder}
+                onChange={(e) => { setSortOrder(e.target.value as "asc" | "desc"); setSkip(0); }}
+                className="w-full rounded-lg border border-slate-200 bg-white py-2 pl-3 pr-3 text-sm focus:border-blue-300 focus:outline-none focus:ring-2 focus:ring-blue-100"
+              >
+                <option value="desc">Newest First</option>
+                <option value="asc">Oldest First</option>
+              </select>
+            </div>
           </div>
 
           {hasActiveFilters && (
@@ -607,7 +833,7 @@ export default function ReimbursementListPage() {
               {reimbursements.length > 0 &&
                 Array.from(selectedIds).every((id) => {
                   const r = reimbursements.find((r) => r.reimbursementId === id);
-                  return r && (r.status === "pending" || r.status === "in_progress");
+                  return r && r.status === "in_progress";
                 }) && (
                   <button
                     type="button"
@@ -635,7 +861,7 @@ export default function ReimbursementListPage() {
               {reimbursements.length > 0 &&
                 Array.from(selectedIds).every((id) => {
                   const r = reimbursements.find((r) => r.reimbursementId === id);
-                  return r && (r.status === "pending" || r.status === "in_progress" || r.status === "frozen");
+                  return r && (r.status === "in_progress" || r.status === "frozen");
                 }) && (
                   <button
                     type="button"
@@ -646,6 +872,14 @@ export default function ReimbursementListPage() {
                     Freeze
                   </button>
                 )}
+              <button
+                type="button"
+                onClick={openUpdateModal}
+                disabled={bulkProcessing}
+                className="rounded-lg bg-white/20 px-3 py-1.5 text-xs font-medium text-white transition hover:bg-white/30 disabled:opacity-50"
+              >
+                Send Update
+              </button>
               <button
                 type="button"
                 onClick={() => setSelectedIds(new Set())}
@@ -938,6 +1172,95 @@ export default function ReimbursementListPage() {
                 }`}
               >
                 {reasonModal.action === "reject" ? "Reject Claims" : "Freeze Claims"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Send Update Modal */}
+      {updateModal && (
+        <div
+          className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 p-4"
+          onClick={() => setUpdateModal(false)}
+        >
+          <div
+            className="w-full max-w-md rounded-2xl bg-white p-6 shadow-2xl"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="mb-4 flex items-center justify-between">
+              <h3 className="text-lg font-semibold text-slate-900">Send Update</h3>
+              <button
+                type="button"
+                onClick={() => setUpdateModal(false)}
+                className="rounded-lg p-1.5 text-slate-400 transition hover:bg-slate-100 hover:text-slate-600"
+              >
+                <X className="h-5 w-5" />
+              </button>
+            </div>
+
+            <p className="mb-1 text-sm text-slate-500">
+              Send a progress update to the selected claims. The employee will be notified.
+            </p>
+
+            <p className="mb-4 text-xs font-medium text-slate-400">
+              {selectedIds.size} claim{selectedIds.size !== 1 ? "s" : ""} selected
+            </p>
+
+            <div className="space-y-3">
+              <div className="flex flex-wrap gap-2">
+                {UPDATE_TEMPLATES.map((template) => (
+                  <button
+                    key={template}
+                    type="button"
+                    onClick={() => {
+                      setUpdateMessage(template);
+                      setUpdateError("");
+                    }}
+                    className={`rounded-full border px-3 py-1.5 text-xs font-medium transition ${
+                      updateMessage === template
+                        ? "border-blue-300 bg-blue-50 text-blue-700"
+                        : "border-slate-200 bg-white text-slate-600 hover:bg-slate-50"
+                    }`}
+                  >
+                    {template}
+                  </button>
+                ))}
+              </div>
+
+              <textarea
+                value={updateMessage}
+                onChange={(e) => {
+                  setUpdateMessage(e.target.value);
+                  if (e.target.value.trim()) setUpdateError("");
+                }}
+                placeholder="Enter the update message... e.g. Currently with finance"
+                rows={4}
+                className={`w-full rounded-xl border bg-white px-4 py-3 text-sm placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-100 ${
+                  updateError ? "border-red-300" : "border-slate-200 focus:border-blue-300"
+                }`}
+                autoFocus
+              />
+              {updateError && (
+                <p className="text-xs text-red-600">{updateError}</p>
+              )}
+            </div>
+
+            <div className="mt-5 flex items-center justify-end gap-3">
+              <button
+                type="button"
+                onClick={() => setUpdateModal(false)}
+                className="rounded-xl border border-slate-200 px-5 py-2.5 text-sm font-medium text-slate-600 transition hover:bg-slate-50"
+              >
+                Cancel
+              </button>
+              <button
+                type="button"
+                onClick={sendUpdate}
+                disabled={bulkProcessing}
+                className="inline-flex items-center gap-2 rounded-xl bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700 disabled:opacity-50"
+              >
+                {bulkProcessing ? "Sending..." : "Send Update"}
               </button>
             </div>
           </div>

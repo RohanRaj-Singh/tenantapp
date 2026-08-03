@@ -16,13 +16,24 @@ export class BudgetsRepository implements BudgetsRepositoryContract {
   async ensureIndexes() {
     await this.collection().createIndexes([
       { key: { budgetId: 1 }, unique: true, name: "budget_id_unique" },
-      { key: { tenantId: 1 }, unique: true, name: "budget_tenant_id_unique" },
+      { key: { tenantId: 1, year: 1 }, unique: true, name: "budget_tenant_year_unique" },
     ]);
   }
 
   async findByTenantId(tenantId: string): Promise<BudgetDocument | null> {
     const record = await this.collection().findOne(
       { tenantId },
+      { projection: { _id: 0 } },
+    );
+    return record as BudgetDocument | null;
+  }
+
+  async findByTenantAndYear(
+    tenantId: string,
+    year: number,
+  ): Promise<BudgetDocument | null> {
+    const record = await this.collection().findOne(
+      { tenantId, year },
       { projection: { _id: 0 } },
     );
     return record as BudgetDocument | null;

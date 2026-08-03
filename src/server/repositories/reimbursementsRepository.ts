@@ -38,7 +38,7 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
   async findAll(
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, tenantId, skip = 0, limit = 200 } = options;
+    const { search, status, employeeId, tenantId, clinicId, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
     const filter: Filter<ReimbursementRecord> = {};
 
     if (tenantId) {
@@ -51,6 +51,10 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
 
     if (employeeId) {
       filter.employeeId = employeeId;
+    }
+
+    if (clinicId) {
+      filter.clinicId = clinicId;
     }
 
     if (search) {
@@ -66,10 +70,12 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
 
     const projection = { projection: { _id: 0 } } as const;
 
+    const sort: Record<string, 1 | -1> = { [sortBy]: sortOrder === "asc" ? 1 : -1 };
+
     const [reimbursements, total] = await Promise.all([
       this.collection()
         .find(filter, projection)
-        .sort({ createdAt: -1 })
+        .sort(sort)
         .skip(skip)
         .limit(limit)
         .toArray(),
@@ -116,5 +122,18 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
       { returnDocument: "after", upsert: true },
     );
     return (result?.value as number) ?? 1;
+  }
+
+  async aggregateByStatus(tenantId: string): Promise<Record<string, number>> {
+    const pipeline = [
+      { $match: { tenantId } },
+      { $group: { _id: "$status", total: { $sum: "$amount" } } },
+    ];
+    const results = await this.collection().aggregate(pipeline).toArray();
+    const totals: Record<string, number> = {};
+    for (const row of results) {
+      totals[row._id as string] = row.total;
+    }
+    return totals;
   }
 }

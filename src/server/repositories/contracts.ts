@@ -4,13 +4,18 @@ import type {
   AttributeTemplateVersionDocument,
   AuditEventDocument,
   BudgetDocument,
+  BudgetHistoryDocument,
   CampaignDocument,
   ClaimMessageDocument,
   ClaimRequestDocument,
+  ClinicDirectoryDocument,
+  ClinicUserDocument,
   EmployeeDocument,
   InvitationDocument,
+  InvoiceDocument,
   NotificationDocument,
   NotificationRecipientType,
+  PaymentRecordDocument,
   RawResponseDocument,
   ReimbursementDocument,
   RuntimeConfigDocument,
@@ -87,6 +92,8 @@ export interface SnapshotsRepositoryContract {
 export interface FindEmployeesOptions {
   search?: string;
   status?: string;
+  /** When true, archived employees are excluded from results. */
+  excludeArchived?: boolean;
   skip?: number;
   limit?: number;
 }
@@ -114,6 +121,11 @@ export interface EmployeesRepositoryContract {
     tenantId: string,
     email: string,
   ): Promise<EmployeeDocument | null>;
+  /**
+   * Find an employee by a password-reset token (Phase D).
+   * Global lookup across tenants — reset links are single-URL, token-only.
+   */
+  findByResetToken(token: string): Promise<EmployeeDocument | null>;
   insert(employee: EmployeeDocument): Promise<void>;
   update(
     id: string,
@@ -127,8 +139,12 @@ export interface FindReimbursementsOptions {
   status?: string;
   employeeId?: string;
   tenantId?: string;
+  /** Filter to a single clinic's claims (Phase H clinic portal). */
+  clinicId?: string;
   skip?: number;
   limit?: number;
+  sortBy?: "createdAt" | "updatedAt" | "status";
+  sortOrder?: "asc" | "desc";
 }
 
 export interface FindReimbursementsResult {
@@ -150,6 +166,15 @@ export interface ReimbursementsRepositoryContract {
     updates: Partial<ReimbursementDocument>,
   ): Promise<ReimbursementDocument | null>;
   incrementCounter(counterId: string): Promise<number>;
+  /**
+   * Sums the claim `amount` per status for a tenant.
+   *
+   * Keys are the claim statuses (e.g. `pending`, `in_progress`, `approved`,
+   * `rejected`, `frozen`, `paid`). Statuses with no claims are omitted. This is
+   * the performance-friendly aggregation used by the budget overview instead of
+   * pulling the full claim set into memory.
+   */
+  aggregateByStatus(tenantId: string): Promise<Record<string, number>>;
 }
 
 export interface FindCampaignsOptions {
@@ -222,8 +247,24 @@ export interface InvitationsRepositoryContract {
 export interface BudgetsRepositoryContract {
   ensureIndexes(): Promise<void>;
   findByTenantId(tenantId: string): Promise<BudgetDocument | null>;
+  findByTenantAndYear(tenantId: string, year: number): Promise<BudgetDocument | null>;
   insert(budget: BudgetDocument): Promise<void>;
   update(id: string, updates: Partial<BudgetDocument>): Promise<BudgetDocument | null>;
+}
+
+export interface ListBudgetHistoryOptions {
+  type?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface BudgetHistoryRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(history: BudgetHistoryDocument): Promise<void>;
+  listByTenant(
+    tenantId: string,
+    options?: ListBudgetHistoryOptions,
+  ): Promise<BudgetHistoryDocument[]>;
 }
 
 export interface ListNotificationsOptions {
@@ -232,23 +273,20 @@ export interface ListNotificationsOptions {
   limit?: number;
 }
 
-export interface ClaimRequestsRepositoryContract {
-  ensureIndexes(): Promise<void>;
-  insert(request: ClaimRequestDocument): Promise<void>;
-  listByClaimId(claimId: string, options?: { limit?: number }): Promise<ClaimRequestDocument[]>;
-  findById(requestId: string): Promise<ClaimRequestDocument | null>;
-  update(
-    requestId: string,
-    updates: Partial<ClaimRequestDocument>,
-  ): Promise<ClaimRequestDocument | null>;
-}
-
 export interface ClaimMessagesRepositoryContract {
   ensureIndexes(): Promise<void>;
   insert(message: ClaimMessageDocument): Promise<void>;
   listByClaimId(claimId: string, options?: { limit?: number }): Promise<ClaimMessageDocument[]>;
   unreadCount(claimId: string, viewerKey: string): Promise<number>;
   markThreadRead(claimId: string, viewerKey: string): Promise<number>;
+}
+
+export interface ClaimRequestsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(request: ClaimRequestDocument): Promise<void>;
+  findById(requestId: string): Promise<ClaimRequestDocument | null>;
+  listByClaimId(claimId: string): Promise<ClaimRequestDocument[]>;
+  update(requestId: string, updates: Partial<ClaimRequestDocument>): Promise<ClaimRequestDocument | null>;
 }
 
 export interface NotificationsRepositoryContract {
@@ -278,6 +316,79 @@ export interface NotificationsRepositoryContract {
   ): Promise<number>;
 }
 
+export interface ListInvoicesOptions {
+  status?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindInvoicesResult {
+  invoices: InvoiceDocument[];
+  total: number;
+}
+
+export interface InvoicesRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(invoice: InvoiceDocument): Promise<void>;
+  findById(id: string): Promise<InvoiceDocument | null>;
+  listByTenant(
+    tenantId: string,
+    options?: ListInvoicesOptions,
+  ): Promise<FindInvoicesResult>;
+  findAll(
+    options?: ListInvoicesOptions & { tenantId?: string },
+  ): Promise<FindInvoicesResult>;
+  update(
+    id: string,
+    updates: Partial<InvoiceDocument>,
+  ): Promise<InvoiceDocument | null>;
+  countByStatus(tenantId: string): Promise<Record<string, number>>;
+}
+
+export interface PaymentRecordsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(record: PaymentRecordDocument): Promise<void>;
+  update(
+    id: string,
+    updates: Partial<PaymentRecordDocument>,
+  ): Promise<PaymentRecordDocument | null>;
+  findByClaimId(claimId: string): Promise<PaymentRecordDocument | null>;
+  listByTenant(tenantId: string): Promise<PaymentRecordDocument[]>;
+  listByStatus(status: PaymentRecordDocument["status"]): Promise<PaymentRecordDocument[]>;
+}
+
+export interface FindClinicUsersOptions {
+  tenantId?: string;
+  clinicId?: string;
+  status?: string;
+  search?: string;
+  skip?: number;
+  limit?: number;
+}
+
+export interface FindClinicUsersResult {
+  clinicUsers: ClinicUserDocument[];
+  total: number;
+}
+
+export interface ClinicUsersRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  insert(user: ClinicUserDocument): Promise<void>;
+  findByEmail(email: string): Promise<ClinicUserDocument | null>;
+  findById(id: string): Promise<ClinicUserDocument | null>;
+  update(
+    id: string,
+    updates: Partial<ClinicUserDocument>,
+  ): Promise<ClinicUserDocument | null>;
+  list(options?: FindClinicUsersOptions): Promise<FindClinicUsersResult>;
+}
+
+export interface ClinicsRepositoryContract {
+  ensureIndexes(): Promise<void>;
+  findById(clinicId: string): Promise<ClinicDirectoryDocument | null>;
+  upsert(document: ClinicDirectoryDocument): Promise<void>;
+}
+
 export interface RepositoryContext {
   tenants: TenantsRepositoryContract;
   runtimeConfigs: RuntimeConfigsRepositoryContract;
@@ -290,7 +401,12 @@ export interface RepositoryContext {
   campaigns: CampaignsRepositoryContract;
   invitations: InvitationsRepositoryContract;
   budgets: BudgetsRepositoryContract;
+  budgetHistory: BudgetHistoryRepositoryContract;
   notifications: NotificationsRepositoryContract;
   claimMessages: ClaimMessagesRepositoryContract;
   claimRequests: ClaimRequestsRepositoryContract;
+  invoices: InvoicesRepositoryContract;
+  paymentRecords: PaymentRecordsRepositoryContract;
+  clinicUsers: ClinicUsersRepositoryContract;
+  clinics: ClinicsRepositoryContract;
 }

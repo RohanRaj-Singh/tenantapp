@@ -20,12 +20,19 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
 
+    const rawSortBy = url.searchParams.get("sortBy");
+    const rawSortOrder = url.searchParams.get("sortOrder");
+    const sortBy = rawSortBy === "updatedAt" || rawSortBy === "status" ? rawSortBy : undefined;
+    const sortOrder = rawSortOrder === "asc" ? "asc" : rawSortOrder === "desc" ? "desc" : undefined;
+
     const result = await listReimbursements(auth.context.tenant.tenantId, {
       search: url.searchParams.get("search") ?? undefined,
       status: url.searchParams.get("status") ?? undefined,
       employeeId: url.searchParams.get("employeeId") ?? undefined,
       skip: parseInt(url.searchParams.get("skip") ?? "0", 10),
       limit: parseInt(url.searchParams.get("limit") ?? "20", 10),
+      sortBy,
+      sortOrder,
     });
 
     // Tenant Admin callers must not see employeeName

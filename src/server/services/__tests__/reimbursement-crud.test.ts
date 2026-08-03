@@ -3,6 +3,8 @@ import { describe, it } from "node:test";
 import {
   createEmployee,
 } from "@/src/server/services/employeeService";
+import { createTenantUser } from "@/src/modules/tenant-auth/repository/repository";
+import { listForRecipient } from "@/src/server/services/notificationService";
 import {
   createReimbursement,
   createEmployeeReimbursement,
@@ -14,6 +16,7 @@ import {
   freezeReimbursement,
   payReimbursement,
   markInProgress,
+  queueForPayment,
 } from "@/src/server/services/reimbursementService";
 
 const TENANT_ID = "tenant-crud-test-reimbursements";
@@ -30,6 +33,48 @@ async function seedEmployee(suffix: string) {
 }
 
 const EMPLOYEE_NAME = "Test Employee";
+
+/**
+ * Walk a freshly-created (pending) claim through the legal state machine to a
+ * target status. Since `pending → approved` and `pending → frozen` are no
+ * longer valid, fixtures must route via `in_progress` first.
+ */
+async function advanceTo(
+  claimId: string,
+  target: "in_progress" | "frozen" | "approved" | "rejected" | "to_be_paid" | "paid",
+  notes?: string,
+) {
+  const current = (await getReimbursement(TENANT_ID, claimId))!;
+  if (current.status === "pending") {
+    await markInProgress(TENANT_ID, claimId, REVIEWER_ID);
+  }
+  const afterStart = (await getReimbursement(TENANT_ID, claimId))!;
+  if (afterStart.status === "frozen" && (target === "in_progress" || target === "approved" || target === "rejected")) {
+    await markInProgress(TENANT_ID, claimId, REVIEWER_ID);
+  }
+  if (target === "in_progress") {
+    return getReimbursement(TENANT_ID, claimId);
+  }
+  if (target === "frozen") {
+    return freezeReimbursement(TENANT_ID, claimId, REVIEWER_ID, notes);
+  }
+  if (target === "approved") {
+    return approveReimbursement(TENANT_ID, claimId, REVIEWER_ID, notes);
+  }
+  if (target === "rejected") {
+    return rejectReimbursement(TENANT_ID, claimId, REVIEWER_ID, notes);
+  }
+  if (target === "to_be_paid") {
+    await approveReimbursement(TENANT_ID, claimId, REVIEWER_ID);
+    return queueForPayment(TENANT_ID, claimId, REVIEWER_ID);
+  }
+  if (target === "paid") {
+    await approveReimbursement(TENANT_ID, claimId, REVIEWER_ID);
+    await queueForPayment(TENANT_ID, claimId, REVIEWER_ID);
+    return payReimbursement(TENANT_ID, claimId, REVIEWER_ID);
+  }
+  return getReimbursement(TENANT_ID, claimId);
+}
 
 // ── Create ──────────────────────────────────────────────────────────────────
 
@@ -139,6 +184,7 @@ describe("Reimbursement CRUD — Read", () => {
     const c1 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "pending" });
     const c2 = await createReimbursement(subTenant, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: "to approve" });
 
+    await markInProgress(subTenant, c2.reimbursementId, REVIEWER_ID);
     await approveReimbursement(subTenant, c2.reimbursementId, REVIEWER_ID);
 
     const pending = await listReimbursements(subTenant, { status: "pending" });
@@ -204,6 +250,192 @@ describe("Reimbursement CRUD — Update", () => {
   });
 });
 
+// ── Employee Resubmit After Rejection (Phase B / FR-071) ──────────────────────
+
+describe("Reimbursement CRUD — Resubmit After Rejection", () => {
+  it("updateReimbursement resubmits a rejected claim to pending with a Resubmitted history entry", async () => {
+    const emp = await seedEmployee("RS1");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 30,
+      description: "Resubmit test",
+    });
+
+    await rejectReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID, "Missing receipt");
+
+    const resubmitted = await updateReimbursement(
+      TENANT_ID,
+      claim.reimbursementId,
+      {
+        employeeId: emp.employeeId,
+        description: "Updated details",
+        notes: "Added the receipt",
+      },
+      // Employee resubmission is the only legal path for rejected → pending.
+      { resubmit: true },
+    );
+
+    assert.ok(resubmitted);
+    assert.equal(resubmitted!.status, "pending");
+    const entries = resubmitted!.history ?? [];
+    const last = entries[entries.length - 1];
+    assert.equal(last.status, "pending");
+    assert.equal(last.actorRole, "employee");
+    assert.ok(last.note?.includes("Resubmitted"), `expected 'Resubmitted' note, got: ${last.note}`);
+  });
+
+  it("tenant-admin edit-after-reject does NOT resubmit and preserves the original owner", async () => {
+    const emp = await seedEmployee("RST");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 30,
+      description: "Tenant edit resubmit test",
+    });
+
+    await rejectReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID, "Missing receipt");
+
+    // The tenant-admin edit form (ReimbursementDetailPage saveEdit) sends ONLY
+    // amount/description/notes — no employeeId and no resubmit flag. Regression
+    // guard: the claim must (a) keep the real owner and (b) STAY rejected —
+    // rejected → pending is reserved for employee resubmission.
+    const edited = await updateReimbursement(TENANT_ID, claim.reimbursementId, {
+      amount: 35,
+      description: "Edited by tenant admin",
+      notes: "Added the receipt",
+    });
+
+    assert.ok(edited);
+    assert.equal(edited!.status, "rejected", "tenant-admin edit must NOT resubmit to pending");
+    assert.equal(
+      edited!.employeeId,
+      emp.employeeId,
+      "employeeId must NOT be reassigned when the edit body omits it",
+    );
+  });
+
+  it("updateReimbursement on a non-rejected claim does not change status", async () => {
+    const emp = await seedEmployee("RS2");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 40,
+      description: "No-resubmit test",
+    });
+
+    const updated = await updateReimbursement(TENANT_ID, claim.reimbursementId, {
+      employeeId: emp.employeeId,
+      description: "Just an edit",
+    });
+
+    assert.ok(updated);
+    assert.equal(updated!.status, "pending", "a pending claim edit must not change status");
+  });
+
+  it("updateReimbursement rejects edits on a paid claim (read-only terminal state)", async () => {
+    const emp = await seedEmployee("RSPD");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 60,
+      description: "Paid read-only test",
+    });
+
+    await advanceTo(claim.reimbursementId, "paid");
+
+    await assert.rejects(
+      () =>
+        updateReimbursement(TENANT_ID, claim.reimbursementId, {
+          description: "Should be blocked",
+        }),
+      { code: "CLAIM_READ_ONLY" },
+    );
+  });
+
+  it("updateReimbursement resubmit is scoped to the claim tenant", async () => {
+    const emp = await seedEmployee("RS3");
+    const claim = await createReimbursement(TENANT_ID, {
+      employeeId: emp.employeeId,
+      employeeName: EMPLOYEE_NAME,
+      type: "medical",
+      amount: 50,
+      description: "Cross-tenant resubmit guard",
+    });
+
+    await rejectReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID, "No");
+
+    const result = await updateReimbursement(OTHER_TENANT, claim.reimbursementId, {
+      employeeId: emp.employeeId,
+      description: "Hijacked",
+    });
+    assert.equal(result, null, "Cross-tenant resubmit must return null");
+  });
+
+  it("resubmitting a rejected claim notifies both the employee and the reviewer (tenant admin)", async () => {
+    // Reviewer notifications are addressed to the tenant's dashboard user, so
+    // one must exist for notifyTenantAdmins to have a recipient.
+    const reviewerTenant = "tenant-resubmit-notify";
+    const admin = await createTenantUser({
+      tenantId: reviewerTenant,
+      email: "reviewer@example.com",
+      username: "reviewer",
+      passwordHash: "x",
+      mustChangePassword: false,
+      status: "active",
+    });
+    const emp = await createEmployee(reviewerTenant, {
+      employeeCode: "RC-RSN",
+      email: "emprsn@example.com",
+    });
+    const claim = await createEmployeeReimbursement(reviewerTenant, emp.employeeId, EMPLOYEE_NAME, {
+      clinicId: "clinic_rsn",
+      clinicName: "Notify Clinic",
+      amount: 25,
+      description: "Resubmit notify test",
+    });
+
+    await rejectReimbursement(reviewerTenant, claim.reimbursementId, REVIEWER_ID, "Fix it");
+
+    await updateReimbursement(
+      reviewerTenant,
+      claim.reimbursementId,
+      {
+        employeeId: emp.employeeId,
+        description: "Fixed",
+        notes: "Corrected the amount",
+      },
+      { resubmit: true },
+    );
+
+    const employeeNotifs = await listForRecipient({
+      tenantId: reviewerTenant,
+      recipientType: "employee",
+      recipientId: emp.employeeId,
+      limit: 100,
+    });
+    assert.ok(
+      employeeNotifs.some((n) => n.type === "claim_resubmitted" && n.claimId === claim.reimbursementId),
+      "employee should receive a claim_resubmitted notification",
+    );
+
+    const reviewerNotifs = await listForRecipient({
+      tenantId: reviewerTenant,
+      recipientType: "tenantAdmin",
+      recipientId: admin.id,
+      limit: 100,
+    });
+    assert.ok(
+      reviewerNotifs.some((n) => n.type === "claim_resubmitted" && n.claimId === claim.reimbursementId),
+      "reviewer (tenant admin) should receive a claim_resubmitted notification",
+    );
+  });
+});
+
 // ── Status Actions ───────────────────────────────────────────────────────────
 
 describe("Reimbursement CRUD — Status Actions", () => {
@@ -217,7 +449,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
       description: "Approve test",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
 
     assert.ok(approved, "Expected approved claim");
     assert.equal(approved!.status, "approved");
@@ -252,7 +484,7 @@ describe("Reimbursement CRUD — Status Actions", () => {
       description: "Freeze test",
     });
 
-    const frozen = await freezeReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const frozen = await advanceTo(claim.reimbursementId, "frozen");
 
     assert.ok(frozen);
     assert.equal(frozen!.status, "frozen");
@@ -329,7 +561,7 @@ describe("Reimbursement CRUD — In-Progress Transition", () => {
       description: "In progress guard test",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
     assert.ok(approved);
 
     await assert.rejects(
@@ -367,11 +599,15 @@ describe("Reimbursement CRUD — Pay Transition", () => {
     });
 
     // Approve first
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
     assert.ok(approved);
     assert.equal(approved!.status, "approved");
 
-    // Then pay
+    // Then queue for payment, then pay
+    const queued = await queueForPayment(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    assert.ok(queued);
+    assert.equal(queued!.status, "to_be_paid");
+
     const paid = await payReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
     assert.ok(paid, "Expected paid claim");
     assert.equal(paid!.status, "paid");
@@ -389,13 +625,15 @@ describe("Reimbursement CRUD — Pay Transition", () => {
       description: "Pay history test",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
+    assert.ok(approved);
+    await queueForPayment(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
     const paid = await payReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
 
     assert.ok(paid);
     assert.ok(Array.isArray(paid!.history), "history must be an array");
-    assert.equal(paid!.history!.length, 3, "three entries: created, approved, paid");
-    const entry = paid!.history![2]!;
+    assert.equal(paid!.history!.length, 5, "five entries: created, in_progress, approved, to_be_paid, paid");
+    const entry = paid!.history![4]!;
     assert.equal(entry.status, "paid");
     assert.equal(entry.actorRole, "tenantAdmin");
     assert.equal(entry.actorId, REVIEWER_ID);
@@ -427,7 +665,7 @@ describe("Reimbursement CRUD — Pay Transition", () => {
       description: "Cross-tenant pay guard",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
     assert.ok(approved);
 
     const result = await payReimbursement(OTHER_TENANT, claim.reimbursementId, REVIEWER_ID);
@@ -511,12 +749,12 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
       description: "Approve history test",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
 
     assert.ok(approved, "Expected approved claim");
     assert.ok(Array.isArray(approved!.history), "history must be an array");
-    assert.equal(approved!.history!.length, 2, "two history entries after approve");
-    const entry = approved!.history![1]!;
+    assert.equal(approved!.history!.length, 3, "three history entries after approve (created, in_progress, approved)");
+    const entry = approved!.history![2]!;
     assert.equal(entry.status, "approved");
     assert.equal(entry.actorRole, "tenantAdmin");
     assert.equal(entry.actorId, REVIEWER_ID);
@@ -552,11 +790,11 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
       description: "Freeze history test",
     });
 
-    const frozen = await freezeReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const frozen = await advanceTo(claim.reimbursementId, "frozen");
 
     assert.ok(frozen);
-    assert.equal(frozen!.history!.length, 2);
-    const entry = frozen!.history![1]!;
+    assert.equal(frozen!.history!.length, 3, "three history entries after freeze (created, in_progress, frozen)");
+    const entry = frozen!.history![2]!;
     assert.equal(entry.status, "frozen");
     assert.equal(entry.actorRole, "tenantAdmin");
     assert.equal(entry.actorId, REVIEWER_ID);
@@ -573,11 +811,11 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
     });
 
     // Approve with notes
-    await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID, "Looks good, approved.");
+    await advanceTo(claim.reimbursementId, "approved", "Looks good, approved.");
     let updated = await getReimbursement(TENANT_ID, claim.reimbursementId);
     assert.ok(updated);
-    assert.equal(updated!.history!.length, 2);
-    assert.equal(updated!.history![1]!.note, "Looks good, approved.");
+    assert.equal(updated!.history!.length, 3, "created, in_progress, approved");
+    assert.equal(updated!.history![2]!.note, "Looks good, approved.");
 
     // Reject with notes
     const claim2 = await createReimbursement(TENANT_ID, {
@@ -600,10 +838,11 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
       amount: 80,
       description: "Notes storage test 3",
     });
-    await freezeReimbursement(TENANT_ID, claim3.reimbursementId, REVIEWER_ID, "Pending investigation.");
+    await advanceTo(claim3.reimbursementId, "frozen", "Pending investigation.");
     updated = await getReimbursement(TENANT_ID, claim3.reimbursementId);
     assert.ok(updated);
-    assert.equal(updated!.history![1]!.note, "Pending investigation.");
+    assert.equal(updated!.history!.length, 3, "created, in_progress, frozen");
+    assert.equal(updated!.history![2]!.note, "Pending investigation.");
   });
 
   it("omits the note field from history when notes is not provided", async () => {
@@ -616,9 +855,86 @@ describe("Reimbursement — Claim History & Receipt Identity", () => {
       description: "No notes test",
     });
 
-    const approved = await approveReimbursement(TENANT_ID, claim.reimbursementId, REVIEWER_ID);
+    const approved = await advanceTo(claim.reimbursementId, "approved");
     assert.ok(approved);
-    assert.equal(approved!.history!.length, 2);
-    assert.equal(approved!.history![1]!.note, undefined);
+    assert.equal(approved!.history!.length, 3, "created, in_progress, approved");
+    assert.equal(approved!.history![2]!.note, undefined);
+  });
+});
+
+// ── Sorting (FR-054: reverse / oldest-first) ───────────────────────────────
+
+describe("Reimbursement CRUD — Sorting", () => {
+  async function seedThreeClaims(prefix: string) {
+    const emp = await seedEmployee(`SORT-${prefix}`);
+    const c1 = await createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: `${prefix}-first` });
+    await new Promise((r) => setTimeout(r, 5));
+    const c2 = await createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: `${prefix}-second` });
+    await new Promise((r) => setTimeout(r, 5));
+    const c3 = await createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 30, description: `${prefix}-third` });
+    return { c1, c2, c3 };
+  }
+
+  it("defaults to newest-first by createdAt", async () => {
+    const { c1, c2, c3 } = await seedThreeClaims("D1");
+    const result = await listReimbursements(TENANT_ID);
+
+    const ordered = result.reimbursements
+      .filter((r) => [c1.reimbursementId, c2.reimbursementId, c3.reimbursementId].includes(r.reimbursementId))
+      .map((r) => r.reimbursementId);
+
+    assert.deepEqual(ordered, [c3.reimbursementId, c2.reimbursementId, c1.reimbursementId]);
+  });
+
+  it("returns oldest-first when sortOrder is asc on createdAt", async () => {
+    const { c1, c2, c3 } = await seedThreeClaims("D2");
+    const result = await listReimbursements(TENANT_ID, { sortBy: "createdAt", sortOrder: "asc" });
+
+    const ordered = result.reimbursements
+      .filter((r) => [c1.reimbursementId, c2.reimbursementId, c3.reimbursementId].includes(r.reimbursementId))
+      .map((r) => r.reimbursementId);
+
+    assert.deepEqual(ordered, [c1.reimbursementId, c2.reimbursementId, c3.reimbursementId]);
+  });
+
+  it("sorts by updatedAt when sortBy is updatedAt", async () => {
+    const { c1, c2, c3 } = await seedThreeClaims("D3");
+
+    // Ensure the touch timestamp is strictly later than c3's createdAt so the
+    // updatedAt ordering is deterministic (the seed only waits 5ms per claim).
+    await new Promise((r) => setTimeout(r, 10));
+
+    // Bump c2's updatedAt so it becomes the most recently updated claim.
+    await updateReimbursement(TENANT_ID, c2.reimbursementId, { description: "touched" });
+
+    const result = await listReimbursements(TENANT_ID, { sortBy: "updatedAt", sortOrder: "desc" });
+    const ordered = result.reimbursements
+      .filter((r) => [c1.reimbursementId, c2.reimbursementId, c3.reimbursementId].includes(r.reimbursementId))
+      .map((r) => r.reimbursementId);
+
+    assert.equal(ordered[0], c2.reimbursementId, "updatedAt desc must surface the touched claim first");
+    assert.ok(ordered.length >= 3);
+
+    const ascResult = await listReimbursements(TENANT_ID, { sortBy: "updatedAt", sortOrder: "asc" });
+    const ascOrdered = ascResult.reimbursements
+      .filter((r) => [c1.reimbursementId, c2.reimbursementId, c3.reimbursementId].includes(r.reimbursementId))
+      .map((r) => r.reimbursementId);
+
+    assert.equal(ascOrdered[ascOrdered.length - 1], c2.reimbursementId, "updatedAt asc must surface the touched claim last");
+  });
+
+  it("sorts by status in the requested direction", async () => {
+    const emp = await seedEmployee("SORT-ST");
+    const c1 = await createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 10, description: "status-a" });
+    const c2 = await createReimbursement(TENANT_ID, { employeeId: emp.employeeId, employeeName: EMPLOYEE_NAME, type: "medical", amount: 20, description: "status-b" });
+    await advanceTo(c1.reimbursementId, "approved");
+
+    const result = await listReimbursements(TENANT_ID, { sortBy: "status", sortOrder: "asc" });
+    const relevant = result.reimbursements.filter((r) => [c1.reimbursementId, c2.reimbursementId].includes(r.reimbursementId));
+    const statuses = relevant.map((r) => r.status);
+
+    assert.ok(statuses.includes("approved") && statuses.includes("pending"));
+    const sorted = [...statuses].sort();
+    assert.deepEqual(statuses, sorted, "status asc should be lexicographically ordered");
   });
 });

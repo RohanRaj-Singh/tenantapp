@@ -12,6 +12,12 @@ import type {
 export interface ChatAccessContext {
   tenantId: string;
   participant: ClaimMessageParticipant;
+  /**
+   * Extra scoping for clinic participants. When present, a `clinic` participant
+   * may access a claim only when the claim's clinic is in `clinicIds` AND the
+   * claim's tenant is in `tenantIds`.
+   */
+  clinicScope?: { clinicIds: string[]; tenantIds: string[] };
 }
 
 /**
@@ -20,6 +26,7 @@ export interface ChatAccessContext {
  *   - superAdmin → cross-tenant oversight (any claim)
  *   - tenantAdmin → same tenant
  *   - employee    → same tenant AND owns the claim
+ *   - clinic      → claim.tenantId ∈ tenantIds AND claim.clinicId ∈ clinicIds
  * Reused by chat and request services.
  */
 export async function assertClaimAccess(
@@ -34,6 +41,19 @@ export async function assertClaimAccess(
 
   const { role } = context.participant;
   if (role === "superAdmin") {
+    return claim;
+  }
+  if (role === "clinic") {
+    const clinicScope = context.clinicScope;
+    if (!clinicScope) {
+      return null;
+    }
+    if (!clinicScope.tenantIds.includes(claim.tenantId)) {
+      return null;
+    }
+    if (!claim.clinicId || !clinicScope.clinicIds.includes(claim.clinicId)) {
+      return null;
+    }
     return claim;
   }
   if (claim.tenantId !== context.tenantId) {
@@ -65,7 +85,7 @@ export async function postChatMessage(
     messageId: `msg_${randomUUID()}`,
     tenantId: claim.tenantId,
     claimId,
-    type: "text",
+    type: "message",
     participant: context.participant,
     body: trimmed,
     readBy: [],
@@ -111,6 +131,27 @@ async function fireMessageNotification(
         claimNumber: claim.claimNumber,
         recipientType: "employee",
         recipientId: claim.employeeId,
+        type: "claim_message",
+        title: "New message",
+        body: `${senderName} sent a message on ${reference}: ${body}`,
+      });
+    } else if (participant.role === "clinic") {
+      // Clinic messages surface to the employee (and to tenant admins via the
+      // same notification) so the conversation reaches the reviewer.
+      await notify({
+        tenantId: claim.tenantId,
+        claimId: claim.reimbursementId,
+        claimNumber: claim.claimNumber,
+        recipientType: "employee",
+        recipientId: claim.employeeId,
+        type: "claim_message",
+        title: "New message",
+        body: `${senderName} sent a message on ${reference}: ${body}`,
+      });
+      await notifyTenantAdmins({
+        tenantId: claim.tenantId,
+        claimId: claim.reimbursementId,
+        claimNumber: claim.claimNumber,
         type: "claim_message",
         title: "New message",
         body: `${senderName} sent a message on ${reference}: ${body}`,
@@ -190,4 +231,46 @@ export async function postOfficialUpdate(input: {
   };
 
   await repositories.claimMessages.insert(message);
+}
+
+const SYSTEM_PARTICIPANT: ClaimMessageParticipant = {
+  role: "system",
+  id: "system",
+  name: "System",
+  key: "system:system",
+};
+
+/**
+ * Records an automatically-generated system event in the claim chat
+ * (claim submitted, status changed, receipt uploaded, resubmitted, etc.).
+ * System messages are read-only — they are never authored by a user.
+ */
+export async function postSystemMessage(input: {
+  tenantId: string;
+  claimId: string;
+  body: string;
+  /** Optional override so migrations can preserve original timestamps. */
+  createdAt?: string;
+}): Promise<ClaimMessageDocument | null> {
+  const repositories = await getRepositoryContext();
+  const claim = await repositories.reimbursements.findById(input.claimId);
+  if (!claim || claim.tenantId !== input.tenantId) {
+    return null;
+  }
+
+  const now = input.createdAt ?? new Date().toISOString();
+  const message: ClaimMessageDocument = {
+    messageId: `msg_${randomUUID()}`,
+    tenantId: input.tenantId,
+    claimId: input.claimId,
+    type: "system",
+    participant: SYSTEM_PARTICIPANT,
+    body: input.body.trim(),
+    readBy: [],
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await repositories.claimMessages.insert(message);
+  return message;
 }

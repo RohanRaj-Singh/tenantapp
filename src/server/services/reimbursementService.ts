@@ -13,15 +13,16 @@ import type {
   ReimbursementDocument,
 } from "@/src/server/db/documents";
 import { notify, notifyTenantAdmins } from "@/src/server/services/notificationService";
-import { postOfficialUpdate } from "@/src/server/services/claimMessageService";
+import { postOfficialUpdate, postSystemMessage } from "@/src/server/services/claimMessageService";
 
 type ClaimStatus = ReimbursementDocument["status"];
 
 /**
- * Best-effort notification dispatch. Notification failures must never block a
- * claim transition, so errors are logged and swallowed.
+ * Best-effort side-effect dispatch (notifications, chat system messages, official
+ * update bridges). Failures must never block a claim transition, so errors are
+ * logged and swallowed.
  */
-async function fireNotification(dispatch: () => Promise<void>) {
+async function fireSideEffect(dispatch: () => Promise<void>) {
   try {
     await dispatch();
   } catch (error) {
@@ -35,7 +36,7 @@ async function notifyClaimRecipient(
   input: { type: NotificationType; title: string; body: string },
   tenantIdOverride?: string,
 ) {
-  await fireNotification(() =>
+  await fireSideEffect(() =>
     notify({
       // Platform-wide recipients (super admin) use tenantId "" so they are
       // queryable across all tenants; tenant-scoped recipients use the claim's tenant.
@@ -49,23 +50,35 @@ async function notifyClaimRecipient(
   );
 }
 
+async function emitSystemEvent(
+  claim: { tenantId: string; reimbursementId: string },
+  body: string,
+) {
+  await fireSideEffect(async () => {
+    await postSystemMessage({ tenantId: claim.tenantId, claimId: claim.reimbursementId, body });
+  });
+}
+
 /**
  * Validates whether a status transition is allowed by the state machine.
  *
- * Rules:
- *   pending    → in_progress, frozen, approved, rejected
+ * Rules (approved business workflow — see docs/CLAIM_STATE_MACHINE_AUDIT.md):
+ *   pending    → in_progress, rejected
  *   in_progress → frozen, approved, rejected
  *   frozen     → in_progress, approved, rejected
- *   approved   → paid
+ *   approved   → to_be_paid
+ *   to_be_paid → paid
  *   paid       → (terminal — no transitions allowed)
- *   rejected   → (terminal — no transitions allowed; editing still possible via update)
+ *   rejected   → (terminal in the table; resubmit to pending happens only via
+ *                 employee edit/resubmission in updateReimbursement)
  */
 function assertValidTransition(current: ClaimStatus, target: ClaimStatus) {
   const allowed: Record<ClaimStatus, ClaimStatus[]> = {
-    pending: ["in_progress", "frozen", "approved", "rejected"],
+    pending: ["in_progress", "rejected"],
     in_progress: ["frozen", "approved", "rejected"],
     frozen: ["in_progress", "approved", "rejected"],
-    approved: ["paid"],
+    approved: ["to_be_paid"],
+    to_be_paid: ["paid"],
     paid: [],
     rejected: [],
   };
@@ -161,7 +174,7 @@ export async function createReimbursement(
   await repositories.reimbursements.insert(reimbursement);
 
   // Notify the employee that a claim was created (e.g. on their behalf by the tenant admin)
-  await fireNotification(() =>
+  await fireSideEffect(() =>
     notify({
       tenantId,
       claimId: reimbursement.reimbursementId,
@@ -173,6 +186,10 @@ export async function createReimbursement(
       body: `Your claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} has been submitted for review.`,
     }),
   );
+  await emitSystemEvent(reimbursement, "Claim submitted");
+  if (reimbursement.receiptUrl) {
+    await emitSystemEvent(reimbursement, "Receipt uploaded");
+  }
 
   return reimbursement;
 }
@@ -197,12 +214,23 @@ export async function updateReimbursement(
     bankAccountNumber?: string;
     bankName?: string;
   },
+  options?: { resubmit?: boolean },
 ) {
   const repositories = await getRepositoryContext();
   const existing = await repositories.reimbursements.findById(reimbursementId);
 
   if (!existing || existing.tenantId !== tenantId) {
     return null;
+  }
+
+  // Paid claims are read-only: no field edits (amount/receipt/sessions) and no
+  // resubmission. History stays viewable, but the claim itself is terminal.
+  if (existing.status === "paid") {
+    throw new ApiError(
+      400,
+      "CLAIM_READ_ONLY",
+      "Paid claims are read-only and cannot be edited.",
+    );
   }
 
   const updates: Partial<typeof existing> = {};
@@ -225,9 +253,11 @@ export async function updateReimbursement(
   const now = new Date().toISOString();
   updates.updatedAt = now;
 
-  // When a rejected claim is edited, resubmit it for review
+  // Only an employee resubmission (options.resubmit === true) may move a
+  // rejected claim back to pending. Tenant-admin edits must NOT resubmit —
+  // rejected → pending is reserved for the employee path (approved workflow).
   let resubmitted = false;
-  if (existing.status === "rejected") {
+  if (existing.status === "rejected" && options?.resubmit === true) {
     resubmitted = true;
     updates.status = "pending";
     const historyEntry: ClaimHistoryEntry = {
@@ -244,6 +274,7 @@ export async function updateReimbursement(
 
   if (updated && resubmitted) {
     const reference = existing.claimNumber ?? existing.reimbursementId;
+    // Confirm to the employee that their edit went back into the queue…
     await notifyClaimRecipient(
       existing,
       { recipientType: "employee", recipientId: existing.employeeId },
@@ -253,6 +284,18 @@ export async function updateReimbursement(
         body: `Your claim ${reference} has been resubmitted for review.`,
       },
     );
+    // …and alert the tenant admin (reviewer) that it needs review again.
+    await fireSideEffect(() =>
+      notifyTenantAdmins({
+        tenantId: existing.tenantId,
+        claimId: existing.reimbursementId,
+        claimNumber: existing.claimNumber,
+        type: "claim_resubmitted",
+        title: "Claim resubmitted",
+        body: `${existing.employeeName} resubmitted claim ${reference} for review.`,
+      }),
+    );
+    await emitSystemEvent(existing, "Claim resubmitted");
   }
 
   return updated;
@@ -297,6 +340,7 @@ export async function approveReimbursement(
       { type: "claim_approved", title: "Claim approved", body: `Claim ${reference} is approved and ready for payout.` },
       "",
     );
+    await emitSystemEvent(existing, "Claim approved");
   }
 
   return updated;
@@ -341,6 +385,7 @@ export async function rejectReimbursement(
           : `Your claim ${reference} was not approved.`,
       },
     );
+    await emitSystemEvent(existing, "Claim rejected");
   }
 
   return updated;
@@ -382,6 +427,65 @@ export async function freezeReimbursement(
         body: `Your claim ${reference} is temporarily on hold${notes?.trim() ? `: ${notes.trim()}` : ""}.`,
       },
     );
+    await emitSystemEvent(existing, "Claim frozen");
+  }
+
+  return updated;
+}
+
+/**
+ * Queue an approved claim for payment: `approved → to_be_paid`.
+ *
+ * Approved claims enter the payment queue (Phase 5). Paying is a separate,
+ * later event performed by the super admin once the money is actually sent.
+ */
+export async function queueForPayment(
+  tenantId: string,
+  reimbursementId: string,
+  actorId: string,
+  notes?: string,
+) {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.reimbursements.findById(reimbursementId);
+
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
+
+  assertValidTransition(existing.status, "to_be_paid");
+
+  const now = new Date().toISOString();
+  const entry: ClaimHistoryEntry = { status: "to_be_paid", actorId, actorRole: "tenantAdmin", ...(notes ? { note: notes.trim() } : {}), timestamp: now };
+  const updated = await repositories.reimbursements.update(reimbursementId, {
+    status: "to_be_paid",
+    reviewedBy: actorId,
+    reviewedAt: now,
+    updatedAt: now,
+    history: [...(existing.history ?? []), entry],
+  });
+
+  if (updated) {
+    const reference = existing.claimNumber ?? existing.reimbursementId;
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "employee", recipientId: existing.employeeId },
+      {
+        type: "claim_payment_queued",
+        title: "Claim queued for payment",
+        body: `Your claim ${reference} has been approved for payout and is queued for payment.`,
+      },
+    );
+    await notifyClaimRecipient(
+      existing,
+      { recipientType: "superAdmin", recipientId: "super-admin" },
+      {
+        type: "claim_payment_queued",
+        title: "Claim queued for payment",
+        body: `Claim ${reference} is queued for payment and awaiting payout.`,
+      },
+      "",
+    );
+    await emitSystemEvent(existing, "Claim queued for payment");
   }
 
   return updated;
@@ -423,6 +527,7 @@ export async function payReimbursement(
         body: `Your claim ${reference} has been paid.`,
       },
     );
+    await emitSystemEvent(existing, "Claim paid");
   }
 
   return updated;
@@ -464,6 +569,7 @@ export async function markInProgress(
         body: `Your claim ${reference} is now being reviewed.`,
       },
     );
+    await emitSystemEvent(existing, "Claim in progress");
   }
 
   return updated;
@@ -533,7 +639,7 @@ export async function createEmployeeReimbursement(
   await repositories.reimbursements.insert(reimbursement);
 
   // Notify the employee (submission confirmation) and the tenant admin (awaiting review)
-  await fireNotification(() =>
+  await fireSideEffect(() =>
     notify({
       tenantId,
       claimId: reimbursement.reimbursementId,
@@ -545,7 +651,7 @@ export async function createEmployeeReimbursement(
       body: `Your claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} has been submitted for review.`,
     }),
   );
-  await fireNotification(() =>
+  await fireSideEffect(() =>
     notifyTenantAdmins({
       tenantId,
       claimId: reimbursement.reimbursementId,
@@ -555,6 +661,10 @@ export async function createEmployeeReimbursement(
       body: `${employeeName} submitted claim ${reimbursement.claimNumber ?? reimbursement.reimbursementId} for review.`,
     }),
   );
+  await emitSystemEvent(reimbursement, "Claim submitted");
+  if (reimbursement.receiptUrl) {
+    await emitSystemEvent(reimbursement, "Receipt uploaded");
+  }
 
   return reimbursement;
 }
@@ -605,7 +715,7 @@ export async function postProgressUpdate(
       },
     );
     // Bridge into the claim chat as an official update (best-effort)
-    await fireNotification(() =>
+    await fireSideEffect(() =>
       postOfficialUpdate({
         tenantId: existing.tenantId,
         claimId: existing.reimbursementId,
@@ -616,4 +726,47 @@ export async function postProgressUpdate(
   }
 
   return updated;
+}
+
+// ── Bulk Progress Update ─────────────────────────────────────────────────────
+
+/**
+ * Post a progress update message to many claims at once (FR-046).
+ *
+ * For each claim ID the claim is looked up, verified to belong to `tenantId`,
+ * then `postProgressUpdate` is called (which appends a history entry, bridges an
+ * `official_update` chat message, and notifies the employee). Claims that are
+ * not found or belong to another tenant are skipped — they do not fail the batch.
+ *
+ * Any non-terminal claim can receive a progress update, consistent with the
+ * existing single-claim behavior (`postProgressUpdate` does not restrict status).
+ *
+ * @returns `{ updated, skipped }` where `updated` is the number of claims that
+ *          received the update and `skipped` is the number that were not found
+ *          / not owned by the tenant.
+ */
+export async function bulkPostProgressUpdate(
+  tenantId: string,
+  claimIds: string[],
+  message: string,
+  actorId: string,
+): Promise<{ updated: number; skipped: number }> {
+  const trimmed = message.trim();
+  if (!trimmed) {
+    throw new ApiError(400, "MESSAGE_REQUIRED", "Message is required.");
+  }
+
+  let updated = 0;
+  let skipped = 0;
+
+  for (const claimId of claimIds) {
+    const result = await postProgressUpdate(tenantId, claimId, trimmed, actorId);
+    if (result) {
+      updated += 1;
+    } else {
+      skipped += 1;
+    }
+  }
+
+  return { updated, skipped };
 }

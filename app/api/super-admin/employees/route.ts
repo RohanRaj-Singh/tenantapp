@@ -62,11 +62,12 @@ export async function GET(request: NextRequest) {
     const search = searchParams.get("search") ?? undefined;
     const status = searchParams.get("status") ?? undefined;
     const tenantId = searchParams.get("tenantId") ?? undefined;
+    const excludeArchived = searchParams.get("excludeArchived") === "true";
     const skip = parseInt(searchParams.get("skip") ?? "0", 10);
     const limit = parseInt(searchParams.get("limit") ?? "50", 10);
 
     const result = await listAllEmployees(
-      { search, status, tenantId, skip, limit: Math.min(limit, 500) },
+      { search, status, tenantId, excludeArchived, skip, limit: Math.min(limit, 500) },
       callerRole,
     );
 
@@ -89,6 +90,8 @@ export async function GET(request: NextRequest) {
       email: emp.email,
       name: emp.name ?? "",
       phoneNumber: emp.phoneNumber ?? null,
+      bankAccountNumber: emp.bankAccountNumber ?? null,
+      bankName: emp.bankName ?? null,
       status: emp.status,
       tenantId: emp.tenantId,
       tenantName: tenantLookup.get(emp.tenantId) ?? emp.tenantId,

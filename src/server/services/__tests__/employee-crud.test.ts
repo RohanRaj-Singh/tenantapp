@@ -9,6 +9,9 @@ import {
   registerEmployee,
   suspendEmployee,
   unsuspendEmployee,
+  archiveEmployee,
+  archiveEmployeeById,
+  loginEmployee,
 } from "@/src/server/services/employeeService";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 
@@ -384,5 +387,52 @@ describe("Employee CRUD — Status Transitions", () => {
     const emp = await createEmployee(TENANT_ID, { employeeCode: "UNSUSP-X", email: "unsusp-x@test.com" });
     const result = await unsuspendEmployee(OTHER_TENANT, emp.employeeId);
     assert.equal(result, null);
+  });
+
+  it("archiveEmployee sets status to archived", async () => {
+    const subTenant = "tenant-trans-archive";
+    const emp = await createEmployee(subTenant, { employeeCode: "ARCH-001", email: "arch@test.com" });
+
+    const result = await archiveEmployee(subTenant, emp.employeeId);
+    assert.ok(result, "Expected archive result");
+    assert.equal(result!.status, "archived");
+  });
+
+  it("archiveEmployeeById works cross-tenant (resolves tenantId internally)", async () => {
+    const subTenant = "tenant-trans-archive-by-id";
+    const emp = await createEmployee(subTenant, { employeeCode: "ARCH-002", email: "arch2@test.com" });
+
+    const result = await archiveEmployeeById(emp.employeeId);
+    assert.ok(result, "Expected archive-by-id result");
+    assert.equal(result!.status, "archived");
+    assert.equal(result!.tenantId, subTenant);
+  });
+
+  it("archiveEmployee returns null for cross-tenant", async () => {
+    const emp = await createEmployee(TENANT_ID, { employeeCode: "ARCH-X", email: "arch-x@test.com" });
+    const result = await archiveEmployee(OTHER_TENANT, emp.employeeId);
+    assert.equal(result, null);
+  });
+
+  it("archived employee cannot log in (mirrors suspended)", async () => {
+    const subTenant = "tenant-trans-archive-login";
+    const emp = await createEmployee(subTenant, { employeeCode: "ARCH-LOGIN", email: "arch-login@test.com" });
+    await registerEmployee(subTenant, "ARCH-LOGIN", "arch-login@test.com", "ValidPass1", "Arch Login");
+    await archiveEmployee(subTenant, emp.employeeId);
+
+    const result = await loginEmployee(subTenant, "arch-login@test.com", "ValidPass1");
+    assert.equal(result.success, false);
+    assert.equal(result.errorCode, "EMPLOYEE_ARCHIVED");
+  });
+
+  it("archived employee cannot be registered", async () => {
+    const subTenant = "tenant-trans-archive-reg";
+    const emp = await createEmployee(subTenant, { employeeCode: "ARCH-REG", email: "arch-reg@test.com" });
+    await archiveEmployee(subTenant, emp.employeeId);
+
+    await assert.rejects(
+      () => registerEmployee(subTenant, "ARCH-REG", "arch-reg@test.com", "ValidPass1", "Archived Reg"),
+      { message: "This account is not available for registration." },
+    );
   });
 });

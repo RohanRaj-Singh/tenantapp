@@ -70,7 +70,10 @@ export async function POST(request: NextRequest) {
       const status =
         result.errorCode === "EMPLOYEE_LOCKED"
           ? 429
-          : result.errorCode === "EMPLOYEE_INACTIVE" || result.errorCode === "EMPLOYEE_SUSPENDED" || result.errorCode === "NOT_REGISTERED"
+          : result.errorCode === "EMPLOYEE_INACTIVE" ||
+              result.errorCode === "EMPLOYEE_SUSPENDED" ||
+              result.errorCode === "EMPLOYEE_ARCHIVED" ||
+              result.errorCode === "NOT_REGISTERED"
             ? 403
             : 401;
 

@@ -7,32 +7,40 @@ import {
   decideClaimRequest,
   listClaimRequests,
 } from "@/src/server/services/claimRequestService";
-import { listChatMessages } from "@/src/server/services/claimMessageService";
-import { unreadCount } from "@/src/server/services/notificationService";
-import type { ClaimMessageParticipant } from "@/src/server/db/documents";
+import type { ChatAccessContext } from "@/src/server/services/claimMessageService";
+import { getRepositoryContext } from "@/src/server/repositories/context";
 
 const TENANT_ID = "tenant-request-test";
 const OTHER_TENANT = "tenant-request-other";
 
-const employeeParticipant = (id: string): ClaimMessageParticipant => ({
-  role: "employee",
-  id,
-  name: "Test Employee",
-  key: `employee:${id}`,
+const employeeCtx = (id: string): ChatAccessContext => ({
+  tenantId: TENANT_ID,
+  participant: {
+    role: "employee",
+    id,
+    name: "Test Employee",
+    key: `employee:${id}`,
+  },
 });
 
-const adminParticipant = (id = "admin-1"): ClaimMessageParticipant => ({
-  role: "tenantAdmin",
-  id,
-  name: "Reviewer",
-  key: `tenantAdmin:${id}`,
+const adminCtx = (id = "admin-1"): ChatAccessContext => ({
+  tenantId: TENANT_ID,
+  participant: {
+    role: "tenantAdmin",
+    id,
+    name: "Reviewer",
+    key: `tenantAdmin:${id}`,
+  },
 });
 
-const superAdminParticipant: ClaimMessageParticipant = {
-  role: "superAdmin",
-  id: "super-admin",
-  name: "Super Admin",
-  key: "superAdmin:super-admin",
+const superAdminCtx: ChatAccessContext = {
+  tenantId: "",
+  participant: {
+    role: "superAdmin",
+    id: "super-admin",
+    name: "Super Admin",
+    key: "superAdmin:super-admin",
+  },
 };
 
 async function seedEmployee(code: string) {
@@ -46,153 +54,181 @@ async function seedClaim(employeeId: string, amount = 50) {
   return createReimbursement(TENANT_ID, {
     employeeId,
     employeeName: "Test Employee",
-    type: "medical",
+    type: "therapy",
     amount,
     description: "Request test claim",
   });
 }
 
 describe("Claim Requests", () => {
-  it("createClaimRequest creates a pending request", async () => {
+  it("creates a pending request on a claim", async () => {
     const emp = await seedEmployee("RQ1");
     const claim = await seedClaim(emp.employeeId);
 
-    const created = await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "Pre-approval for assessment", details: "Can we do this assessment?" },
-    );
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Can we do an assessment for 1000?",
+      body: "The assessment is expensive. Is it covered?",
+    });
 
-    assert.ok(created);
-    assert.equal(created!.status, "pending");
-    assert.equal(created!.subject, "Pre-approval for assessment");
-    assert.equal(created!.requester.role, "employee");
+    assert.ok(request);
+    assert.equal(request!.status, "pending");
+    assert.equal(request!.requester.role, "employee");
+    assert.equal(request!.claimId, claim.reimbursementId);
+    assert.equal(request!.tenantId, TENANT_ID);
   });
 
-  it("listClaimRequests returns requests for the claim", async () => {
+  it("rejects a request with missing subject or body", async () => {
     const emp = await seedEmployee("RQ2");
     const claim = await seedClaim(emp.employeeId);
-    const employee = employeeParticipant(emp.employeeId);
+    const ctx = employeeCtx(emp.employeeId);
 
-    await createClaimRequest({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId, { subject: "A", details: "a" });
-    await createClaimRequest({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId, { subject: "B", details: "b" });
+    const noSubject = await createClaimRequest(ctx, claim.reimbursementId, {
+      subject: "  ",
+      body: "Hello",
+    });
+    assert.equal(noSubject, null);
 
-    const list = await listClaimRequests({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId);
-    assert.ok(list);
-    assert.equal(list!.length, 2);
+    const noBody = await createClaimRequest(ctx, claim.reimbursementId, {
+      subject: "Subject",
+      body: "",
+    });
+    assert.equal(noBody, null);
   });
 
-  it("employee cannot decide a request", async () => {
-    const emp = await seedEmployee("RQ3");
-    const claim = await seedClaim(emp.employeeId);
-    const created = await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "A", details: "a" },
-    );
-
-    const result = await decideClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      created!.requestId,
-      "approved",
-    );
-    assert.equal(result, null);
-  });
-
-  it("super admin can list any claim's requests (read-only)", async () => {
+  it("does not allow a request from a different tenant's employee", async () => {
+    const otherEmp = await createEmployee(OTHER_TENANT, {
+      employeeCode: "RQ3",
+      email: "rq3@example.com",
+    });
     const emp = await seedEmployee("RQ4");
     const claim = await seedClaim(emp.employeeId);
-    await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "A", details: "a" },
-    );
 
-    const list = await listClaimRequests(
-      { tenantId: "", participant: superAdminParticipant },
+    const request = await createClaimRequest(
+      { ...employeeCtx(otherEmp.employeeId), tenantId: OTHER_TENANT },
       claim.reimbursementId,
+      { subject: "X", body: "Y" },
     );
-    assert.ok(list);
-    assert.equal(list!.length, 1);
+    assert.equal(request, null);
   });
 
-  it("tenant admin can decide a request and notify the employee", async () => {
+  it("lists requests on a claim for an authorized participant", async () => {
     const emp = await seedEmployee("RQ5");
     const claim = await seedClaim(emp.employeeId);
-    const created = await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "Approval", details: "Please approve" },
-    );
+    const ctx = employeeCtx(emp.employeeId);
 
-    const updated = await decideClaimRequest(
-      { tenantId: TENANT_ID, participant: adminParticipant() },
-      claim.reimbursementId,
-      created!.requestId,
-      "approved",
-      "OK, proceed",
-    );
+    await createClaimRequest(ctx, claim.reimbursementId, { subject: "A", body: "B" });
+    await createClaimRequest(ctx, claim.reimbursementId, { subject: "C", body: "D" });
 
-    assert.ok(updated);
-    assert.equal(updated!.status, "approved");
-    assert.equal(updated!.decisionNote, "OK, proceed");
-
-    const count = await unreadCount(TENANT_ID, "employee", emp.employeeId);
-    assert.ok(count >= 1, "employee should be notified of the decision");
+    const view = await listClaimRequests(adminCtx(), claim.reimbursementId);
+    assert.ok(view);
+    assert.equal(view!.requests.length, 2);
   });
 
-  it("cannot decide a non-pending request twice", async () => {
+  it("tenant admin approves a pending request", async () => {
     const emp = await seedEmployee("RQ6");
     const claim = await seedClaim(emp.employeeId);
-    const created = await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "A", details: "a" },
-    );
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Approval needed",
+      body: "Is this possible?",
+    });
+    assert.ok(request);
 
-    await decideClaimRequest(
-      { tenantId: TENANT_ID, participant: adminParticipant() },
-      claim.reimbursementId,
-      created!.requestId,
-      "rejected",
-    );
-
-    const second = await decideClaimRequest(
-      { tenantId: TENANT_ID, participant: adminParticipant() },
-      claim.reimbursementId,
-      created!.requestId,
+    const decided = await decideClaimRequest(
+      adminCtx(),
+      request!.requestId,
       "approved",
+      "Yes, this is covered.",
     );
-    assert.equal(second, null);
+    assert.ok(decided);
+    assert.equal(decided!.status, "approved");
+    assert.equal(decided!.resolutionNote, "Yes, this is covered.");
+    assert.equal(decided!.responder?.role, "tenantAdmin");
   });
 
-  it("convert-to-chat seeds a chat thread and marks the request converted", async () => {
+  it("tenant admin rejects a request with more info", async () => {
     const emp = await seedEmployee("RQ7");
     const claim = await seedClaim(emp.employeeId);
-    const created = await createClaimRequest(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-      { subject: "Assessment", details: "Can we do this assessment?" },
-    );
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Needs data",
+      body: "Can you approve?",
+    });
+    assert.ok(request);
 
-    const converted = await decideClaimRequest(
-      { tenantId: TENANT_ID, participant: adminParticipant() },
-      claim.reimbursementId,
-      created!.requestId,
+    const decided = await decideClaimRequest(
+      adminCtx(),
+      request!.requestId,
+      "more_info",
+      "Please provide the receipt first.",
+    );
+    assert.ok(decided);
+    assert.equal(decided!.status, "more_info");
+  });
+
+  it("employee/requester cannot decide their own request", async () => {
+    const emp = await seedEmployee("R8");
+    const claim = await seedClaim(emp.employeeId);
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Self decide",
+      body: "Should fail",
+    });
+    assert.ok(request);
+
+    const decided = await decideClaimRequest(
+      employeeCtx(emp.employeeId),
+      request!.requestId,
+      "approved",
+    );
+    assert.equal(decided, null);
+  });
+
+  it("super admin cannot decide a request (oversight read-only)", async () => {
+    const emp = await seedEmployee("R9");
+    const claim = await seedClaim(emp.employeeId);
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Oversight",
+      body: "Read only",
+    });
+    assert.ok(request);
+
+    const decided = await decideClaimRequest(superAdminCtx, request!.requestId, "approved");
+    assert.equal(decided, null);
+  });
+
+  it("converting to chat seeds a chat message on the claim", async () => {
+    const emp = await seedEmployee("R10");
+    const claim = await seedClaim(emp.employeeId);
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Lets discuss",
+      body: "Full context here",
+    });
+    assert.ok(request);
+
+    const decided = await decideClaimRequest(
+      adminCtx(),
+      request!.requestId,
       "converted_to_chat",
     );
+    assert.ok(decided);
+    assert.equal(decided!.status, "converted_to_chat");
+    assert.ok(decided!.convertedToChatMessageId);
 
-    assert.ok(converted);
-    assert.equal(converted!.status, "converted_to_chat");
-    assert.ok(converted!.convertedToMessageId, "should reference the seeded chat message");
+    const repositories = await getRepositoryContext();
+    const messages = await repositories.claimMessages.listByClaimId(claim.reimbursementId);
+    const seeded = messages.find((m) => m.messageId === decided!.convertedToChatMessageId);
+    assert.ok(seeded, "convert-to-chat should seed a chat message");
+  });
 
-    const chat = await listChatMessages(
-      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
-      claim.reimbursementId,
-    );
-    assert.ok(chat);
-    assert.equal(chat!.messages.length, 1);
-    assert.ok(chat!.messages[0].body.includes("Converted request"));
+  it("cannot decide an already-decided request", async () => {
+    const emp = await seedEmployee("R11");
+    const claim = await seedClaim(emp.employeeId);
+    const request = await createClaimRequest(employeeCtx(emp.employeeId), claim.reimbursementId, {
+      subject: "Double decide",
+      body: "Only once",
+    });
+    assert.ok(request);
+
+    await decideClaimRequest(adminCtx(), request!.requestId, "rejected", "Not approved");
+    const second = await decideClaimRequest(adminCtx(), request!.requestId, "approved");
+    assert.equal(second, null);
   });
 });

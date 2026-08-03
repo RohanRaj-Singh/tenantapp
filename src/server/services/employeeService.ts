@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID, randomBytes } from "crypto";
 import * as bcrypt from "bcryptjs";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 import type { AuditEventDocument, EmployeeDocument, EmployeeStatus } from "@/src/server/db/documents";
@@ -6,6 +6,9 @@ import type {
   FindEmployeesOptions,
 } from "@/src/server/repositories/contracts";
 import { completeInvitation } from "@/src/server/services/invitationService";
+import { sendEmail } from "@/src/server/services/email/emailService";
+import { passwordResetEmailTemplate } from "@/src/server/services/email/emailTemplates";
+import { INDIVIDUAL_TENANT_ID } from "@/src/server/constants/individual";
 
 // ── Constants ────────────────────────────────────────────────────────────────
 
@@ -17,6 +20,9 @@ export const LOCKOUT_MINUTES = 15;
 
 /** Minimum password length. */
 export const MIN_PASSWORD_LENGTH = 8;
+
+/** Password-reset token time-to-live: 1 hour. */
+export const PASSWORD_RESET_TTL_MS = 60 * 60 * 1000;
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -47,6 +53,7 @@ export type LoginErrorCode =
   | "NOT_REGISTERED"
   | "EMPLOYEE_INACTIVE"
   | "EMPLOYEE_SUSPENDED"
+  | "EMPLOYEE_ARCHIVED"
   | "EMPLOYEE_LOCKED"
   | "INVALID_PASSWORD";
 
@@ -94,7 +101,11 @@ export interface RegisterEmployeeRequest {
   email: string;
   password: string;
   name: string;
+  /** Contact number (also accepted as `phone` for backward compatibility). */
+  phoneNumber?: string;
   phone?: string;
+  bankAccountNumber?: string;
+  bankName?: string;
 }
 
 export interface RegisterEmployeeResponse {
@@ -131,6 +142,8 @@ export interface SuperAdminEmployeeListItem {
   email: string;
   name: string;
   phoneNumber?: string | null;
+  bankAccountNumber?: string | null;
+  bankName?: string | null;
   status: EmployeeStatus;
   tenantId: string;
   tenantName?: string;
@@ -472,6 +485,15 @@ export async function loginEmployee(
     };
   }
 
+  if (employee.status === "archived") {
+    logAuthEvent("LOGIN_BLOCKED", { tenantId, employeeId: employee.employeeId, reason: "archived" });
+    return {
+      success: false,
+      error: "This account has been archived. Please contact your administrator.",
+      errorCode: "EMPLOYEE_ARCHIVED",
+    };
+  }
+
   // 3. Check lockout
   const now = new Date();
   if (employee.lockedUntil) {
@@ -584,6 +606,8 @@ export async function registerEmployee(
   name: string,
   phone?: string,
   inviteToken?: string,
+  bankAccountNumber?: string,
+  bankName?: string,
 ): Promise<SafeEmployee> {
   // Validate name
   if (!name || typeof name !== "string" || name.trim().length === 0) {
@@ -617,7 +641,11 @@ export async function registerEmployee(
     // This is the expected state — continue
   } else if (employee.status === "active") {
     throw new Error("This account has already been registered.");
-  } else if (employee.status === "inactive" || employee.status === "suspended") {
+  } else if (
+    employee.status === "inactive" ||
+    employee.status === "suspended" ||
+    employee.status === "archived"
+  ) {
     throw new Error("This account is not available for registration.");
   }
 
@@ -629,6 +657,8 @@ export async function registerEmployee(
     passwordHash: hashPassword(password),
     name: name.trim(),
     phoneNumber: phone?.trim() || undefined,
+    bankAccountNumber: bankAccountNumber?.trim() || undefined,
+    bankName: bankName?.trim() || undefined,
     mustChangePassword: false,
     lastAccessAt: now,
     updatedAt: now,
@@ -654,6 +684,92 @@ export async function registerEmployee(
   }
 
   return toSafeEmployee(updated);
+}
+
+// ── Individual (Public) Registration ──────────────────────────────────────────
+
+/**
+ * Register a public / individual user (FR-079, FR-082).
+ *
+ * Unlike `registerEmployee` — which requires a pre-seeded employee row created
+ * by an admin — an individual self-registers with no employee record and no
+ * organisation. They are modelled as an employee of the reserved "Individual
+ * Members" tenant so the entire claim / chat / notification pipeline (all of
+ * which require a non-null `tenantId`) works unchanged.
+ *
+ * - The employeeCode is auto-generated (individuals never type one).
+ * - Uniqueness is enforced by email within the individual tenant.
+ * - Individuals are `status: "active"` immediately (no invite-first step).
+ */
+export async function registerIndividual(
+  email: string,
+  password: string,
+  name: string,
+  phone?: string,
+  bankAccountNumber?: string,
+  bankName?: string,
+): Promise<SafeEmployee> {
+  // Validate name
+  if (!name || typeof name !== "string" || name.trim().length === 0) {
+    throw new Error("Name is required.");
+  }
+  if (name.trim().length > 100) {
+    throw new Error("Name must be 100 characters or fewer.");
+  }
+
+  // Validate password strength
+  const pwError = validatePasswordStrength(password);
+  if (pwError) {
+    throw new Error(pwError);
+  }
+
+  const repositories = await getRepositoryContext();
+
+  // Duplicate email check (enumeration-safe: same generic error as other failures)
+  const existing = await repositories.employees.findByTenantAndEmail(
+    INDIVIDUAL_TENANT_ID,
+    email.toLowerCase().trim(),
+  );
+  if (existing) {
+    throw new Error(
+      "This email is already registered. Please sign in instead.",
+    );
+  }
+
+  const now = new Date().toISOString();
+
+  const employee: EmployeeDocument = {
+    employeeId: `emp_${randomUUID()}`,
+    tenantId: INDIVIDUAL_TENANT_ID,
+    employeeCode: `IND-${randomUUID().slice(0, 8).toUpperCase()}`,
+    name: name.trim(),
+    email: email.toLowerCase().trim(),
+    status: "active",
+    passwordHash: hashPassword(password),
+    mustChangePassword: false,
+    phoneNumber: phone?.trim() || undefined,
+    bankAccountNumber: bankAccountNumber?.trim() || undefined,
+    bankName: bankName?.trim() || undefined,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    lastAccessAt: now,
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  await repositories.employees.insert(employee);
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "employee_registered",
+    employeeId: employee.employeeId,
+    tenantId: INDIVIDUAL_TENANT_ID,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  return toSafeEmployee(employee);
 }
 
 // ── Password Change ──────────────────────────────────────────────────────────
@@ -712,6 +828,157 @@ export async function changePassword(
     timestamp: now,
   };
   await repositories.employees.insertAuditEvent(auditEvent);
+
+  return toSafeEmployee(updated);
+}
+
+// ── Self-Service Password Reset (Phase D) ─────────────────────────────────────
+
+/**
+ * Build the marketing-site password reset URL for a given token.
+ * Uses APP_BASE_URL (the public marketing site), defaulting to localhost:3000.
+ */
+function buildResetUrl(token: string): string {
+  const base = (process.env.APP_BASE_URL ?? "http://localhost:3000").replace(/\/+$/, "");
+  return `${base}/reimbursement/employee/reset-password?token=${encodeURIComponent(token)}`;
+}
+
+/**
+ * Request a self-service password reset.
+ *
+ * Enumeration-safe: this function never throws or reveals whether the email
+ * exists. When a matching active (registered) employee is found, it generates
+ * a single-use token (1-hour expiry), stores it, records an audit event, and
+ * emails a reset link. Otherwise it silently no-ops.
+ *
+ * Rate limiting is enforced at the route layer (per email).
+ */
+export async function requestPasswordReset(
+  tenantId: string,
+  email: string,
+): Promise<void> {
+  const repositories = await getRepositoryContext();
+  const employee = await repositories.employees.findByTenantAndEmail(tenantId, email);
+
+  // Silently no-op for unknown / not-yet-registered / non-active accounts.
+  // (A reset only makes sense for an account that already has a password.)
+  if (!employee || employee.status !== "active" || !employee.passwordHash) {
+    logAuthEvent("PASSWORD_RESET_REQUEST_NOOP", { tenantId });
+    return;
+  }
+
+  const token = randomBytes(32).toString("hex");
+  const now = new Date();
+  const expiresAt = new Date(now.getTime() + PASSWORD_RESET_TTL_MS).toISOString();
+
+  await repositories.employees.update(employee.employeeId, {
+    passwordResetToken: token,
+    passwordResetTokenExpiresAt: expiresAt,
+    updatedAt: now.toISOString(),
+  });
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "password_reset",
+    employeeId: employee.employeeId,
+    tenantId,
+    timestamp: now.toISOString(),
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  logAuthEvent("PASSWORD_RESET_REQUEST", { tenantId, employeeId: employee.employeeId });
+
+  // Send the reset email (best-effort — do not leak provider errors to caller).
+  const resetUrl = buildResetUrl(token);
+  try {
+    await sendEmail(
+      employee.email,
+      "Reset your RemedyGCC password",
+      passwordResetEmailTemplate({ name: employee.name ?? "", resetUrl }),
+    );
+  } catch (error) {
+    logAuthEvent("PASSWORD_RESET_EMAIL_FAILED", {
+      tenantId,
+      employeeId: employee.employeeId,
+      error: error instanceof Error ? error.message : String(error),
+    });
+  }
+}
+
+/**
+ * Complete a self-service password reset using a token.
+ *
+ * Validates the new password strength, looks up the employee by token
+ * (global — reset links are token-only), checks the token has not expired,
+ * sets the new password, and clears the single-use token. Also clears any
+ * lockout / failed-attempt state so the user can log in immediately.
+ *
+ * Throws on: weak password, unknown/invalid token, or expired token.
+ */
+export async function resetPassword(
+  token: string,
+  newPassword: string,
+): Promise<SafeEmployee> {
+  // Validate new password strength first (avoids a DB hit for obviously bad input).
+  const pwError = validatePasswordStrength(newPassword);
+  if (pwError) {
+    throw new Error(pwError);
+  }
+
+  if (!token || typeof token !== "string") {
+    throw new Error("This reset link is invalid or has expired.");
+  }
+
+  const repositories = await getRepositoryContext();
+  const employee = await repositories.employees.findByResetToken(token);
+
+  if (!employee || !employee.passwordResetToken || !employee.passwordResetTokenExpiresAt) {
+    throw new Error("This reset link is invalid or has expired.");
+  }
+
+  // Expiry check
+  if (new Date(employee.passwordResetTokenExpiresAt).getTime() <= Date.now()) {
+    // Clear the stale token so it can't be probed again.
+    await repositories.employees.update(employee.employeeId, {
+      passwordResetToken: null,
+      passwordResetTokenExpiresAt: null,
+      updatedAt: new Date().toISOString(),
+    });
+    throw new Error("This reset link is invalid or has expired.");
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employee.employeeId, {
+    passwordHash: hashPassword(newPassword),
+    // Single-use: clear the token so the link can't be reused.
+    passwordResetToken: null,
+    passwordResetTokenExpiresAt: null,
+    mustChangePassword: false,
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    updatedAt: now,
+  });
+
+  if (!updated) {
+    throw new Error("Password reset failed.");
+  }
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "password_changed",
+    employeeId: employee.employeeId,
+    tenantId: employee.tenantId,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  logAuthEvent("PASSWORD_RESET_COMPLETE", {
+    tenantId: employee.tenantId,
+    employeeId: employee.employeeId,
+  });
 
   return toSafeEmployee(updated);
 }
@@ -850,6 +1117,24 @@ export async function unsuspendEmployeeById(
   return unsuspendEmployee(existing.tenantId, employeeId, performedBy);
 }
 
+/**
+ * Archive employee by employee ID (cross-tenant).
+ * Looks up the employee's tenantId internally.
+ */
+export async function archiveEmployeeById(
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing) {
+    return null;
+  }
+
+  return archiveEmployee(existing.tenantId, employeeId, performedBy);
+}
+
 // ── Super Admin Actions ──────────────────────────────────────────────────────
 
 /**
@@ -979,6 +1264,47 @@ export async function unsuspendEmployee(
   const auditEvent: AuditEventDocument = {
     eventId: `audit_${randomUUID()}`,
     action: "employee_unsuspended",
+    employeeId,
+    tenantId,
+    performedBy,
+    timestamp: now,
+  };
+  await repositories.employees.insertAuditEvent(auditEvent);
+
+  return toSafeEmployee(updated);
+}
+
+/**
+ * Archive an employee (soft-delete).
+ * Sets status to "archived" — prevents login but keeps claims/history intact.
+ */
+export async function archiveEmployee(
+  tenantId: string,
+  employeeId: string,
+  performedBy?: string,
+): Promise<SafeEmployee | null> {
+  const repositories = await getRepositoryContext();
+  const existing = await repositories.employees.findById(employeeId);
+
+  if (!existing || existing.tenantId !== tenantId) {
+    return null;
+  }
+
+  const now = new Date().toISOString();
+
+  const updated = await repositories.employees.update(employeeId, {
+    status: "archived",
+    failedLoginAttempts: 0,
+    lockedUntil: null,
+    updatedAt: now,
+  });
+
+  if (!updated) return null;
+
+  // Record audit event
+  const auditEvent: AuditEventDocument = {
+    eventId: `audit_${randomUUID()}`,
+    action: "employee_archived",
     employeeId,
     tenantId,
     performedBy,

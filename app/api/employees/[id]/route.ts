@@ -5,6 +5,7 @@ import {
   getEmployee,
   updateEmployee,
   disableEmployee,
+  archiveEmployee,
 } from "@/src/server/services/employeeService";
 
 export const runtime = "nodejs";
@@ -121,6 +122,36 @@ export async function PATCH(
       { error: "Invalid status value. Use 'active' or 'inactive'.", errorCode: "VALIDATION_ERROR" },
       { status: 400 },
     );
+  } catch (error) {
+    return apiErrorResponse(error);
+  }
+}
+
+export async function DELETE(
+  _request: Request,
+  context: { params: Promise<{ id: string }> },
+) {
+  const auth = await requireTenantApiAuth();
+  if (!auth.success) {
+    return auth.response;
+  }
+
+  try {
+    const { id } = await context.params;
+    const employee = await archiveEmployee(
+      auth.context.tenant.tenantId,
+      id,
+      auth.context.user.id,
+    );
+
+    if (!employee) {
+      return NextResponse.json(
+        { error: "Employee not found." },
+        { status: 404 },
+      );
+    }
+
+    return NextResponse.json(employee, { status: 200 });
   } catch (error) {
     return apiErrorResponse(error);
   }

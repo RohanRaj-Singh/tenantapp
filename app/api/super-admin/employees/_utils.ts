@@ -18,6 +18,8 @@ export async function buildEmployeeDetail(employee: SafeEmployee): Promise<Super
     email: employee.email,
     name: employee.name ?? "",
     phoneNumber: employee.phoneNumber ?? null,
+    bankAccountNumber: employee.bankAccountNumber ?? null,
+    bankName: employee.bankName ?? null,
     status: employee.status,
     tenantId: employee.tenantId,
     tenantName: tenant?.name ?? employee.tenantId,

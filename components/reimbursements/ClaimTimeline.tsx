@@ -8,6 +8,7 @@ const STATUS_CONFIG: Record<string, { label: string; color: string; dot: string 
   pending: { label: "Pending", color: "bg-amber-100 text-amber-700", dot: "bg-amber-500" },
   in_progress: { label: "In Progress", color: "bg-blue-100 text-blue-700", dot: "bg-blue-500" },
   approved: { label: "Approved", color: "bg-emerald-100 text-emerald-700", dot: "bg-emerald-500" },
+  to_be_paid: { label: "To Be Paid", color: "bg-orange-100 text-orange-700", dot: "bg-orange-500" },
   rejected: { label: "Rejected", color: "bg-red-100 text-red-700", dot: "bg-red-500" },
   frozen: { label: "Frozen", color: "bg-sky-100 text-sky-700", dot: "bg-sky-500" },
   paid: { label: "Paid", color: "bg-purple-100 text-purple-700", dot: "bg-purple-500" },

@@ -1,17 +1,31 @@
 import { NextResponse } from "next/server";
 import { apiErrorResponse } from "@/src/server/api/responses";
 import { requireTenantApiAuth } from "@/src/modules/tenant-auth/middleware/tenant-auth";
-import { getBudgetOverview, setBudget, topUpBudget } from "@/src/server/services/budgetService";
+import {
+  getBudgetOverview,
+  setBudget,
+  topUpBudget,
+} from "@/src/server/services/budgetService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
 
-export async function GET() {
+function parseYear(value: unknown): number | undefined {
+  if (value === undefined || value === null || value === "") {
+    return undefined;
+  }
+  const parsed = Number.parseInt(String(value), 10);
+  return Number.isNaN(parsed) ? undefined : parsed;
+}
+
+export async function GET(request: Request) {
   const auth = await requireTenantApiAuth();
   if (!auth.success) return auth.response;
 
   try {
-    const overview = await getBudgetOverview(auth.context.tenant.tenantId);
+    const url = new URL(request.url);
+    const year = parseYear(url.searchParams.get("year"));
+    const overview = await getBudgetOverview(auth.context.tenant.tenantId, year);
     return NextResponse.json(overview, { status: 200 });
   } catch (error) {
     return apiErrorResponse(error);
@@ -24,7 +38,8 @@ export async function POST(request: Request) {
 
   try {
     const body = await request.json();
-    const { action, amount } = body;
+    const { action, amount, year: yearParam, reason } = body;
+    const year = parseYear(yearParam) ?? new Date().getFullYear();
 
     if (!action || !amount || typeof amount !== "number" || amount <= 0) {
       return NextResponse.json(
@@ -34,12 +49,23 @@ export async function POST(request: Request) {
     }
 
     if (action === "set") {
-      const result = await setBudget(auth.context.tenant.tenantId, amount, auth.context.user.id);
+      const result = await setBudget(
+        auth.context.tenant.tenantId,
+        year,
+        amount,
+        auth.context.user.id,
+      );
       return NextResponse.json(result, { status: 200 });
     }
 
     if (action === "topup") {
-      const overview = await topUpBudget(auth.context.tenant.tenantId, amount, auth.context.user.id);
+      const overview = await topUpBudget(
+        auth.context.tenant.tenantId,
+        year,
+        amount,
+        auth.context.user.id,
+        typeof reason === "string" && reason.trim() ? reason.trim() : undefined,
+      );
       return NextResponse.json(overview, { status: 200 });
     }
 

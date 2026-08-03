@@ -49,6 +49,10 @@ export async function GET(request: NextRequest) {
     const dateTo = searchParams.get("dateTo") ?? undefined;
     const skip = parseInt(searchParams.get("skip") ?? "0", 10);
     const limit = parseInt(searchParams.get("limit") ?? "25", 10);
+    const rawSortBy = searchParams.get("sortBy");
+    const rawSortOrder = searchParams.get("sortOrder");
+    const sortBy = rawSortBy === "updatedAt" || rawSortBy === "status" ? rawSortBy : undefined;
+    const sortOrder = rawSortOrder === "asc" ? "asc" : rawSortOrder === "desc" ? "desc" : undefined;
 
     const repositories = await getRepositoryContext();
 
@@ -59,6 +63,8 @@ export async function GET(request: NextRequest) {
       search,
       skip,
       limit: Math.min(limit, 500),
+      sortBy,
+      sortOrder,
     });
 
     let claims = result.reimbursements;

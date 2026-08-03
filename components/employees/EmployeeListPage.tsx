@@ -8,7 +8,7 @@ interface Employee {
   employeeId: string;
   employeeCode: string;
   email: string;
-  status: "not_registered" | "active" | "inactive" | "suspended";
+  status: "not_registered" | "active" | "inactive" | "suspended" | "archived";
   lastAccessAt: string | null;
   createdAt: string;
   updatedAt: string;
@@ -28,6 +28,7 @@ const STATUS_CONFIG: Record<EmployeeStatus, { label: string; color: string }> = 
   active: { label: "Active", color: "bg-emerald-100 text-emerald-700" },
   inactive: { label: "Inactive", color: "bg-amber-100 text-amber-700" },
   suspended: { label: "Suspended", color: "bg-red-100 text-red-700" },
+  archived: { label: "Archived", color: "bg-slate-200 text-slate-700" },
 };
 
 function formatDate(dateStr: string) {
@@ -141,6 +142,7 @@ export default function EmployeeListPage() {
           <option value="active">Active</option>
           <option value="inactive">Inactive</option>
           <option value="suspended">Suspended</option>
+          <option value="archived">Archived</option>
         </select>
       </div>
 

@@ -7,6 +7,7 @@ import {
   markThreadRead,
   postChatMessage,
   postOfficialUpdate,
+  postSystemMessage,
 } from "@/src/server/services/claimMessageService";
 import { unreadCount } from "@/src/server/services/notificationService";
 import type { ClaimMessageParticipant } from "@/src/server/db/documents";
@@ -65,7 +66,7 @@ describe("Claim Chat", () => {
 
     assert.ok(msg);
     assert.equal(msg!.body, "Hello reviewer");
-    assert.equal(msg!.type, "text");
+    assert.equal(msg!.type, "message");
     assert.equal(msg!.participant.role, "employee");
   });
 
@@ -80,11 +81,13 @@ describe("Claim Chat", () => {
 
     const view = await listChatMessages({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId);
     assert.ok(view);
-    assert.equal(view!.messages.length, 2);
-    assert.equal(view!.messages[0].body, "from employee");
-    assert.equal(view!.messages[1].body, "from admin");
-    // Employee's own message is not counted as unread; the admin's is.
-    assert.equal(view!.unreadCount, 1);
+    const userMessages = view!.messages.filter((m) => m.type !== "system");
+    assert.equal(userMessages.length, 2);
+    assert.equal(userMessages[0].body, "from employee");
+    assert.equal(userMessages[1].body, "from admin");
+    // Unread for the employee: the "Claim submitted" system event + the admin's message
+    // (their own message is not counted).
+    assert.equal(view!.unreadCount, 2);
   });
 
   it("employee cannot access a claim they do not own", async () => {
@@ -124,7 +127,9 @@ describe("Claim Chat", () => {
       claim.reimbursementId,
     );
     assert.ok(view);
-    assert.equal(view!.messages.length, 1);
+    const userMessages = view!.messages.filter((m) => m.type !== "system");
+    assert.equal(userMessages.length, 1);
+    assert.equal(userMessages[0].body, "oversight");
   });
 
   it("markThreadRead clears unread count and excludes the author's own messages", async () => {
@@ -137,7 +142,9 @@ describe("Claim Chat", () => {
     await postChatMessage({ tenantId: TENANT_ID, participant: admin }, claim.reimbursementId, "two");
 
     const marked = await markThreadRead({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId);
-    assert.equal(marked, 1, "only the admin's message should be newly marked read");
+    // Newly marked read for the employee: the "Claim submitted" system event + the admin's
+    // message (their own message is excluded).
+    assert.equal(marked, 2, "system event + admin message should be newly marked read");
 
     const view = await listChatMessages({ tenantId: TENANT_ID, participant: employee }, claim.reimbursementId);
     assert.equal(view!.unreadCount, 0);
@@ -173,9 +180,27 @@ describe("Claim Chat", () => {
       claim.reimbursementId,
     );
     assert.ok(view);
-    assert.equal(view!.messages.length, 1);
-    assert.equal(view!.messages[0].type, "official_update");
-    assert.equal(view!.messages[0].participant.role, "tenantAdmin");
-    assert.equal(view!.messages[0].body, "Currently with finance");
+    const official = view!.messages.find((m) => m.type === "official_update");
+    assert.ok(official, "expected an official_update message in the thread");
+    assert.equal(official!.participant.role, "tenantAdmin");
+    assert.equal(official!.body, "Currently with finance");
+  });
+
+  it("postSystemMessage records a read-only system event in chat", async () => {
+    const emp = await seedEmployee("CC9");
+    const claim = await seedClaim(emp.employeeId);
+
+    await postSystemMessage({ tenantId: TENANT_ID, claimId: claim.reimbursementId, body: "Claim approved" });
+
+    const view = await listChatMessages(
+      { tenantId: TENANT_ID, participant: employeeParticipant(emp.employeeId) },
+      claim.reimbursementId,
+    );
+    assert.ok(view);
+    const systemMessages = view!.messages.filter((m) => m.type === "system");
+    // One from createReimbursement ("Claim submitted") + the one we just posted.
+    assert.equal(systemMessages.length, 2);
+    assert.equal(systemMessages[systemMessages.length - 1].body, "Claim approved");
+    assert.equal(systemMessages[0].participant.role, "system");
   });
 });

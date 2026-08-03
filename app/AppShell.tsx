@@ -21,6 +21,7 @@ export function AppShell({ children }: AppShellProps) {
     "/change-password",
     "/employees",
     "/reimbursements",
+    "/clinic",
   ];
   const isProtectedSurface =
     pathname != null &&
