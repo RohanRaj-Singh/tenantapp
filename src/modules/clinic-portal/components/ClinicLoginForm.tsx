@@ -5,7 +5,7 @@ import { AlertCircle, Loader2, LockKeyhole, Mail, Stethoscope } from "lucide-rea
 import {
   CLINIC_CHANGE_PASSWORD_PATH,
   CLINIC_CLAIMS_PATH,
-} from "../guards/require-clinic-user";
+} from "../guards/routes";
 
 export function ClinicLoginForm() {
   const [email, setEmail] = useState("");

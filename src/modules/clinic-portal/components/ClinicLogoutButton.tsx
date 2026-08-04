@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { LogOut, Loader2 } from "lucide-react";
-import { CLINIC_LOGIN_PATH } from "../guards/require-clinic-user";
+import { CLINIC_LOGIN_PATH } from "../guards/routes";
 
 export function ClinicLogoutButton() {
   const router = useRouter();

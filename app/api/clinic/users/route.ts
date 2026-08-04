@@ -99,9 +99,13 @@ export async function GET(request: NextRequest) {
       limit: Math.min(parseInt(searchParams.get("limit") ?? "50", 10), 500),
     });
 
+    // Strip the password credential from the response (the binding is marked used
+    // via `void` so no unused-variable lint rule is triggered).
     const clinicUsers = result.clinicUsers.map(
-      // eslint-disable-next-line @typescript-eslint/no-unused-vars
-      ({ passwordHash: _hash, ...safe }) => safe,
+      ({ passwordHash, ...safe }) => {
+        void passwordHash;
+        return safe;
+      },
     );
 
     return NextResponse.json(

@@ -3,7 +3,7 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { AlertCircle, CheckCircle2, Loader2, LockKeyhole } from "lucide-react";
-import { CLINIC_CLAIMS_PATH } from "../guards/require-clinic-user";
+import { CLINIC_CLAIMS_PATH } from "../guards/routes";
 
 interface ClinicChangePasswordFormProps {
   /** True when the password change is mandatory (e.g. first login). */

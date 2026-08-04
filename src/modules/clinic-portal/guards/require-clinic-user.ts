@@ -1,10 +1,15 @@
 import { redirect } from "next/navigation";
 import { getCurrentClinicAuthValidation } from "@/src/modules/clinic-auth/middleware/clinic-auth";
 import type { ClinicAuthContext } from "@/src/modules/clinic-auth/contracts/types";
+import {
+  CLINIC_LOGIN_PATH,
+  CLINIC_CHANGE_PASSWORD_PATH,
+  CLINIC_CLAIMS_PATH,
+} from "./routes";
 
-export const CLINIC_LOGIN_PATH = "/clinic/login";
-export const CLINIC_CHANGE_PASSWORD_PATH = "/clinic/change-password";
-export const CLINIC_CLAIMS_PATH = "/clinic/claims";
+// Re-export the route paths for server-side callers that imported them from the
+// guard module. Client components must import from "./routes" (client-safe).
+export { CLINIC_LOGIN_PATH, CLINIC_CHANGE_PASSWORD_PATH, CLINIC_CLAIMS_PATH } from "./routes";
 
 interface RequireClinicUserOptions {
   /**
