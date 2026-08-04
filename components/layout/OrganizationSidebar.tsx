@@ -12,7 +12,6 @@ import {
   Receipt,
   Settings,
   Shield,
-  ShieldCheck,
   Smile,
   FileText,
   TrendingUp,
@@ -96,32 +95,41 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
 
     return (
       <div className="space-y-1">
-        <button
-          type="button"
-          onClick={() => setExecutiveExpanded(!executiveExpanded)}
-          className={cn(
-            "flex w-full items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
-            isExecutiveActive
-              ? "tenant-sidebar-link--active font-medium"
-              : "tenant-sidebar-link",
-          )}
-          title={copy.dashboard.navigation["executive-summary"].name}
-        >
-          <Icon className="h-5 w-5 flex-shrink-0" />
-          {sidebarOpen ? (
-            <>
+        <div className="flex items-center gap-1">
+          <Link
+            href={execItem.href}
+            className={cn(
+              "flex min-w-0 flex-1 items-center gap-3 rounded-lg px-3 py-2.5 transition-colors",
+              isExecutiveActive
+                ? "tenant-sidebar-link--active font-medium"
+                : "tenant-sidebar-link",
+            )}
+            title={copy.dashboard.navigation["executive-summary"].name}
+          >
+            <Icon className="h-5 w-5 flex-shrink-0" />
+            {sidebarOpen ? (
               <span className="flex-1 truncate text-left">
                 {copy.dashboard.navigation["executive-summary"].name}
               </span>
+            ) : null}
+          </Link>
+          {sidebarOpen ? (
+            <button
+              type="button"
+              onClick={() => setExecutiveExpanded(!executiveExpanded)}
+              className="shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100"
+              aria-label="Toggle Executive Summary submenu"
+              title={executiveExpanded ? "Collapse submenu" : "Expand submenu"}
+            >
               <ChevronDown
                 className={cn(
                   "h-4 w-4 transition-transform",
                   executiveExpanded ? "rotate-0" : "-rotate-90",
                 )}
               />
-            </>
+            </button>
           ) : null}
-        </button>
+        </div>
 
         {sidebarOpen && executiveExpanded ? (
           <div className="ml-2 space-y-0.5 border-l border-slate-200 pl-3">
