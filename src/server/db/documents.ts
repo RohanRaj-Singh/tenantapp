@@ -232,6 +232,12 @@ export interface PaymentRecordDocument extends TimestampFields {
   clinicName?: string;
   amount: number;
   status: PaymentRecordStatus;
+  /** Lightweight reconciliation field — human-readable reference (e.g. `PAY-2026-000042`). */
+  paymentReference?: string;
+  /** Lightweight reconciliation field — optional bank/transfer reference supplied by the payee. */
+  bankReference?: string;
+  /** Lightweight reconciliation note (e.g. `Paid via bank transfer to Eunoia Clinic`). */
+  notes?: string;
   paidAt?: string;
   paidBy?: string;
   method?: string;
@@ -305,7 +311,7 @@ export interface BudgetHistoryDocument {
   createdAt: string;
 }
 
-export type NotificationRecipientType = "employee" | "tenantAdmin" | "superAdmin";
+export type NotificationRecipientType = "employee" | "tenantAdmin" | "superAdmin" | "clinic";
 
 export type NotificationType =
   | "claim_approved"
@@ -392,7 +398,7 @@ export interface ClaimRequestDocument extends TimestampFields {
   convertedToChatMessageId?: string;
 }
 
-export type InvoiceStatus = "draft" | "generated" | "issued" | "paid";
+export type InvoiceStatus = "draft" | "generated" | "issued" | "paid" | "archived";
 
 export interface InvoiceLineItem {
   claimId: string;
@@ -401,6 +407,9 @@ export interface InvoiceLineItem {
   amount: number;
   sessionCount?: number;
   serviceDate?: string;
+  /** Claim's immutable bank snapshot carried through for payout traceability. */
+  bankAccountNumber?: string;
+  bankName?: string;
 }
 
 export interface InvoiceDocument extends TimestampFields {

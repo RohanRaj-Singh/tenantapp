@@ -37,6 +37,159 @@ export interface ListInvoicesParams extends ListInvoicesOptions {
   tenantId?: string;
 }
 
+// ── Accounts Receivable ledger (org-first) ──────────────────────────────────
+
+export interface ArOrgSummary {
+  orgId: string;
+  orgName: string;
+  totalOutstanding: number;
+  overdueAmount: number;
+  invoiceCount: number;
+  lastInvoiceDate?: string;
+  lastInvoiceNumber?: string;
+  lastPaymentDate?: string;
+  lastPaymentAmount?: number;
+  arStatus: "current" | "1-30" | "31-60" | "61-90" | "90+";
+  aging: { current: number; "1-30": number; "31-60": number; "61-90": number; "90+": number };
+}
+
+export interface ArLedgerResult {
+  organizations: ArOrgSummary[];
+  total: number;
+  /** Invoices settled (paid) by organizations in the current calendar month. */
+  paidThisMonth: { count: number; amount: number };
+}
+
+const AGING_BUCKETS = [
+  { key: "1-30" as const, max: 30 },
+  { key: "31-60" as const, max: 60 },
+  { key: "61-90" as const, max: 90 },
+];
+
+function daysSince(iso?: string): number {
+  if (!iso) return 0;
+  return Math.max(0, Math.floor((Date.now() - new Date(iso).getTime()) / 86400000));
+}
+
+/**
+ * Build the org-first Accounts Receivable ledger.
+ *
+ * Answers "who owes Remedy money?": issued invoices not yet paid are the
+ * receivable; aging buckets are computed from the issue date. Draft/archived
+ * invoices have $0 AR impact. Lightweight reconciliation fields (paidAt/paidBy)
+ * drive the per-org last-payment summary.
+ */
+export async function getArLedger(
+  opts: { tenantId?: string; status?: string; daysOutstanding?: string; search?: string } = {},
+): Promise<ArLedgerResult> {
+  const repositories = await getRepositoryContext();
+  const result = await repositories.invoices.findAll({
+    tenantId: opts.tenantId,
+    status: opts.status || undefined,
+    skip: 0,
+    limit: 100_000,
+  });
+
+  // "Paid This Month" = invoice payments received from organizations in the
+  // current calendar month (cash in to Remedy).
+  const now = new Date();
+  const monthPrefix = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, "0")}`;
+  let paidThisMonthCount = 0;
+  let paidThisMonthAmount = 0;
+
+  const orgMap = new Map<string, ArOrgSummary>();
+
+  for (const invoice of result.invoices) {
+    if (invoice.status === "paid" && invoice.paidAt?.startsWith(monthPrefix)) {
+      paidThisMonthCount += 1;
+      paidThisMonthAmount += invoice.totalAmount;
+    }
+    let org = orgMap.get(invoice.tenantId);
+    if (!org) {
+      org = {
+        orgId: invoice.tenantId,
+        orgName: invoice.tenantId,
+        totalOutstanding: 0,
+        overdueAmount: 0,
+        invoiceCount: 0,
+        aging: { current: 0, "1-30": 0, "31-60": 0, "61-90": 0, "90+": 0 },
+        arStatus: "current",
+      };
+      orgMap.set(invoice.tenantId, org);
+    }
+
+    // Outstanding: issued invoices not yet paid.
+    if (invoice.status === "issued") {
+      const days = daysSince(invoice.issuedAt);
+      org.totalOutstanding += invoice.totalAmount;
+      org.invoiceCount += 1;
+      if (days > 90) org.aging["90+"] += invoice.totalAmount;
+      else if (days > 60) org.aging["61-90"] += invoice.totalAmount;
+      else if (days > 30) org.aging["31-60"] += invoice.totalAmount;
+      else org.aging["1-30"] += invoice.totalAmount;
+    }
+
+    if (invoice.status === "issued" && daysSince(invoice.issuedAt) > 30) {
+      org.overdueAmount += invoice.totalAmount;
+    }
+
+    // Last invoice (by issue/generation time).
+    const invoiceStamp = invoice.issuedAt ?? invoice.generatedAt;
+    if (!org.lastInvoiceDate || (invoiceStamp && invoiceStamp > org.lastInvoiceDate)) {
+      org.lastInvoiceDate = invoiceStamp;
+      org.lastInvoiceNumber = invoice.invoiceNumber;
+    }
+
+    // Last payment.
+    if (invoice.status === "paid" && invoice.paidAt) {
+      if (!org.lastPaymentDate || invoice.paidAt > org.lastPaymentDate) {
+        org.lastPaymentDate = invoice.paidAt;
+        org.lastPaymentAmount = invoice.totalAmount;
+      }
+    }
+  }
+
+  // Resolve tenant display names.
+  const tenants = await Promise.all(
+    Array.from(orgMap.keys()).map((tid) => repositories.tenants.findByTenantId(tid)),
+  );
+  for (const tenant of tenants) {
+    if (!tenant) continue;
+    const org = orgMap.get(tenant.tenantId);
+    if (org) org.orgName = tenant.name ?? tenant.tenantId;
+  }
+
+  const organizations = Array.from(orgMap.values());
+  for (const org of organizations) {
+    org.arStatus =
+      org.aging["90+"] > 0 ? "90+" :
+      org.aging["61-90"] > 0 ? "61-90" :
+      org.aging["31-60"] > 0 ? "31-60" :
+      org.aging["1-30"] > 0 ? "1-30" : "current";
+  }
+
+  // Apply search (org name or last invoice number) + days-outstanding filters.
+  let filtered = organizations;
+  const query = opts.search?.trim().toLowerCase();
+  if (query) {
+    filtered = filtered.filter(
+      (o) =>
+        o.orgName.toLowerCase().includes(query) ||
+        (o.lastInvoiceNumber ?? "").toLowerCase().includes(query),
+    );
+  }
+  if (opts.daysOutstanding === "current") filtered = filtered.filter((o) => o.arStatus === "current" || o.arStatus === "1-30");
+  else if (opts.daysOutstanding) filtered = filtered.filter((o) => o.arStatus === opts.daysOutstanding);
+
+  filtered.sort((a, b) => b.totalOutstanding - a.totalOutstanding);
+
+  return {
+    organizations: filtered,
+    total: filtered.length,
+    paidThisMonth: { count: paidThisMonthCount, amount: paidThisMonthAmount },
+  };
+}
+
 /**
  * Build a unique, human-readable invoice number.
  * Format: `INV-<tenantPrefix>-<year>-<timestampSuffix>` (e.g. `INV-OMTEL-2026-12345678`).
@@ -125,6 +278,10 @@ export async function generateInvoice(
     amount: claim.amount,
     sessionCount: claim.sessionCount,
     serviceDate: claim.serviceDate,
+    // Carry the claim's immutable bank snapshot so payout details remain
+    // traceable from the invoice back to the financial record (the claim).
+    bankAccountNumber: claim.bankAccountNumber,
+    bankName: claim.bankName,
   }));
 
   const totalAmount = eligible.reduce((sum, claim) => sum + claim.amount, 0);
@@ -146,19 +303,11 @@ export async function generateInvoice(
 
   await repositories.invoices.insert(invoice);
 
-  // Phase 5 — invoicing an approved claim marks it `to_be_paid`: the claim
-  // enters the payment queue so the super admin can run the payout. Each queue
-  // transition also writes a PaymentRecord ledger entry linked to this invoice.
-  for (const claim of eligible) {
-    await queueForPayment(
-      tenantId,
-      claim.reimbursementId,
-      generatedBy,
-      undefined,
-      invoice.invoiceId,
-    );
-  }
-
+  // NOTE: Invoicing does NOT move claims to `to_be_paid`. Per the approved
+  // financial flow, approved claims only enter the payment queue AFTER the
+  // organization pays Remedy (see markInvoicePaid). This keeps Accounts
+  // Receivable accurate: an issued-but-unpaid invoice is an asset, not a
+  // payout obligation.
   return invoice;
 }
 
@@ -242,7 +391,14 @@ export async function issueInvoice(
   return updated!;
 }
 
-/** Mark an issued invoice as paid: `issued` → `paid`. */
+/**
+ * Mark an issued invoice as paid: `issued` → `paid`.
+ *
+ * On payment, the invoice's linked approved claims are queued for payment
+ * (`approved → to_be_paid`), writing a PaymentRecord ledger entry per claim.
+ * This is the approved financial flow: claims move to the payout queue only
+ * after the organization has paid Remedy — not at invoice generation.
+ */
 export async function markInvoicePaid(
   id: string,
   actor: string,
@@ -261,6 +417,42 @@ export async function markInvoicePaid(
     paidAt: now,
     updatedAt: now,
   });
+
+  // Queue each linked approved claim for the clinic payout (`approved → to_be_paid`).
+  for (const item of invoice.lineItems) {
+    const claim = await repositories.reimbursements.findById(item.claimId);
+    if (claim && claim.status === "approved") {
+      await queueForPayment(
+        invoice.tenantId,
+        claim.reimbursementId,
+        actor,
+        undefined,
+        invoice.invoiceId,
+      );
+    }
+  }
+
+  return updated!;
+}
+
+/** Archive a settled invoice: `draft`/`paid` → `archived`. */
+export async function archiveInvoice(
+  id: string,
+  actor: string,
+): Promise<InvoiceDocument> {
+  const repositories = await getRepositoryContext();
+  const invoice = await repositories.invoices.findById(id);
+  if (!invoice) {
+    throw new ApiError(404, "INVOICE_NOT_FOUND", "Invoice not found.");
+  }
+
+  assertInvoiceTransition(invoice, ["draft", "paid"], "archived");
+
+  const now = new Date().toISOString();
+  const updated = await repositories.invoices.update(id, {
+    status: "archived",
+    updatedAt: now,
+  });
   return updated!;
 }
 
@@ -270,6 +462,54 @@ function csvEscape(value: string | number | undefined): string {
     return `"${raw.replace(/"/g, '""')}"`;
   }
   return raw;
+}
+
+/**
+ * Export the org-first AR ledger as CSV.
+ * Columns: Organization, Outstanding, Overdue, Open Invoices, Aging status.
+ */
+export async function exportArLedgerCsv(
+  opts: { tenantId?: string } = {},
+): Promise<string> {
+  const ledger = await getArLedger(opts);
+  const header = ["Organization", "Outstanding", "Overdue (>30)", "Open Invoices", "Aging Status"];
+  const rows = ledger.organizations.map((o) => [
+    csvEscape(o.orgName),
+    csvEscape(o.totalOutstanding.toFixed(3)),
+    csvEscape(o.overdueAmount.toFixed(3)),
+    csvEscape(o.invoiceCount),
+    csvEscape(o.arStatus),
+  ]);
+  return [header.join(","), ...rows.map((row) => row.join(","))].join("\n");
+}
+
+/**
+ * Export one organization's invoices as CSV.
+ * Columns: Invoice #, Amount, Outstanding, Status, Issue Date, Paid Date.
+ */
+export async function exportOrgInvoicesCsv(
+  tenantId: string,
+  scope: InvoiceScope,
+): Promise<string> {
+  if (scope.role === "tenantAdmin" && scope.tenantId !== tenantId) {
+    throw new ApiError(403, "FORBIDDEN", "Tenant admin may only export their own invoices.");
+  }
+  const repositories = await getRepositoryContext();
+  const result = await repositories.invoices.findAll({
+    tenantId,
+    skip: 0,
+    limit: 100_000,
+  });
+  const header = ["Invoice #", "Total", "Outstanding", "Status", "Issue Date", "Paid Date"];
+  const rows = result.invoices.map((inv) => [
+    csvEscape(inv.invoiceNumber),
+    csvEscape(inv.totalAmount.toFixed(3)),
+    csvEscape(inv.status === "issued" ? inv.totalAmount.toFixed(3) : "0.000"),
+    csvEscape(inv.status),
+    csvEscape(inv.issuedAt?.slice(0, 10)),
+    csvEscape(inv.paidAt?.slice(0, 10)),
+  ]);
+  return [header.join(","), ...rows.map((row) => row.join(","))].join("\n");
 }
 
 /**

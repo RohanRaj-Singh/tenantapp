@@ -104,6 +104,10 @@ export async function GET(request: NextRequest) {
         receiptHash: c.receiptHash,
         serviceDate: c.serviceDate,
         status: c.status,
+        // Claim's immutable bank snapshot — used for payouts. The claim is the
+        // financial record; the employee profile is only a prefill source.
+        bankAccountNumber: c.bankAccountNumber,
+        bankName: c.bankName,
         reviewedBy: c.reviewedBy,
         reviewedAt: c.reviewedAt,
         notes: c.notes,

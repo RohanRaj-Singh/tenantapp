@@ -544,7 +544,10 @@ export default function ReimbursementListPage() {
               <p className="mt-0.5 text-lg font-semibold text-yellow-600">{formatCurrency(budget.reservedAmount)}</p>
             </div>
             <div>
-              <p className="text-xs text-slate-400">Committed</p>
+              <p className="text-xs text-slate-400"
+                title="Committed = approved + queued + paid. Paid stays inside committed and does not free up Available again.">
+                Committed
+              </p>
               <p className="mt-0.5 text-lg font-semibold text-amber-600">{formatCurrency(budget.committedAmount)}</p>
               {budget.paidAmount > 0 && (
                 <p className="text-xs text-slate-400">(Paid {formatCurrency(budget.paidAmount)})</p>

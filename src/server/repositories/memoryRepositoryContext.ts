@@ -1099,7 +1099,7 @@ class MemoryNotificationsRepository implements NotificationsRepositoryContract {
     const matches = Array.from(this.store.notifications.values())
       .filter(
         (n) =>
-          n.tenantId === tenantId &&
+          (recipientType === "clinic" || n.tenantId === tenantId) &&
           n.recipientType === recipientType &&
           n.recipientId === recipientId &&
           (!unreadOnly || !n.read),
@@ -1115,7 +1115,7 @@ class MemoryNotificationsRepository implements NotificationsRepositoryContract {
   ): Promise<number> {
     return Array.from(this.store.notifications.values()).filter(
       (n) =>
-        n.tenantId === tenantId &&
+        (recipientType === "clinic" || n.tenantId === tenantId) &&
         n.recipientType === recipientType &&
         n.recipientId === recipientId &&
         !n.read,
@@ -1131,7 +1131,7 @@ class MemoryNotificationsRepository implements NotificationsRepositoryContract {
     const current = this.store.notifications.get(notificationId);
     if (
       !current ||
-      current.tenantId !== tenantId ||
+      (recipientType !== "clinic" && current.tenantId !== tenantId) ||
       current.recipientType !== recipientType ||
       current.recipientId !== recipientId
     ) {
@@ -1156,7 +1156,7 @@ class MemoryNotificationsRepository implements NotificationsRepositoryContract {
     let count = 0;
     for (const [id, n] of this.store.notifications.entries()) {
       if (
-        n.tenantId === tenantId &&
+        (recipientType === "clinic" || n.tenantId === tenantId) &&
         n.recipientType === recipientType &&
         n.recipientId === recipientId &&
         !n.read
@@ -1284,6 +1284,13 @@ class MemoryPaymentRecordsRepository implements PaymentRecordsRepositoryContract
       .filter((r) => r.status === status)
       .sort((a, b) => b.createdAt.localeCompare(a.createdAt))
       .map((r) => ({ ...r }));
+  }
+
+  async incrementCounter(counterId: string): Promise<number> {
+    const current = this.store.counters.get(counterId) ?? 0;
+    const next = current + 1;
+    this.store.counters.set(counterId, next);
+    return next;
   }
 }
 

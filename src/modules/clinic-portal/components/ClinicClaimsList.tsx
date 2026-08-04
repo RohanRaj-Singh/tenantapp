@@ -15,7 +15,7 @@ const STATUS_FILTERS = [
   { value: "pending", label: "Pending" },
   { value: "in_progress", label: "In Progress" },
   { value: "approved", label: "Approved" },
-  { value: "to_be_paid", label: "To Be Paid" },
+  { value: "to_be_paid", label: "Awaiting Payout" },
   { value: "rejected", label: "Rejected" },
   { value: "frozen", label: "Frozen" },
   { value: "paid", label: "Paid" },

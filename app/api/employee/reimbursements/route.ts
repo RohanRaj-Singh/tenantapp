@@ -84,6 +84,8 @@ export async function GET(request: NextRequest) {
     // Strip any sensitive fields from response.
     // `latestUpdate` is the most recent history entry (status change, reviewer note,
     // or progress update) so the employee portal can surface the latest update in list rows.
+    // Bank details (bankAccountNumber/bankName) are the claim's immutable payout
+    // snapshot and are returned so the employee can confirm what is on file.
     const safe = result.reimbursements.map((r) => {
       const history = r.history ?? [];
       const latest = history[history.length - 1];
@@ -100,6 +102,8 @@ export async function GET(request: NextRequest) {
         clinicName: r.clinicName,
         receiptUrl: r.receiptUrl,
         status: r.status,
+        bankAccountNumber: r.bankAccountNumber,
+        bankName: r.bankName,
         createdAt: r.createdAt,
         updatedAt: r.updatedAt,
         latestUpdate: latest
@@ -183,6 +187,20 @@ export async function POST(request: NextRequest) {
     if (description.trim().length > 2000) {
       return NextResponse.json(
         { error: "Description must be 2000 characters or less." },
+        { status: 400 },
+      );
+    }
+
+    // Bank details are required so every claim carries a complete payout snapshot.
+    if (!bankAccountNumber || typeof bankAccountNumber !== "string" || !bankAccountNumber.trim()) {
+      return NextResponse.json(
+        { error: "Bank account number is required." },
+        { status: 400 },
+      );
+    }
+    if (!bankName || typeof bankName !== "string" || !bankName.trim()) {
+      return NextResponse.json(
+        { error: "Bank name is required." },
         { status: 400 },
       );
     }

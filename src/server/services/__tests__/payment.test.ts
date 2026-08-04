@@ -12,7 +12,14 @@ import {
   queueForPayment,
   processPayments,
   listPaymentQueue,
+  listPaymentOperations,
+  getPaymentDetail,
 } from "@/src/server/services/paymentService";
+import {
+  generateInvoice,
+  issueInvoice,
+  markInvoicePaid,
+} from "@/src/server/services/invoiceService";
 
 const TENANT_ID = "tenant-payment-test";
 const OTHER_TENANT = "tenant-payment-other";
@@ -225,6 +232,219 @@ describe("Payment Service — processPayments", () => {
     const paid = await repositories.reimbursements.findById(claim.reimbursementId);
     assert.equal(paid!.status, "paid");
     assert.ok(paid!.history!.some((h) => h.status === "paid"), "history must include a paid entry");
+  });
+
+  it("assigns a payment reference when a payout is finalized", async () => {
+    const tenantId = "tenant-payment-ref";
+    const claim = await createApprovedClaim(tenantId, "R1", 120, { clinicId: "clinic_r", clinicName: "R Clinic" });
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR });
+    assert.equal(result.processed, 1);
+
+    const repositories = await getRepositoryContext();
+    const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
+    assert.equal(record!.status, "paid");
+    assert.match(record!.paymentReference ?? "", /^PAY-\d{4}-\d{6}$/, "payment reference uses PAY-YYYY-NNNNNN format");
+  });
+});
+
+describe("Payment Service — claim bank details snapshot", () => {
+  it("carries the claim's own bank snapshot into the workspace", async () => {
+    const tenantId = "tenant-payment-bank-snapshot";
+    const emp = await createEmployee(tenantId, {
+      employeeCode: "BK1",
+      email: "bk1@example.com",
+      bankAccountNumber: "EMP-PROFILE-ACCT",
+      bankName: "Bank Muscat",
+    });
+    const claim = await createEmployeeReimbursement(tenantId, emp.employeeId, "Bank Test Employee", {
+      clinicId: "clinic_bk",
+      clinicName: "BK Clinic",
+      amount: 150,
+      description: "Bank snapshot claim",
+      bankAccountNumber: "CLAIM-SNAPSHOT-ACCT",
+      bankName: "Bank Dhofar",
+    });
+    await approveClaim(tenantId, claim.reimbursementId);
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await listPaymentOperations({ tenantId });
+    const org = result.organizations.find((o) => o.tenantId === tenantId)!;
+    const workspaceClaim = org.clinics[0]!.claims[0]!;
+
+    // The claim's own snapshot wins over the employee profile.
+    assert.equal(workspaceClaim.bankAccountNumber, "CLAIM-SNAPSHOT-ACCT");
+    assert.equal(workspaceClaim.effectiveBankAccountNumber, "CLAIM-SNAPSHOT-ACCT");
+    assert.equal(workspaceClaim.bankSource, "claim");
+  });
+
+  it("falls back to the employee profile for legacy claims missing bank details", async () => {
+    const tenantId = "tenant-payment-bank-fallback";
+    const emp = await createEmployee(tenantId, {
+      employeeCode: "BK2",
+      email: "bk2@example.com",
+      bankAccountNumber: "EMP-PROFILE-ACCT",
+      bankName: "Bank Muscat",
+    });
+    // Legacy claim: no bank details on the claim.
+    const claim = await createEmployeeReimbursement(tenantId, emp.employeeId, "Bank Test Employee", {
+      clinicId: "clinic_bk2",
+      clinicName: "BK2 Clinic",
+      amount: 200,
+      description: "Legacy claim without bank",
+    });
+    await approveClaim(tenantId, claim.reimbursementId);
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await listPaymentOperations({ tenantId });
+    const org = result.organizations.find((o) => o.tenantId === tenantId)!;
+    const workspaceClaim = org.clinics[0]!.claims[0]!;
+
+    assert.equal(workspaceClaim.bankSource, "employee_fallback");
+    assert.equal(workspaceClaim.effectiveBankAccountNumber, "EMP-PROFILE-ACCT");
+    assert.equal(workspaceClaim.effectiveBankName, "Bank Muscat");
+  });
+
+  it("marks bankSource missing when neither claim nor profile has bank details", async () => {
+    const tenantId = "tenant-payment-bank-missing";
+    const emp = await createEmployee(tenantId, {
+      employeeCode: "BK3",
+      email: "bk3@example.com",
+    });
+    const claim = await createEmployeeReimbursement(tenantId, emp.employeeId, "Bank Test Employee", {
+      clinicId: "clinic_bk3",
+      clinicName: "BK3 Clinic",
+      amount: 300,
+      description: "No bank anywhere",
+    });
+    await approveClaim(tenantId, claim.reimbursementId);
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await listPaymentOperations({ tenantId });
+    const org = result.organizations.find((o) => o.tenantId === tenantId)!;
+    const workspaceClaim = org.clinics[0]!.claims[0]!;
+
+    assert.equal(workspaceClaim.bankSource, "missing");
+    assert.ok(!workspaceClaim.effectiveBankAccountNumber);
+  });
+});
+
+describe("Payment Service — listPaymentOperations (org-first workspace)", () => {
+  it("groups queued claims by organization then clinic, with totals", async () => {
+    const tenantId = "tenant-payment-ops";
+    const claims = await Promise.all([
+      createApprovedClaim(tenantId, "O1", 100, { clinicId: "clinic_o1", clinicName: "One Clinic" }),
+      createApprovedClaim(tenantId, "O2", 200, { clinicId: "clinic_o1", clinicName: "One Clinic" }),
+      createApprovedClaim(tenantId, "O3", 300, { clinicId: "clinic_o2", clinicName: "Two Clinic" }),
+    ]);
+    for (const claim of claims) {
+      await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+    }
+
+    const result = await listPaymentOperations({ tenantId });
+    assert.equal(result.summary.outstanding.count, 3);
+    assert.equal(result.summary.outstanding.amount, 600);
+
+    const org = result.organizations.find((o) => o.tenantId === tenantId);
+    assert.ok(org, "organization must be present");
+    assert.equal(org!.totalOutstanding, 600);
+    assert.equal(org!.clinics.length, 2);
+
+    const one = org!.clinics.find((c) => c.clinicId === "clinic_o1");
+    assert.ok(one, "clinic_o1 group must exist");
+    assert.equal(one!.count, 2);
+    assert.equal(one!.totalAmount, 300);
+    assert.equal(one!.claims.length, 2);
+    assert.ok(one!.claims.every((c) => c.employeeName), "org-first claims carry employeeName");
+  });
+
+  it("reports paidToday and payment history after processing", async () => {
+    const tenantId = "tenant-payment-ops-history";
+    const claim = await createApprovedClaim(tenantId, "H1", 250, { clinicId: "clinic_h", clinicName: "H Clinic" });
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const before = await listPaymentOperations({ tenantId });
+    assert.equal(before.summary.paidToday.count, 0);
+
+    await processPayments({ tenantId, actorId: ACTOR });
+
+    const after = await listPaymentOperations({ tenantId });
+    assert.equal(after.summary.outstanding.count, 0, "queue drains after processing");
+    assert.equal(after.summary.paidToday.count, 1);
+    assert.equal(after.summary.paidToday.amount, 250);
+
+    assert.equal(after.paymentHistory.length, 1);
+    assert.equal(after.paymentHistory[0]!.amount, 250);
+    assert.equal(after.paymentHistory[0]!.status, "paid");
+    assert.ok(after.paymentHistory[0]!.paymentReference, "history entry carries a payment reference");
+  });
+
+  it("captures the bank reference supplied at payout for reconciliation", async () => {
+    const tenantId = "tenant-payment-ops-bankref";
+    const claim = await createApprovedClaim(tenantId, "BR1", 120, { clinicId: "clinic_br", clinicName: "BR Clinic" });
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    await processPayments({ tenantId, actorId: ACTOR, bankReference: "TRF-2026-000123" });
+
+    const after = await listPaymentOperations({ tenantId });
+    assert.equal(after.paymentHistory.length, 1);
+    assert.equal(after.paymentHistory[0]!.bankReference, "TRF-2026-000123");
+  });
+
+  it("links reconciliation history to the invoice that funded the payout", async () => {
+    const tenantId = "tenant-payment-ops-invoice";
+    const emp = await createEmployee(tenantId, {
+      employeeCode: "PAY-INV-1",
+      email: "pay-inv-1@example.com",
+    });
+    const claim = await createReimbursement(tenantId, {
+      employeeId: emp.employeeId,
+      employeeName: "Invoice Linked Employee",
+      type: "medical",
+      amount: 300,
+      description: "Invoice-linked payout",
+      serviceDate: "2026-07-12",
+    });
+    await approveClaim(tenantId, claim.reimbursementId);
+
+    const invoice = await generateInvoice({
+      tenantId,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedBy: ACTOR,
+    });
+    const issued = await issueInvoice(invoice.invoiceId, ACTOR);
+    const paid = await markInvoicePaid(issued.invoiceId, ACTOR);
+    assert.equal(paid.status, "paid");
+
+    // Invoice settlement auto-queues the linked claim (`approved → to_be_paid`).
+    const queued = await listPaymentOperations({ tenantId });
+    assert.equal(queued.summary.outstanding.count, 1);
+    // The workspace claim surfaces its funding invoice before payout.
+    const queuedClaim = queued.organizations
+      .flatMap((o) => o.clinics.flatMap((c) => c.claims))
+      .find((c) => c.reimbursementId === claim.reimbursementId);
+    assert.equal(queuedClaim?.invoiceId, invoice.invoiceId);
+    assert.equal(queuedClaim?.invoiceNumber, invoice.invoiceNumber);
+
+    // Payment detail returns the record + claim snapshot + funding invoice.
+    const detail = await getPaymentDetail(claim.reimbursementId);
+    assert.ok(detail.paymentRecord, "payment record present while queued");
+    assert.equal(detail.paymentRecord!.status, "to_be_paid");
+    assert.equal(detail.invoiceNumber, invoice.invoiceNumber);
+    assert.equal(detail.claim?.amount, 300);
+
+    await processPayments({ tenantId, actorId: ACTOR });
+
+    const after = await listPaymentOperations({ tenantId });
+    assert.equal(after.paymentHistory.length, 1);
+    assert.equal(after.paymentHistory[0]!.invoiceId, invoice.invoiceId);
+    assert.equal(after.paymentHistory[0]!.invoiceNumber, invoice.invoiceNumber);
+
+    const paidDetail = await getPaymentDetail(claim.reimbursementId);
+    assert.equal(paidDetail.paymentRecord!.status, "paid");
+    assert.ok(paidDetail.paymentRecord!.paymentReference, "payment reference assigned on payment");
   });
 });
 

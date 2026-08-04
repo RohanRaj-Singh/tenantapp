@@ -35,7 +35,7 @@ export const CLINIC_STATUS_STYLES: Record<string, { label: string; className: st
   in_progress: { label: "In Progress", className: "bg-blue-50 text-blue-700 border-blue-200" },
   frozen: { label: "Frozen", className: "bg-sky-50 text-sky-700 border-sky-200" },
   approved: { label: "Approved", className: "bg-green-50 text-green-700 border-green-200" },
-  to_be_paid: { label: "To Be Paid", className: "bg-orange-50 text-orange-700 border-orange-200" },
+  to_be_paid: { label: "Awaiting Payout", className: "bg-orange-50 text-orange-700 border-orange-200" },
   paid: { label: "Paid", className: "bg-purple-50 text-purple-700 border-purple-200" },
   rejected: { label: "Rejected", className: "bg-red-50 text-red-700 border-red-200" },
 };

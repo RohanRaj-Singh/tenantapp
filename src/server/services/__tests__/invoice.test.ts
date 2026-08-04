@@ -9,8 +9,10 @@ import {
   rejectReimbursement,
 } from "@/src/server/services/reimbursementService";
 import {
+  archiveInvoice,
   exportInvoiceCsv,
   generateInvoice,
+  getArLedger,
   getInvoice,
   issueInvoice,
   listInvoices,
@@ -297,6 +299,103 @@ describe("Invoice Lifecycle", () => {
     assert.ok(csv.includes("2026-07-06"), "CSV must include the service date");
     assert.ok(csv.includes("3"), "CSV must include the session count");
     assert.ok(csv.includes("75.000"), "CSV must include the amount");
+  });
+});
+
+describe("Invoice Financial Flow — paid invoice triggers payout queue", () => {
+  it("does NOT move approved claims to to_be_paid at generation", async () => {
+    const tenantId = "tenant-invoice-flow-gen";
+    const claim = await createApprovedClaim(tenantId, "F1", 120, "2026-07-05");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedBy: GENERATED_BY,
+    });
+    assert.equal(invoice.status, "draft");
+
+    const repositories = await getRepositoryContext();
+    const claimDoc = await repositories.reimbursements.findById(claim.reimbursementId);
+    assert.equal(claimDoc!.status, "approved", "claims stay approved on generation");
+  });
+
+  it("queues linked claims for payment when the invoice is marked paid", async () => {
+    const tenantId = "tenant-invoice-flow-pay";
+    const claim = await createApprovedClaim(tenantId, "F2", 200, "2026-07-05");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedBy: GENERATED_BY,
+    });
+    const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
+    assert.equal(issued.status, "issued");
+
+    const repositories = await getRepositoryContext();
+    const beforePay = await repositories.reimbursements.findById(claim.reimbursementId);
+    assert.equal(beforePay!.status, "approved", "still approved while invoice is issued");
+
+    const paid = await markInvoicePaid(invoice.invoiceId, GENERATED_BY);
+    assert.equal(paid.status, "paid");
+
+    const afterPay = await repositories.reimbursements.findById(claim.reimbursementId);
+    assert.equal(afterPay!.status, "to_be_paid", "claim enters payout queue after org pays");
+
+    const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
+    assert.ok(record, "a PaymentRecord links the claim to the invoice");
+    assert.equal(record!.invoiceId, invoice.invoiceId);
+  });
+});
+
+describe("Invoice A/R Ledger", () => {
+  it("reports issued invoices as outstanding and paid invoices as cleared", async () => {
+    const tenantId = "tenant-invoice-ledger";
+    await createApprovedClaim(tenantId, "A1", 100, "2026-07-05");
+    await createApprovedClaim(tenantId, "A2", 250, "2026-07-10");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedBy: GENERATED_BY,
+    });
+    const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
+    assert.equal(issued.status, "issued");
+
+    const ledger = await getArLedger({});
+    const org = ledger.organizations.find((o) => o.orgId === tenantId);
+    assert.ok(org, "org must appear in the ledger");
+    assert.equal(org!.totalOutstanding, 350);
+    assert.equal(org!.invoiceCount, 1);
+
+    // Pay the invoice → outstanding clears.
+    await markInvoicePaid(invoice.invoiceId, GENERATED_BY);
+    const paidLedger = await getArLedger({});
+    const paidOrg = paidLedger.organizations.find((o) => o.orgId === tenantId);
+    assert.equal(paidOrg!.totalOutstanding, 0);
+  });
+
+  it("archives a paid invoice (terminal state)", async () => {
+    const tenantId = "tenant-invoice-archive";
+    const claim = await createApprovedClaim(tenantId, "AR1", 80, "2026-07-05");
+    const invoice = await generateInvoice({
+      tenantId,
+      from: "2026-07-01",
+      to: "2026-07-31",
+      generatedBy: GENERATED_BY,
+    });
+    const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
+    const paid = await markInvoicePaid(issued.invoiceId, GENERATED_BY);
+    const archived = await archiveInvoice(paid.invoiceId, GENERATED_BY);
+    assert.equal(archived.status, "archived");
+
+    // Cannot pay or re-archive an archived invoice.
+    await assert.rejects(
+      () => markInvoicePaid(archived.invoiceId, GENERATED_BY),
+      { code: "INVALID_INVOICE_STATUS" },
+    );
   });
 });
 

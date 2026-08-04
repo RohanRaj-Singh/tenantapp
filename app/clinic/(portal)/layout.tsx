@@ -3,6 +3,7 @@ import Link from "next/link";
 import { Stethoscope } from "lucide-react";
 import { requireClinicPortalUser } from "@/src/modules/clinic-portal/guards/require-clinic-user";
 import { ClinicLogoutButton } from "@/src/modules/clinic-portal/components/ClinicLogoutButton";
+import NotificationBell from "@/components/notifications/NotificationBell";
 
 export const dynamic = "force-dynamic";
 
@@ -28,6 +29,7 @@ export default async function ClinicPortalLayout({
               <p className="text-xs font-medium text-slate-700">{context.user.name}</p>
               <p className="text-[11px] text-slate-400">{context.user.email}</p>
             </div>
+            <NotificationBell claimPathPrefix="/clinic/claims" />
             <ClinicLogoutButton />
           </div>
         </div>

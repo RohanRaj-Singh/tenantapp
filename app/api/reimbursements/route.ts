@@ -63,6 +63,20 @@ export async function POST(request: Request) {
       );
     }
 
+    // Bank details are required so every claim carries a complete payout snapshot.
+    if (!body.bankAccountNumber || typeof body.bankAccountNumber !== "string" || !body.bankAccountNumber.trim()) {
+      return NextResponse.json(
+        { error: "Bank account number is required." },
+        { status: 400 },
+      );
+    }
+    if (!body.bankName || typeof body.bankName !== "string" || !body.bankName.trim()) {
+      return NextResponse.json(
+        { error: "Bank name is required." },
+        { status: 400 },
+      );
+    }
+
     if (typeof body.amount !== "number" || body.amount <= 0) {
       return NextResponse.json(
         { error: "Amount must be greater than 0." },

@@ -5,6 +5,8 @@ import {
 } from "@/src/server/db/documents";
 import type { PaymentRecordsRepositoryContract } from "./contracts";
 
+const PAYMENT_COUNTER_ID = "paymentReference";
+
 interface PaymentRecordDoc extends PaymentRecordDocument {
   _id?: ObjectId;
 }
@@ -82,4 +84,20 @@ export class PaymentRecordsRepository implements PaymentRecordsRepositoryContrac
       .toArray();
     return records as unknown as PaymentRecordDocument[];
   }
+
+  /**
+   * Atomically increment the payment-reference counter.
+   * Uses the shared `counters` collection (same pattern as claim numbers).
+   */
+  async incrementCounter(counterId: string): Promise<number> {
+    const result = await this.db.collection(COLLECTION_NAMES.counters).findOneAndUpdate(
+      { _id: counterId as any },
+      { $inc: { value: 1 } },
+      { returnDocument: "after", upsert: true },
+    );
+    return (result?.value as number) ?? 1;
+  }
 }
+
+/** Counter id used for `PAY-YYYY-NNNNNN` references. */
+export { PAYMENT_COUNTER_ID };

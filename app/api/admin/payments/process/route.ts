@@ -20,8 +20,10 @@ function authorizeRequest(request: NextRequest): boolean {
 /**
  * POST /api/admin/payments/process
  *
- * Body: `{ claimIds?: string[] }` — empty/absent = process every `to_be_paid`
- * claim. Returns `{ processed: number }`.
+ * Body: `{ claimIds?: string[], bankReference?: string, notes?: string }` —
+ * empty/absent `claimIds` = process every `to_be_paid` claim. `bankReference` /
+ * `notes` are captured on each finalized PaymentRecord for reconciliation.
+ * Returns `{ processed: number }`.
  */
 export async function POST(request: NextRequest) {
   if (!authorizeRequest(request)) {
@@ -45,9 +47,20 @@ export async function POST(request: NextRequest) {
       }
     }
 
+    const bankReference =
+      typeof body.bankReference === "string" && body.bankReference.trim() !== ""
+        ? body.bankReference.trim()
+        : undefined;
+    const notes =
+      typeof body.notes === "string" && body.notes.trim() !== ""
+        ? body.notes.trim()
+        : undefined;
+
     const result = await processPayments({
       claimIds,
       actorId: "super-admin",
+      ...(bankReference !== undefined ? { bankReference } : {}),
+      ...(notes !== undefined ? { notes } : {}),
     });
 
     return NextResponse.json(result, { status: 200 });

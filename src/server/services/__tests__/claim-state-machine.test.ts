@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import {
   createReimbursement,
+  createEmployeeReimbursement,
   approveReimbursement,
   rejectReimbursement,
   freezeReimbursement,
@@ -31,6 +32,18 @@ async function newClaim(amount = 100, description = "State machine test") {
     type: "medical",
     amount,
     description,
+  });
+  return { emp, claim };
+}
+
+/** Create a claim linked to a specific clinic (used for clinic-notification tests). */
+async function createClaimWithClinic(amount = 100) {
+  const emp = await seedEmployee(Math.random().toString(36).slice(2, 8));
+  const claim = await createEmployeeReimbursement(TENANT_ID, emp.employeeId, "State Machine Employee", {
+    clinicId: "clinic_eunoia",
+    clinicName: "Eunoia Clinic",
+    amount,
+    description: "State machine test with clinic",
   });
   return { emp, claim };
 }
@@ -206,5 +219,40 @@ describe("Claim State Machine — notifications per transition", () => {
       const notifs = await employeeNotificationsFor(claim.reimbursementId, type);
       assert.ok(notifs.length >= 1, `expected at least one ${type} notification, got ${notifs.length}`);
     }
+  });
+
+  it("clinic users attached to the claim's clinic are notified on status changes", async () => {
+    // Create a clinic user scoped to the tenant + a clinic.
+    const repositories = await getRepositoryContext();
+    await repositories.clinicUsers.insert({
+      clinicUserId: "clinic-user-1",
+      email: "clinic@example.com",
+      passwordHash: "hash",
+      name: "Eunoia Clinic",
+      clinicIds: ["clinic_eunoia"],
+      tenantIds: [TENANT_ID],
+      status: "active",
+      failedLoginAttempts: 0,
+      lockedUntil: null,
+      mustChangePassword: false,
+      lastAccessAt: null,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+    });
+
+    const { claim } = await createClaimWithClinic();
+
+    // Route to approved → clinic notified with claim_approved.
+    await routeTo(claim.reimbursementId, "approved");
+    const clinicNotifs = await listForRecipient({
+      tenantId: "",
+      recipientType: "clinic",
+      recipientId: "clinic-user-1",
+      limit: 100,
+    });
+    assert.ok(
+      clinicNotifs.some((n) => n.claimId === claim.reimbursementId && n.type === "claim_approved"),
+      "clinic must receive claim_approved notification",
+    );
   });
 });

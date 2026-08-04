@@ -355,6 +355,8 @@ export interface PaymentRecordsRepositoryContract {
   findByClaimId(claimId: string): Promise<PaymentRecordDocument | null>;
   listByTenant(tenantId: string): Promise<PaymentRecordDocument[]>;
   listByStatus(status: PaymentRecordDocument["status"]): Promise<PaymentRecordDocument[]>;
+  /** Atomically increment a named counter (used for payment references). */
+  incrementCounter(counterId: string): Promise<number>;
 }
 
 export interface FindClinicUsersOptions {

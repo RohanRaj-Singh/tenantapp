@@ -105,6 +105,14 @@ export default function ReimbursementFormPage({ mode: _mode }: ReimbursementForm
       errors.description = "Description is required.";
     }
 
+    // Bank details are required so every claim carries a complete payout snapshot.
+    if (!bankAccountNumber.trim()) {
+      errors.bankAccountNumber = "Bank account number is required.";
+    }
+    if (!bankName) {
+      errors.bankName = "Bank name is required.";
+    }
+
     setFieldErrors(errors);
     return Object.keys(errors).length === 0;
   }

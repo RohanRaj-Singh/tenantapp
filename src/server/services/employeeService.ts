@@ -71,6 +71,8 @@ export interface LoginResult {
 export interface CreateEmployeeRequest {
   employeeCode: string;
   email: string;
+  bankAccountNumber?: string;
+  bankName?: string;
 }
 
 export interface CreateEmployeeResponse {
@@ -343,6 +345,8 @@ export async function createEmployee(
     failedLoginAttempts: 0,
     lockedUntil: null,
     lastAccessAt: null,
+    ...(data.bankAccountNumber ? { bankAccountNumber: data.bankAccountNumber.trim() } : {}),
+    ...(data.bankName ? { bankName: data.bankName.trim() } : {}),
     createdAt: now,
     updatedAt: now,
   };

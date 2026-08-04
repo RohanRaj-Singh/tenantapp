@@ -24,7 +24,12 @@ function formatTime(iso: string) {
   });
 }
 
-export default function NotificationBell() {
+interface NotificationBellProps {
+  /** Base path for a claim notification — tenant admin uses `/reimbursements`, clinic portal uses `/clinic/claims`. */
+  claimPathPrefix?: string;
+}
+
+export default function NotificationBell({ claimPathPrefix = "/reimbursements" }: NotificationBellProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [unread, setUnread] = useState(0);
@@ -106,9 +111,9 @@ export default function NotificationBell() {
     async (n: NotificationItem) => {
       if (!n.read) await markRead(n.notificationId);
       setOpen(false);
-      router.push(`/reimbursements/${n.claimId}`);
+      router.push(`${claimPathPrefix}/${n.claimId}`);
     },
-    [markRead, router],
+    [markRead, router, claimPathPrefix],
   );
 
   return (

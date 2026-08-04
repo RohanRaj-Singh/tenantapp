@@ -50,6 +50,32 @@ async function notifyClaimRecipient(
   );
 }
 
+/**
+ * Notify every clinic-portal user attached to the claim's clinic.
+ *
+ * Client requirement (`reword.md` L91): the clinic is told right away whenever
+ * a claim changes status, so it does not rely on Chat/Requests to learn about
+ * decisions. Best-effort — failures are swallowed and never block the claim
+ * transition.
+ */
+async function notifyClinicsForClaim(
+  claim: { tenantId: string; reimbursementId: string; claimNumber?: string; clinicId?: string },
+  input: { type: NotificationType; title: string; body: string },
+) {
+  if (!claim.clinicId) return;
+  const repositories = await getRepositoryContext();
+  const { clinicUsers } = await repositories.clinicUsers.list({
+    clinicId: claim.clinicId,
+    tenantId: claim.tenantId,
+  });
+  for (const user of clinicUsers) {
+    await notifyClaimRecipient(claim, {
+      recipientType: "clinic",
+      recipientId: user.clinicUserId,
+    }, input);
+  }
+}
+
 async function emitSystemEvent(
   claim: { tenantId: string; reimbursementId: string },
   body: string,
@@ -340,6 +366,12 @@ export async function approveReimbursement(
       { type: "claim_approved", title: "Claim approved", body: `Claim ${reference} is approved and ready for payout.` },
       "",
     );
+    // Clinic is told right away (client requirement — reword.md L91).
+    await notifyClinicsForClaim(existing, {
+      type: "claim_approved",
+      title: "Claim approved",
+      body: `Claim ${reference} has been approved.`,
+    });
     await emitSystemEvent(existing, "Claim approved");
   }
 
@@ -385,6 +417,11 @@ export async function rejectReimbursement(
           : `Your claim ${reference} was not approved.`,
       },
     );
+    await notifyClinicsForClaim(existing, {
+      type: "claim_rejected",
+      title: "Claim rejected",
+      body: `Claim ${reference} was not approved${reason ? `: ${reason}` : ""}.`,
+    });
     await emitSystemEvent(existing, "Claim rejected");
   }
 
@@ -427,6 +464,11 @@ export async function freezeReimbursement(
         body: `Your claim ${reference} is temporarily on hold${notes?.trim() ? `: ${notes.trim()}` : ""}.`,
       },
     );
+    await notifyClinicsForClaim(existing, {
+      type: "claim_frozen",
+      title: "Claim frozen",
+      body: `Claim ${reference} is temporarily on hold${notes?.trim() ? `: ${notes.trim()}` : ""}.`,
+    });
     await emitSystemEvent(existing, "Claim frozen");
   }
 
@@ -485,6 +527,11 @@ export async function queueForPayment(
       },
       "",
     );
+    await notifyClinicsForClaim(existing, {
+      type: "claim_payment_queued",
+      title: "Claim queued for payment",
+      body: `Claim ${reference} is queued for payment.`,
+    });
     await emitSystemEvent(existing, "Claim queued for payment");
   }
 
@@ -527,6 +574,11 @@ export async function payReimbursement(
         body: `Your claim ${reference} has been paid.`,
       },
     );
+    await notifyClinicsForClaim(existing, {
+      type: "claim_paid",
+      title: "Claim paid",
+      body: `Claim ${reference} has been paid.`,
+    });
     await emitSystemEvent(existing, "Claim paid");
   }
 
@@ -569,6 +621,11 @@ export async function markInProgress(
         body: `Your claim ${reference} is now being reviewed.`,
       },
     );
+    await notifyClinicsForClaim(existing, {
+      type: "claim_in_progress",
+      title: "Claim in progress",
+      body: `Claim ${reference} is now under review.`,
+    });
     await emitSystemEvent(existing, "Claim in progress");
   }
 

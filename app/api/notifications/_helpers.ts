@@ -91,5 +91,19 @@ export async function resolveNotificationRecipient(
     };
   }
 
+  // Clinic portal session → clinic user
+  const { getCurrentClinicAuthContext } = await import("@/src/modules/clinic-auth/middleware/clinic-auth");
+  const clinicCtx = await getCurrentClinicAuthContext();
+  if (clinicCtx) {
+    return {
+      success: true,
+      context: {
+        tenantId: "",
+        recipientType: "clinic",
+        recipientId: clinicCtx.user.clinicUserId,
+      },
+    };
+  }
+
   return { success: false, response: auth.response };
 }
