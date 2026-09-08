@@ -154,8 +154,6 @@ export default function RequestsInbox() {
 
   const pendingCount = useMemo(
     () => requests.filter((r) => r.status === "pending").length,
-    // Recompute against the full set, not the filtered slice.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
     [requests],
   );
 
