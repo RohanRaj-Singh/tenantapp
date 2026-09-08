@@ -7,7 +7,7 @@ import {
   ChartLine,
   ChevronDown,
   Flame,
-  Mail,
+  HelpCircle,
   Menu,
   Receipt,
   Settings,
@@ -37,12 +37,12 @@ const iconMap: Record<TenantSurfacePageId, LucideIcon> = {
   "workload-efficiency": ChartLine,
   "leadership-alignment": Users,
   "satisfaction-engagement": Smile,
-  "email-invitations": Mail,
   reports: FileText,
   settings: Settings,
   "change-password": Shield,
   employees: Users,
   reimbursements: Receipt,
+  requests: HelpCircle,
 };
 
 interface OrganizationSidebarProps {
@@ -57,9 +57,41 @@ const EXECUTIVE_IDS: TenantSurfacePageId[] = [
   "satisfaction-engagement",
 ];
 
+const EXEC_EXPANDED_STORAGE_KEY = "tenantapp.executiveSidebarExpanded";
+
+/**
+ * Session-scoped cache of the Executive Summary submenu toggle.
+ *
+ * The sidebar remounts on every cross-section navigation (its mount point is
+ * not a persistent layout), so component state alone would reset to the
+ * default-open value. This module-level cache lets a remount initialize from
+ * the last known value synchronously — no reopen flash. It stays `null` on
+ * the server (only the client handler/effect below mutate it), so SSR and
+ * the first hydration always agree on the default.
+ */
+let cachedExecutiveExpanded: boolean | null = null;
+
+function readStoredExecutiveExpanded(): boolean {
+  if (cachedExecutiveExpanded !== null) {
+    return cachedExecutiveExpanded;
+  }
+  try {
+    const raw = window.localStorage.getItem(EXEC_EXPANDED_STORAGE_KEY);
+    cachedExecutiveExpanded = raw === null ? true : raw === "1";
+  } catch {
+    /* localStorage unavailable */
+    cachedExecutiveExpanded = true;
+  }
+  return cachedExecutiveExpanded;
+}
+
 export default function OrganizationSidebar({ user }: OrganizationSidebarProps) {
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [executiveExpanded, setExecutiveExpanded] = useState(true);
+  const [executiveExpanded, setExecutiveExpanded] = useState<boolean>(
+    // `null` = not yet known this session (server render / first hydration):
+    // fall back to the default-open state, matching what SSR rendered.
+    () => cachedExecutiveExpanded ?? true,
+  );
   const pathname = usePathname();
   const { copy } = useLanguage();
   const theme = useTheme();
@@ -77,6 +109,29 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
     window.addEventListener("resize", handleResize);
     return () => window.removeEventListener("resize", handleResize);
   }, []);
+
+  // The sidebar can remount during navigation (its mount point is not a
+  // persistent layout), which would reset the Executive Summary submenu to
+  // its default-open state on every menu click. Restore the persisted toggle
+  // on mount, and keep the session cache in sync so remounts start from the
+  // right value. Storage is only WRITTEN in the toggle handler: writing it
+  // from an effect clobbers the stored value with the pre-restore default
+  // before this effect reads it back (StrictMode double-invokes mount
+  // effects in dev, which made a collapsed submenu reopen on navigation).
+  useEffect(() => {
+    setExecutiveExpanded(readStoredExecutiveExpanded());
+  }, []);
+
+  function toggleExecutiveExpanded(): void {
+    const next = !executiveExpanded;
+    cachedExecutiveExpanded = next;
+    setExecutiveExpanded(next);
+    try {
+      window.localStorage.setItem(EXEC_EXPANDED_STORAGE_KEY, next ? "1" : "0");
+    } catch {
+      /* localStorage unavailable */
+    }
+  }
 
   const isChildActive = EXECUTIVE_IDS.some((id) =>
     pathname.startsWith(`/dashboard/${id}`),
@@ -116,7 +171,8 @@ export default function OrganizationSidebar({ user }: OrganizationSidebarProps) 
           {sidebarOpen ? (
             <button
               type="button"
-              onClick={() => setExecutiveExpanded(!executiveExpanded)}
+              onClick={toggleExecutiveExpanded}
+              aria-expanded={executiveExpanded}
               className="shrink-0 rounded-lg p-2 text-slate-500 transition-colors hover:bg-slate-100"
               aria-label="Toggle Executive Summary submenu"
               title={executiveExpanded ? "Collapse submenu" : "Expand submenu"}

@@ -373,6 +373,15 @@ class MemoryEmployeesRepository implements EmployeesRepositoryContract {
     return this.store.employees.get(id) ?? null;
   }
 
+  async findByIds(ids: string[]): Promise<EmployeeDocument[]> {
+    const out: EmployeeDocument[] = [];
+    for (const id of ids) {
+      const record = this.store.employees.get(id);
+      if (record) out.push(record);
+    }
+    return out;
+  }
+
   async findByEmployeeCode(
     tenantId: string,
     employeeCode: string,
@@ -442,11 +451,17 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
   async findAll(
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, tenantId, clinicId, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
+    const { search, status, employeeId, tenantId, tenantIds, clinicId, clinicIds, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
 
     let filtered = Array.from(this.store.reimbursements.values());
 
-    if (tenantId) {
+    // Multi-tenant fan-in (Phase H clinic portal). When `tenantIds` is
+    // supplied it takes precedence over a single `tenantId`. Combined with
+    // `clinicIds` this replaces the N×M fan-out in `listClinicReimbursements`.
+    if (tenantIds && tenantIds.length > 0) {
+      const set = new Set(tenantIds);
+      filtered = filtered.filter((r) => set.has(r.tenantId));
+    } else if (tenantId) {
       filtered = filtered.filter((r) => r.tenantId === tenantId);
     }
 
@@ -458,7 +473,13 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
       filtered = filtered.filter((r) => r.employeeId === employeeId);
     }
 
-    if (clinicId) {
+    // Multi-clinic fan-in. Only effective when combined with a tenant
+    // scope; without a tenant scope the caller must already be operating
+    // inside a tenant filter to keep authorization intact.
+    if (clinicIds && clinicIds.length > 0) {
+      const set = new Set(clinicIds);
+      filtered = filtered.filter((r) => r.clinicId !== undefined && set.has(r.clinicId));
+    } else if (clinicId) {
       filtered = filtered.filter((r) => r.clinicId === clinicId);
     }
 
@@ -491,6 +512,15 @@ class MemoryReimbursementsRepository implements ReimbursementsRepositoryContract
 
   async findById(id: string): Promise<ReimbursementDocument | null> {
     return this.store.reimbursements.get(id) ?? null;
+  }
+
+  async findByIds(ids: string[]): Promise<ReimbursementDocument[]> {
+    const out: ReimbursementDocument[] = [];
+    for (const id of ids) {
+      const record = this.store.reimbursements.get(id);
+      if (record) out.push(record);
+    }
+    return out;
   }
 
   async insert(reimbursement: ReimbursementDocument): Promise<void> {
@@ -1066,6 +1096,23 @@ class MemoryClaimRequestsRepository implements ClaimRequestsRepositoryContract {
     return matches.map((r) => ({ ...r }));
   }
 
+  async listByTenantId(
+    tenantId: string,
+    options?: { status?: ClaimRequestDocument["status"]; limit?: number },
+  ): Promise<ClaimRequestDocument[]> {
+    const matches = Array.from(this.store.claimRequests.values())
+      .filter(
+        (r) =>
+          r.tenantId === tenantId &&
+          (options?.status ? r.status === options.status : true),
+      )
+      .sort((a, b) => b.createdAt.localeCompare(a.createdAt));
+    const sliced =
+      typeof options?.limit === "number" ? matches.slice(0, options.limit) : matches;
+    // Return chronological order for display (oldest → newest), matching the MongoDB impl.
+    return sliced.map((r) => ({ ...r })).reverse();
+  }
+
   async update(
     requestId: string,
     updates: Partial<ClaimRequestDocument>,
@@ -1183,6 +1230,22 @@ class MemoryInvoicesRepository implements InvoicesRepositoryContract {
   async findById(id: string): Promise<InvoiceDocument | null> {
     const invoice = this.store.invoices.get(id);
     return invoice ? { ...invoice } : null;
+  }
+
+  async findByIds(ids: string[]): Promise<InvoiceDocument[]> {
+    const out: InvoiceDocument[] = [];
+    for (const id of ids) {
+      const invoice = this.store.invoices.get(id);
+      if (invoice) out.push({ ...invoice });
+    }
+    return out;
+  }
+
+  async findByClaimIds(claimIds: string[]): Promise<InvoiceDocument[]> {
+    const ids = new Set(claimIds);
+    return Array.from(this.store.invoices.values())
+      .filter((inv) => inv.lineItems.some((item) => ids.has(item.claimId)))
+      .map((inv) => ({ ...inv }));
   }
 
   async listByTenant(

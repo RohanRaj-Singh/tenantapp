@@ -239,6 +239,8 @@ export interface PaymentRecordDocument extends TimestampFields {
   /** Lightweight reconciliation note (e.g. `Paid via bank transfer to Eunoia Clinic`). */
   notes?: string;
   paidAt?: string;
+  /** Operator-entered transfer date (the actual payout date). Falls back to `paidAt` when absent. */
+  paymentDate?: string;
   paidBy?: string;
   method?: string;
 }
@@ -336,6 +338,8 @@ export interface NotificationDocument extends TimestampFields {
   type: NotificationType;
   title: string;
   body: string;
+  /** Optional deep-link target — populated when notification is tied to a Request. */
+  requestId?: string;
   read: boolean;
   readAt: string | null;
 }
@@ -398,7 +402,7 @@ export interface ClaimRequestDocument extends TimestampFields {
   convertedToChatMessageId?: string;
 }
 
-export type InvoiceStatus = "draft" | "generated" | "issued" | "paid" | "archived";
+export type InvoiceStatus = "draft" | "issued" | "paid" | "archived";
 
 export interface InvoiceLineItem {
   claimId: string;
@@ -425,6 +429,8 @@ export interface InvoiceDocument extends TimestampFields {
   generatedAt: string;
   issuedAt?: string;
   paidAt?: string;
+  /** Actor who recorded the payment (set by `markInvoicePaid`). */
+  paidBy?: string;
   totalAmount: number;
   lineItems: InvoiceLineItem[];
 }

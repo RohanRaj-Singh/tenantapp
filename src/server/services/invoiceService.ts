@@ -9,6 +9,7 @@ import type {
   InvoiceDocument,
   InvoiceLineItem,
   InvoiceStatus,
+  ReimbursementDocument,
 } from "@/src/server/db/documents";
 import { queueForPayment } from "@/src/server/services/paymentService";
 
@@ -27,9 +28,15 @@ export interface InvoiceScope {
 
 export interface GenerateInvoiceInput {
   tenantId: string;
-  from: string;
-  to: string;
+  /** Explicitly selected claim ids to invoice (one invoice = one org = many claims). */
+  claimIds: string[];
   generatedBy: string;
+}
+
+/** A single claim that failed eligibility validation during invoice generation. */
+export interface InvoiceClaimRejection {
+  claimId: string;
+  reason: string;
 }
 
 export interface ListInvoicesParams extends ListInvoicesOptions {
@@ -204,19 +211,16 @@ function buildInvoiceNumber(tenantId: string): string {
   return `INV-${prefix}-${year}-${stamp.slice(-8)}`;
 }
 
-function assertValidPeriod(from: string, to: string) {
-  if (!from || !to) {
-    throw new ApiError(400, "INVALID_PERIOD", "from and to dates are required.");
-  }
-  if (from > to) {
-    throw new ApiError(400, "INVALID_PERIOD", "from must be on or before to.");
-  }
-}
-
 /**
- * Generate a consolidated invoice for an organization from approved claims whose
- * service date falls within `[from, to]`. Claims already referenced by any
- * existing invoice line item are excluded (double-invoicing guard).
+ * Generate a consolidated invoice for an organization from an explicit list of
+ * approved claims. Eligibility is by claim identity and status alone: a claim is
+ * valid only if it exists, belongs to `tenantId`, is `approved`, and is not yet
+ * referenced by any invoice line item (draft/issued/paid/archived). `serviceDate`
+ * and `createdAt` never gate eligibility.
+ *
+ * Every claim is validated before anything is written. If any claim is invalid
+ * the operation is atomic: nothing is created and an `INVALID_CLAIMS` error is
+ * thrown carrying the list of rejected claims and the subset that remains valid.
  *
  * The invoice is created in `draft` status. `sessionCount` is carried on line
  * items for reporting only and never affects `totalAmount`.
@@ -224,13 +228,23 @@ function assertValidPeriod(from: string, to: string) {
 export async function generateInvoice(
   input: GenerateInvoiceInput,
 ): Promise<InvoiceDocument> {
-  const { tenantId, from, to, generatedBy } = input;
-  assertValidPeriod(from, to);
+  const { tenantId, generatedBy } = input;
+  const claimIds = Array.from(
+    new Set(input.claimIds.map((id) => String(id).trim()).filter(Boolean)),
+  );
+
+  if (!tenantId) {
+    throw new ApiError(400, "MISSING_TENANT", "tenantId is required.");
+  }
+  if (claimIds.length === 0) {
+    throw new ApiError(400, "NO_CLAIMS_SELECTED", "Select at least one claim to invoice.");
+  }
 
   const repositories = await getRepositoryContext();
 
   // Double-invoicing guard: collect claimIds already present on any existing
-  // invoice for this tenant (we never modify the claim documents).
+  // invoice for this tenant (any status), so we never reference the same claim
+  // twice. We never modify the claim documents themselves.
   const existing = await repositories.invoices.findAll({
     tenantId,
     skip: 0,
@@ -243,35 +257,45 @@ export async function generateInvoice(
     }
   }
 
-  const approved = await repositories.reimbursements.findAll({
-    tenantId,
-    status: "approved",
-    skip: 0,
-    limit: 100_000,
-  });
+  // Validate every selected claim up front. A single invalid claim rejects the
+  // whole operation atomically — we do not silently drop or partially create.
+  const rejected: InvoiceClaimRejection[] = [];
+  const validClaims: ReimbursementDocument[] = [];
 
-  const eligible = approved.reimbursements.filter((claim) => {
-    if (!claim.serviceDate) {
-      return false;
+  for (const claimId of claimIds) {
+    const claim = await repositories.reimbursements.findById(claimId);
+    if (!claim) {
+      rejected.push({ claimId, reason: "Claim not found." });
+      continue;
     }
-    if (claim.serviceDate < from || claim.serviceDate > to) {
-      return false;
+    if (claim.tenantId !== tenantId) {
+      rejected.push({ claimId, reason: "Claim belongs to a different organization." });
+      continue;
     }
-    if (invoicedClaimIds.has(claim.reimbursementId)) {
-      return false;
+    if (claim.status !== "approved") {
+      rejected.push({ claimId, reason: `Claim status is "${claim.status}", not "approved".` });
+      continue;
     }
-    return true;
-  });
+    if (invoicedClaimIds.has(claimId)) {
+      rejected.push({ claimId, reason: "Claim is already referenced by an invoice." });
+      continue;
+    }
+    validClaims.push(claim);
+  }
 
-  if (eligible.length === 0) {
+  if (rejected.length > 0) {
     throw new ApiError(
       400,
-      "NO_CLAIMS_TO_INVOICE",
-      "No approved claims found in the selected period that are not already invoiced.",
+      "INVALID_CLAIMS",
+      `${rejected.length} of ${claimIds.length} selected claim(s) are not eligible for invoicing.`,
+      {
+        rejected,
+        validClaimIds: validClaims.map((c) => c.reimbursementId),
+      },
     );
   }
 
-  const lineItems: InvoiceLineItem[] = eligible.map((claim) => ({
+  const lineItems: InvoiceLineItem[] = validClaims.map((claim) => ({
     claimId: claim.reimbursementId,
     claimNumber: claim.claimNumber,
     clinicName: claim.clinicName,
@@ -284,14 +308,24 @@ export async function generateInvoice(
     bankName: claim.bankName,
   }));
 
-  const totalAmount = eligible.reduce((sum, claim) => sum + claim.amount, 0);
+  const totalAmount = validClaims.reduce((sum, claim) => sum + claim.amount, 0);
   const now = new Date().toISOString();
+
+  // Billing period is derived from the selected claims' service dates
+  // (earliest → latest), never from an explicit date input.
+  const dates = validClaims
+    .map((c) => c.serviceDate)
+    .filter((d): d is string => Boolean(d))
+    .sort();
+  const period = dates.length > 0
+    ? { from: dates[0], to: dates[dates.length - 1] }
+    : { from: "", to: "" };
 
   const invoice: InvoiceDocument = {
     invoiceId: `invoice_${randomUUID()}`,
     tenantId,
     invoiceNumber: buildInvoiceNumber(tenantId),
-    period: { from, to },
+    period,
     status: "draft",
     generatedBy,
     generatedAt: now,
@@ -355,9 +389,44 @@ export async function listInvoices(
   });
 }
 
+export interface ClaimInvoiceLink {
+  invoiceId: string;
+  invoiceNumber: string;
+  status: InvoiceStatus;
+}
+
+/**
+ * Read-time join mapping `claimId` → the invoice that currently references it.
+ *
+ * The claims API uses this to expose `invoiceId` / `invoiceNumber` /
+ * `invoiceStatus` on claim payloads without introducing a `claim.status =
+ * "invoiced"` mutation or a claim-side foreign key. The relationship is derived
+ * from invoice line items, so it stays accurate across draft/issued/paid/archived
+ * invoices for free.
+ */
+export async function getClaimInvoiceLinks(
+  claimIds: string[],
+): Promise<Map<string, ClaimInvoiceLink>> {
+  if (claimIds.length === 0) return new Map();
+  const repositories = await getRepositoryContext();
+  const invoices = await repositories.invoices.findByClaimIds(claimIds);
+  const map = new Map<string, ClaimInvoiceLink>();
+  for (const invoice of invoices) {
+    for (const item of invoice.lineItems) {
+      if (map.has(item.claimId)) continue;
+      map.set(item.claimId, {
+        invoiceId: invoice.invoiceId,
+        invoiceNumber: invoice.invoiceNumber,
+        status: invoice.status,
+      });
+    }
+  }
+  return map;
+}
+
 function assertInvoiceTransition(
   invoice: InvoiceDocument,
-  from: InvoiceStatus[],
+  from: string[],
   target: InvoiceStatus,
 ) {
   if (!from.includes(invoice.status)) {
@@ -369,7 +438,7 @@ function assertInvoiceTransition(
   }
 }
 
-/** Issue an invoice: `draft`/`generated` → `issued`. */
+/** Issue an invoice: `draft` → `issued`. `generated` is a retired legacy status accepted only to normalize old records. */
 export async function issueInvoice(
   id: string,
   actor: string,
@@ -398,6 +467,14 @@ export async function issueInvoice(
  * (`approved → to_be_paid`), writing a PaymentRecord ledger entry per claim.
  * This is the approved financial flow: claims move to the payout queue only
  * after the organization has paid Remedy — not at invoice generation.
+ *
+ * The queueing step runs BEFORE the invoice is marked paid. The repository layer
+ * has no transaction/session support, so this ordering makes the operation
+ * failure-safe and idempotent: each linked claim is queued only while its status
+ * is still `approved`, so re-executing after a mid-loop failure converges
+ * (already-queued claims are skipped; the remainder are queued and the invoice is
+ * then marked paid) rather than stranding `approved` claims behind a paid invoice
+ * that cannot be re-paid.
  */
 export async function markInvoicePaid(
   id: string,
@@ -411,14 +488,8 @@ export async function markInvoicePaid(
 
   assertInvoiceTransition(invoice, ["issued"], "paid");
 
-  const now = new Date().toISOString();
-  const updated = await repositories.invoices.update(id, {
-    status: "paid",
-    paidAt: now,
-    updatedAt: now,
-  });
-
   // Queue each linked approved claim for the clinic payout (`approved → to_be_paid`).
+  // The `status === "approved"` guard makes this idempotent on re-execution.
   for (const item of invoice.lineItems) {
     const claim = await repositories.reimbursements.findById(item.claimId);
     if (claim && claim.status === "approved") {
@@ -431,6 +502,14 @@ export async function markInvoicePaid(
       );
     }
   }
+
+  const now = new Date().toISOString();
+  const updated = await repositories.invoices.update(id, {
+    status: "paid",
+    paidAt: now,
+    paidBy: actor,
+    updatedAt: now,
+  });
 
   return updated!;
 }
@@ -454,6 +533,57 @@ export async function archiveInvoice(
     updatedAt: now,
   });
   return updated!;
+}
+
+// ── Bulk transitions (super admin) ──────────────────────────────────────────
+// Bulk operations reuse the SAME single-invoice service functions, so the
+// per-invoice state rules (draft → issued, paid → archived) can never be
+// bypassed by a bulk call. One invalid invoice never blocks the others; each
+// failure is reported individually — mirroring the payments bulk pattern.
+
+export interface BulkInvoiceTransitionResult {
+  processed: string[];
+  rejected: Array<{ invoiceId: string; reason: string }>;
+}
+
+export async function bulkIssueInvoices(
+  invoiceIds: string[],
+  actor: string,
+): Promise<BulkInvoiceTransitionResult> {
+  const processed: string[] = [];
+  const rejected: BulkInvoiceTransitionResult["rejected"] = [];
+  for (const id of invoiceIds) {
+    try {
+      await issueInvoice(id, actor);
+      processed.push(id);
+    } catch (error) {
+      rejected.push({
+        invoiceId: id,
+        reason: error instanceof Error ? error.message : "Unexpected error.",
+      });
+    }
+  }
+  return { processed, rejected };
+}
+
+export async function bulkArchiveInvoices(
+  invoiceIds: string[],
+  actor: string,
+): Promise<BulkInvoiceTransitionResult> {
+  const processed: string[] = [];
+  const rejected: BulkInvoiceTransitionResult["rejected"] = [];
+  for (const id of invoiceIds) {
+    try {
+      await archiveInvoice(id, actor);
+      processed.push(id);
+    } catch (error) {
+      rejected.push({
+        invoiceId: id,
+        reason: error instanceof Error ? error.message : "Unexpected error.",
+      });
+    }
+  }
+  return { processed, rejected };
 }
 
 function csvEscape(value: string | number | undefined): string {

@@ -8,6 +8,7 @@ import type {
   CampaignDocument,
   ClaimMessageDocument,
   ClaimRequestDocument,
+  ClaimRequestStatus,
   ClinicDirectoryDocument,
   ClinicUserDocument,
   EmployeeDocument,
@@ -113,6 +114,12 @@ export interface EmployeesRepositoryContract {
     options?: FindEmployeesOptions,
   ): Promise<FindEmployeesResult>;
   findById(id: string): Promise<EmployeeDocument | null>;
+  /**
+   * Batch lookup by employee ID. Used to replace per-claim N+1 employee
+   * lookups (e.g. `listClinicReimbursements`). Returns only documents that
+   * exist; missing IDs are silently omitted. Order is not guaranteed.
+   */
+  findByIds(ids: string[]): Promise<EmployeeDocument[]>;
   findByEmployeeCode(
     tenantId: string,
     employeeCode: string,
@@ -139,8 +146,22 @@ export interface FindReimbursementsOptions {
   status?: string;
   employeeId?: string;
   tenantId?: string;
+  /**
+   * Multiple tenant filter (Phase H clinic portal multi-tenant fan-in).
+   * When set, takes precedence over `tenantId` and the query is restricted
+   * to claims whose `tenantId` is in the supplied set.
+   */
+  tenantIds?: string[];
   /** Filter to a single clinic's claims (Phase H clinic portal). */
   clinicId?: string;
+  /**
+   * Multiple clinic filter (Phase H clinic portal multi-clinic fan-in).
+   * When set, takes precedence over `clinicId` and the query is restricted
+   * to claims whose `clinicId` is in the supplied set. Requires `tenantIds`
+   * to be set as well; combining the two arrays gives a single
+   * `findAll({ tenantIds, clinicIds })` call instead of N×M fan-out.
+   */
+  clinicIds?: string[];
   skip?: number;
   limit?: number;
   sortBy?: "createdAt" | "updatedAt" | "status";
@@ -160,6 +181,15 @@ export interface ReimbursementsRepositoryContract {
   ): Promise<FindReimbursementsResult>;
   findAll(options?: FindReimbursementsOptions): Promise<FindReimbursementsResult>;
   findById(id: string): Promise<ReimbursementDocument | null>;
+  /**
+   * Batch lookup by id. Returns only documents that exist; missing ids are
+   * silently omitted (the caller is responsible for tolerating the
+   * shorter result). Order is not guaranteed.
+   *
+   * Used by workspace builders that previously issued one `findById` per
+   * record (N+1) and have been consolidated to a single fan-out query.
+   */
+  findByIds(ids: string[]): Promise<ReimbursementDocument[]>;
   insert(reimbursement: ReimbursementDocument): Promise<void>;
   update(
     id: string,
@@ -286,6 +316,10 @@ export interface ClaimRequestsRepositoryContract {
   insert(request: ClaimRequestDocument): Promise<void>;
   findById(requestId: string): Promise<ClaimRequestDocument | null>;
   listByClaimId(claimId: string): Promise<ClaimRequestDocument[]>;
+  listByTenantId(
+    tenantId: string,
+    options?: { status?: ClaimRequestStatus; limit?: number },
+  ): Promise<ClaimRequestDocument[]>;
   update(requestId: string, updates: Partial<ClaimRequestDocument>): Promise<ClaimRequestDocument | null>;
 }
 
@@ -331,6 +365,13 @@ export interface InvoicesRepositoryContract {
   ensureIndexes(): Promise<void>;
   insert(invoice: InvoiceDocument): Promise<void>;
   findById(id: string): Promise<InvoiceDocument | null>;
+  /**
+   * Batch lookup by id. Returns only documents that exist; missing ids are
+   * silently omitted. Order is not guaranteed.
+   */
+  findByIds(ids: string[]): Promise<InvoiceDocument[]>;
+  /** Find invoices whose line items reference any of the given claim ids. */
+  findByClaimIds(claimIds: string[]): Promise<InvoiceDocument[]>;
   listByTenant(
     tenantId: string,
     options?: ListInvoicesOptions,

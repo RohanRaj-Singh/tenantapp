@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Suspense } from "react";
 import { usePathname } from "next/navigation";
 import LanguageTogglePill from "@/components/layout/LanguageTogglePill";
+import TenantTabTitle from "@/components/layout/TenantTabTitle";
 import { RuntimeConfigProvider } from "@/runtime/providers/RuntimeConfigProvider";
 import { LanguageProvider } from "@/runtime/language/LanguageContext";
 import Header from "@/components/layout/Header";
@@ -22,6 +23,7 @@ export function AppShell({ children }: AppShellProps) {
     "/employees",
     "/reimbursements",
     "/clinic",
+    "/requests",
   ];
   const isProtectedSurface =
     pathname != null &&
@@ -31,6 +33,7 @@ export function AppShell({ children }: AppShellProps) {
     <Suspense fallback={null}>
       <RuntimeConfigProvider>
         <LanguageProvider>
+          <TenantTabTitle />
           {!isProtectedSurface && <Header />}
           {!isProtectedSurface && <LanguageTogglePill />}
           <div className="min-h-screen">{children}</div>

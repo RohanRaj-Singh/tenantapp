@@ -18,6 +18,7 @@ export class ClaimRequestsRepository implements ClaimRequestsRepositoryContract 
       { key: { requestId: 1 }, unique: true, name: "claim_request_id_unique" },
       { key: { claimId: 1, createdAt: -1 }, name: "claim_request_claim_created" },
       { key: { tenantId: 1, claimId: 1, status: 1 }, name: "claim_request_tenant_claim_status" },
+      { key: { tenantId: 1, status: 1, createdAt: -1 }, name: "claim_request_tenant_status_created" },
     ]);
   }
 
@@ -38,6 +39,21 @@ export class ClaimRequestsRepository implements ClaimRequestsRepositoryContract 
       .find({ claimId }, { projection: { _id: 0 } })
       .sort({ createdAt: -1 })
       .toArray();
+    // Return chronological order for display
+    return (records as ClaimRequestDocument[]).reverse();
+  }
+
+  async listByTenantId(
+    tenantId: string,
+    options?: { status?: ClaimRequestDocument["status"]; limit?: number },
+  ): Promise<ClaimRequestDocument[]> {
+    const filter: Record<string, unknown> = { tenantId };
+    if (options?.status) filter.status = options.status;
+    const cursor = this.collection()
+      .find(filter, { projection: { _id: 0 } })
+      .sort({ createdAt: -1 });
+    if (typeof options?.limit === "number") cursor.limit(options.limit);
+    const records = await cursor.toArray();
     // Return chronological order for display
     return (records as ClaimRequestDocument[]).reverse();
   }

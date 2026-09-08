@@ -15,17 +15,20 @@ export async function POST(request: NextRequest) {
   try {
     const body = await request.json().catch(() => ({}));
 
-    if (!body.tenantId || !body.from || !body.to) {
+    const claimIds = Array.isArray(body.claimIds)
+      ? body.claimIds.map((id: unknown) => String(id).trim()).filter(Boolean)
+      : [];
+
+    if (!body.tenantId || claimIds.length === 0) {
       return NextResponse.json(
-        { error: "tenantId, from, and to are required." },
+        { error: "tenantId and a non-empty claimIds array are required." },
         { status: 400 },
       );
     }
 
     const invoice = await generateInvoice({
       tenantId: body.tenantId,
-      from: body.from,
-      to: body.to,
+      claimIds,
       generatedBy: "super-admin",
     });
 

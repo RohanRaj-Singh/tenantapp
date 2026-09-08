@@ -108,8 +108,7 @@ export type DashboardPageId =
   | "psychological-safety"
   | "workload-efficiency"
   | "leadership-alignment"
-  | "satisfaction-engagement"
-  | "email-invitations";
+  | "satisfaction-engagement";
 
 export type TenantSurfacePageId =
   | DashboardPageId
@@ -117,7 +116,8 @@ export type TenantSurfacePageId =
   | "settings"
   | "change-password"
   | "employees"
-  | "reimbursements";
+  | "reimbursements"
+  | "requests";
 
 export interface DashboardNavigationItem {
   id: TenantSurfacePageId;
@@ -185,17 +185,19 @@ export const dashboardNavigation: DashboardNavigationItem[] = [
     description: "Review and manage employee claims.",
   },
   {
+    id: "requests",
+    name: "Requests",
+    href: "/requests",
+    headerTitle: "Requests",
+    description:
+      "Questions from employees and clinics before they file a claim. Answering a request does not change any claim, invoice, or payment.",
+  },
+  {
     id: "employees",
     name: "Employees",
     href: "/employees",
     headerTitle: "Employee Management",
     description: "Manage tenant employees.",
-  },
-  {
-    id: "email-invitations",
-    name: "Email Invitations",
-    href: "/dashboard/email-invitations",
-    description: "Upload employee list, send survey invitations, and monitor completion status.",
   },
   {
     id: "reports",

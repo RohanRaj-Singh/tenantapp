@@ -2,7 +2,8 @@
 
 import { useCallback, useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { Search, Plus, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Search, Plus, RefreshCw, AlertTriangle, ChevronLeft, ChevronRight, Upload } from "lucide-react";
+import EmployeeImportModal from "./EmployeeImportModal";
 
 interface Employee {
   employeeId: string;
@@ -50,6 +51,7 @@ export default function EmployeeListPage() {
   const [statusFilter, setStatusFilter] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [importModalOpen, setImportModalOpen] = useState(false);
 
   const fetchEmployees = useCallback(async () => {
     setLoading(true);
@@ -110,14 +112,24 @@ export default function EmployeeListPage() {
             Employee Management
           </h2>
         </div>
-        <button
-          type="button"
-          onClick={() => router.push("/employees/new")}
-          className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
-        >
-          <Plus className="h-4 w-4" />
-          Add Employee
-        </button>
+        <div className="flex items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setImportModalOpen(true)}
+            className="inline-flex items-center gap-2 rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-medium text-slate-700 transition hover:bg-slate-50"
+          >
+            <Upload className="h-4 w-4" />
+            Import Employees
+          </button>
+          <button
+            type="button"
+            onClick={() => router.push("/employees/new")}
+            className="inline-flex items-center gap-2 rounded-full bg-blue-600 px-5 py-2.5 text-sm font-medium text-white transition hover:bg-blue-700"
+          >
+            <Plus className="h-4 w-4" />
+            Add Employee
+          </button>
+        </div>
       </div>
 
       {/* Search & Filter */}
@@ -280,6 +292,15 @@ export default function EmployeeListPage() {
           )}
         </>
       )}
+
+      {/* Import Modal */}
+      <EmployeeImportModal
+        open={importModalOpen}
+        onClose={() => setImportModalOpen(false)}
+        onImportSuccess={() => {
+          fetchEmployees();
+        }}
+      />
     </div>
   );
 }

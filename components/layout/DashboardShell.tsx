@@ -9,6 +9,7 @@ import { useLanguage } from "@/runtime/language/LanguageContext";
 import { useTheme } from "@/runtime/theme/useTheme";
 import type { TenantUserProfile } from "@/src/modules/tenant-auth/contracts/types";
 import { TenantLogoutButton } from "@/src/modules/tenant-auth/components/TenantLogoutButton";
+import { RealtimeProvider } from "@/components/realtime/RealtimeProvider";
 
 interface DashboardShellProps {
   children: ReactNode;
@@ -23,7 +24,8 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
   const activePageCopy = copy.dashboard.navigation[activePage.id];
 
   return (
-    <div className="min-h-screen bg-white">
+    <RealtimeProvider>
+      <div className="min-h-screen bg-white">
       <div className="flex h-screen w-full bg-white">
         <OrganizationSidebar user={user} />
 
@@ -57,5 +59,6 @@ export default function DashboardShell({ children, user }: DashboardShellProps) 
         </div>
       </div>
     </div>
+    </RealtimeProvider>
   );
 }

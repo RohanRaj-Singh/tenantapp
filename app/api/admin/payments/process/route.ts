@@ -20,10 +20,13 @@ function authorizeRequest(request: NextRequest): boolean {
 /**
  * POST /api/admin/payments/process
  *
- * Body: `{ claimIds?: string[], bankReference?: string, notes?: string }` —
- * empty/absent `claimIds` = process every `to_be_paid` claim. `bankReference` /
- * `notes` are captured on each finalized PaymentRecord for reconciliation.
- * Returns `{ processed: number }`.
+ * Body: `{ claimIds?: string[], bankReference?: string, notes?: string,
+ * paymentDate?: string, method?: string }` — `claimIds` is required and must name
+ * at least one claim. An empty/absent selection is rejected with
+ * `NO_CLAIMS_SELECTED` (it never means "process every `to_be_paid` claim").
+ * `bankReference` / `notes` / `paymentDate` / `method` are captured on each
+ * finalized PaymentRecord for reconciliation.
+ * Returns `{ processed: number, rejected: { claimId, reason }[] }`.
  */
 export async function POST(request: NextRequest) {
   if (!authorizeRequest(request)) {
@@ -55,12 +58,22 @@ export async function POST(request: NextRequest) {
       typeof body.notes === "string" && body.notes.trim() !== ""
         ? body.notes.trim()
         : undefined;
+    const paymentDate =
+      typeof body.paymentDate === "string" && body.paymentDate.trim() !== ""
+        ? body.paymentDate.trim()
+        : undefined;
+    const method =
+      typeof body.method === "string" && body.method.trim() !== ""
+        ? body.method.trim()
+        : undefined;
 
     const result = await processPayments({
       claimIds,
       actorId: "super-admin",
       ...(bankReference !== undefined ? { bankReference } : {}),
       ...(notes !== undefined ? { notes } : {}),
+      ...(paymentDate !== undefined ? { paymentDate } : {}),
+      ...(method !== undefined ? { method } : {}),
     });
 
     return NextResponse.json(result, { status: 200 });

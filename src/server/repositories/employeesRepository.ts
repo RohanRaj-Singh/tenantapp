@@ -148,6 +148,14 @@ export class EmployeesRepository implements EmployeesRepositoryContract {
     return record as EmployeeDocument | null;
   }
 
+  async findByIds(ids: string[]): Promise<EmployeeDocument[]> {
+    if (ids.length === 0) return [];
+    const records = await this.collection()
+      .find({ employeeId: { $in: ids } }, { projection: { _id: 0 } })
+      .toArray();
+    return records as unknown as EmployeeDocument[];
+  }
+
   async findByEmployeeCode(
     tenantId: string,
     employeeCode: string,

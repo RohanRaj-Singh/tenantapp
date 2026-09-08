@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 import { getTenantUserByTenantId } from "@/src/modules/tenant-auth/repository/repository";
+import { getHub } from "@/src/server/realtime/hub";
 import type {
   NotificationDocument,
   NotificationRecipientType,
@@ -16,6 +17,8 @@ export interface CreateNotificationInput {
   type: NotificationType;
   title: string;
   body: string;
+  /** Optional — populated for claim_request notifications so the Admin can deep-link. */
+  requestId?: string;
 }
 
 /**
@@ -35,6 +38,7 @@ export async function notify(input: CreateNotificationInput): Promise<void> {
     type: input.type,
     title: input.title,
     body: input.body,
+    requestId: input.requestId,
     read: false,
     readAt: null,
     createdAt: now,
@@ -43,6 +47,42 @@ export async function notify(input: CreateNotificationInput): Promise<void> {
 
   const repositories = await getRepositoryContext();
   await repositories.notifications.insert(notification);
+
+  // PA8: instant push — broadcast the notification to the tenant topic
+  // so the operator's NotificationBell updates immediately.
+  // For superAdmin notifications, the topic is `superadmin` (the admin
+  // SSE stream subscribes to it). For tenantAdmin/employee/clinic
+  // notifications, the topic is `tenant:{tenantId}`.
+  const hub = getHub();
+  if (input.recipientType === "superAdmin") {
+    hub.publish("superadmin", "notification.created", {
+      notificationId: notification.notificationId,
+      tenantId: input.tenantId,
+      claimId: input.claimId,
+      recipientType: input.recipientType,
+      recipientId: input.recipientId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      requestId: input.requestId,
+      read: false,
+      createdAt: now,
+    });
+  } else {
+    hub.publish(`tenant:${input.tenantId}` as `tenant:${string}`, "notification.created", {
+      notificationId: notification.notificationId,
+      tenantId: input.tenantId,
+      claimId: input.claimId,
+      recipientType: input.recipientType,
+      recipientId: input.recipientId,
+      type: input.type,
+      title: input.title,
+      body: input.body,
+      requestId: input.requestId,
+      read: false,
+      createdAt: now,
+    });
+  }
 }
 
 /**

@@ -38,10 +38,15 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
   async findAll(
     options: FindReimbursementsOptions = {},
   ): Promise<FindReimbursementsResult> {
-    const { search, status, employeeId, tenantId, clinicId, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
+    const { search, status, employeeId, tenantId, tenantIds, clinicId, clinicIds, skip = 0, limit = 200, sortBy = "createdAt", sortOrder = "desc" } = options;
     const filter: Filter<ReimbursementRecord> = {};
 
-    if (tenantId) {
+    // Multi-tenant fan-in (Phase H clinic portal). When `tenantIds` is
+    // supplied it takes precedence over a single `tenantId`. Combined with
+    // `clinicIds` this replaces the N×M fan-out in `listClinicReimbursements`.
+    if (tenantIds && tenantIds.length > 0) {
+      filter.tenantId = { $in: tenantIds } as unknown as ReimbursementDocument["tenantId"];
+    } else if (tenantId) {
       filter.tenantId = tenantId;
     }
 
@@ -53,7 +58,13 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
       filter.employeeId = employeeId;
     }
 
-    if (clinicId) {
+    // Multi-clinic fan-in. Only effective when combined with a tenant
+    // scope (multi-tenant or single-tenant); without a tenant scope the
+    // caller must be operating inside a tenant filter to keep authorization
+    // intact.
+    if (clinicIds && clinicIds.length > 0) {
+      filter.clinicId = { $in: clinicIds } as unknown as ReimbursementDocument["clinicId"];
+    } else if (clinicId) {
       filter.clinicId = clinicId;
     }
 
@@ -94,6 +105,19 @@ export class ReimbursementsRepository implements ReimbursementsRepositoryContrac
       { projection: { _id: 0 } },
     );
     return record as ReimbursementDocument | null;
+  }
+
+  async findByIds(ids: string[]): Promise<ReimbursementDocument[]> {
+    if (ids.length === 0) {
+      return [];
+    }
+    const records = await this.collection()
+      .find(
+        { reimbursementId: { $in: ids } },
+        { projection: { _id: 0 } },
+      )
+      .toArray();
+    return records as unknown as ReimbursementDocument[];
   }
 
   async insert(reimbursement: ReimbursementDocument): Promise<void> {

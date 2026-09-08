@@ -58,6 +58,8 @@ async function createApprovedClaim(
         clinicName: clinic.clinicName,
         amount,
         description: `Payment test claim ${suffix}`,
+        bankAccountNumber: `ACCT-${suffix}`,
+        bankName: "Payment Test Bank",
       })
     : await createReimbursement(tenantId, {
         employeeId: emp.employeeId,
@@ -65,6 +67,8 @@ async function createApprovedClaim(
         type: "medical",
         amount,
         description: `Payment test claim ${suffix}`,
+        bankAccountNumber: `ACCT-${suffix}`,
+        bankName: "Payment Test Bank",
       });
   await approveClaim(tenantId, claim.reimbursementId);
   return claim;
@@ -189,15 +193,39 @@ describe("Payment Service — processPayments", () => {
     assert.equal(stillQueued!.status, "to_be_paid", "the other claim must remain queued");
   });
 
-  it("processes all to_be_paid claims when no claimIds are supplied", async () => {
-    const tenantId = "tenant-payment-process-all";
-    const c1 = await createApprovedClaim(tenantId, "A1", 150, { clinicId: "clinic_a", clinicName: "A Clinic" });
-    const c2 = await createApprovedClaim(tenantId, "A2", 250, { clinicId: "clinic_a", clinicName: "A Clinic" });
+  it("rejects an empty selection with NO_CLAIMS_SELECTED", async () => {
+    const tenantId = "tenant-payment-empty-selection";
+    const claim = await createApprovedClaim(tenantId, "E1", 150, { clinicId: "clinic_es", clinicName: "ES Clinic" });
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    // An absent or empty selection must never mean "process every eligible claim".
+    await assert.rejects(
+      () => processPayments({ actorId: ACTOR }),
+      { code: "NO_CLAIMS_SELECTED" },
+    );
+    await assert.rejects(
+      () => processPayments({ claimIds: [], actorId: ACTOR }),
+      { code: "NO_CLAIMS_SELECTED" },
+    );
+
+    // The queued claim must remain untouched after a rejected empty selection.
+    const queue = await listPaymentQueue({ tenantId });
+    assert.equal(queue.total, 1);
+  });
+
+  it("processes multiple claims when their ids are explicitly supplied", async () => {
+    const tenantId = "tenant-payment-process-many";
+    const c1 = await createApprovedClaim(tenantId, "M1", 150, { clinicId: "clinic_m", clinicName: "M Clinic" });
+    const c2 = await createApprovedClaim(tenantId, "M2", 250, { clinicId: "clinic_m", clinicName: "M Clinic" });
     await queueForPayment(tenantId, c1.reimbursementId, ACTOR);
     await queueForPayment(tenantId, c2.reimbursementId, ACTOR);
 
-    const result = await processPayments({ tenantId, actorId: ACTOR });
+    const result = await processPayments({
+      claimIds: [c1.reimbursementId, c2.reimbursementId],
+      actorId: ACTOR,
+    });
     assert.equal(result.processed, 2);
+    assert.deepEqual(result.rejected, []);
 
     const queue = await listPaymentQueue({ tenantId });
     assert.equal(queue.total, 0, "the queue must be drained");
@@ -214,6 +242,7 @@ describe("Payment Service — processPayments", () => {
     // Approved, not queued → not a valid payout target.
     const result = await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR });
     assert.equal(result.processed, 0);
+    assert.deepEqual(result.rejected, [{ claimId: claim.reimbursementId, reason: "not_to_be_paid" }]);
 
     const repositories = await getRepositoryContext();
     const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
@@ -247,6 +276,106 @@ describe("Payment Service — processPayments", () => {
     assert.equal(record!.status, "paid");
     assert.match(record!.paymentReference ?? "", /^PAY-\d{4}-\d{6}$/, "payment reference uses PAY-YYYY-NNNNNN format");
   });
+
+  it("records the operator-entered payment date and method on the ledger", async () => {
+    const tenantId = "tenant-payment-date-method";
+    const claim = await createApprovedClaim(tenantId, "DM1", 130, { clinicId: "clinic_dm", clinicName: "DM Clinic" });
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await processPayments({
+      claimIds: [claim.reimbursementId],
+      actorId: ACTOR,
+      paymentDate: "2026-08-20",
+      method: "Bank transfer",
+    });
+    assert.equal(result.processed, 1);
+
+    const repositories = await getRepositoryContext();
+    const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
+    assert.equal(record!.status, "paid");
+    assert.equal(record!.paymentDate, "2026-08-20");
+    assert.equal(record!.method, "Bank transfer");
+  });
+
+  it("dedupes duplicate claim ids so a batch is not aborted mid-loop", async () => {
+    const tenantId = "tenant-payment-dedupe";
+    const [a, b, c] = await Promise.all([
+      createApprovedClaim(tenantId, "D1", 100, { clinicId: "clinic_d", clinicName: "D Clinic" }),
+      createApprovedClaim(tenantId, "D2", 200, { clinicId: "clinic_d", clinicName: "D Clinic" }),
+      createApprovedClaim(tenantId, "D3", 300, { clinicId: "clinic_d", clinicName: "D Clinic" }),
+    ]);
+    for (const claim of [a, b, c]) {
+      await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+    }
+
+    // `a` appears twice; it must be paid once without aborting the rest.
+    const result = await processPayments({
+      claimIds: [a.reimbursementId, b.reimbursementId, a.reimbursementId, c.reimbursementId],
+      actorId: ACTOR,
+    });
+    assert.equal(result.processed, 3);
+    assert.deepEqual(result.rejected, []);
+
+    const repositories = await getRepositoryContext();
+    for (const claim of [a, b, c]) {
+      const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
+      assert.equal(record!.status, "paid", "every distinct claim is paid exactly once");
+    }
+  });
+
+  it("rejects a to_be_paid claim whose bank snapshot is incomplete", async () => {
+    const tenantId = "tenant-payment-missing-bank";
+    const emp = await createEmployee(tenantId, { employeeCode: "MB1", email: "mb1@example.com" });
+    const claim = await createReimbursement(tenantId, {
+      employeeId: emp.employeeId,
+      employeeName: "Missing Bank Employee",
+      type: "medical",
+      amount: 100,
+      description: "No bank on claim",
+    });
+    await approveClaim(tenantId, claim.reimbursementId);
+    await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
+
+    const result = await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR });
+    assert.equal(result.processed, 0);
+    assert.deepEqual(result.rejected, [{ claimId: claim.reimbursementId, reason: "missing_bank" }]);
+
+    const repositories = await getRepositoryContext();
+    const record = await repositories.paymentRecords.findByClaimId(claim.reimbursementId);
+    assert.equal(record!.status, "to_be_paid", "the bank-missing claim is rejected, not paid");
+  });
+
+  it("rejects an unknown claim id with not_found", async () => {
+    const result = await processPayments({ claimIds: ["reimb_does_not_exist"], actorId: ACTOR });
+    assert.equal(result.processed, 0);
+    assert.deepEqual(result.rejected, [{ claimId: "reimb_does_not_exist", reason: "not_found" }]);
+  });
+
+  it("rejects a claim from another organization when tenantId is scoped", async () => {
+    const otherClaim = await createApprovedClaim(OTHER_TENANT, "WO1", 100, { clinicId: "clinic_wo", clinicName: "WO Clinic" });
+    await queueForPayment(OTHER_TENANT, otherClaim.reimbursementId, ACTOR);
+
+    const result = await processPayments({
+      tenantId: TENANT_ID,
+      claimIds: [otherClaim.reimbursementId],
+      actorId: ACTOR,
+    });
+    assert.equal(result.processed, 0);
+    assert.deepEqual(result.rejected, [{ claimId: otherClaim.reimbursementId, reason: "wrong_organization" }]);
+  });
+
+  it("dedupes mixed selections while surfacing invalid ids independently", async () => {
+    const tenantId = "tenant-payment-mixed";
+    const good = await createApprovedClaim(tenantId, "X1", 100, { clinicId: "clinic_mx", clinicName: "MX Clinic" });
+    await queueForPayment(tenantId, good.reimbursementId, ACTOR);
+
+    const result = await processPayments({
+      claimIds: [good.reimbursementId, "reimb_missing", good.reimbursementId],
+      actorId: ACTOR,
+    });
+    assert.equal(result.processed, 1);
+    assert.deepEqual(result.rejected, [{ claimId: "reimb_missing", reason: "not_found" }]);
+  });
 });
 
 describe("Payment Service — claim bank details snapshot", () => {
@@ -279,7 +408,7 @@ describe("Payment Service — claim bank details snapshot", () => {
     assert.equal(workspaceClaim.bankSource, "claim");
   });
 
-  it("falls back to the employee profile for legacy claims missing bank details", async () => {
+  it("blocks a claim with bank details only on the employee profile (no silent fallback)", async () => {
     const tenantId = "tenant-payment-bank-fallback";
     const emp = await createEmployee(tenantId, {
       employeeCode: "BK2",
@@ -287,7 +416,8 @@ describe("Payment Service — claim bank details snapshot", () => {
       bankAccountNumber: "EMP-PROFILE-ACCT",
       bankName: "Bank Muscat",
     });
-    // Legacy claim: no bank details on the claim.
+    // Legacy claim: no bank details on the claim (but the employee profile has
+    // bank). The claim snapshot is the sole source of truth, so this is blocked.
     const claim = await createEmployeeReimbursement(tenantId, emp.employeeId, "Bank Test Employee", {
       clinicId: "clinic_bk2",
       clinicName: "BK2 Clinic",
@@ -301,9 +431,9 @@ describe("Payment Service — claim bank details snapshot", () => {
     const org = result.organizations.find((o) => o.tenantId === tenantId)!;
     const workspaceClaim = org.clinics[0]!.claims[0]!;
 
-    assert.equal(workspaceClaim.bankSource, "employee_fallback");
-    assert.equal(workspaceClaim.effectiveBankAccountNumber, "EMP-PROFILE-ACCT");
-    assert.equal(workspaceClaim.effectiveBankName, "Bank Muscat");
+    assert.equal(workspaceClaim.bankSource, "missing");
+    assert.ok(!workspaceClaim.effectiveBankAccountNumber);
+    assert.ok(!workspaceClaim.effectiveBankName);
   });
 
   it("marks bankSource missing when neither claim nor profile has bank details", async () => {
@@ -367,7 +497,7 @@ describe("Payment Service — listPaymentOperations (org-first workspace)", () =
     const before = await listPaymentOperations({ tenantId });
     assert.equal(before.summary.paidToday.count, 0);
 
-    await processPayments({ tenantId, actorId: ACTOR });
+    await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR });
 
     const after = await listPaymentOperations({ tenantId });
     assert.equal(after.summary.outstanding.count, 0, "queue drains after processing");
@@ -385,7 +515,7 @@ describe("Payment Service — listPaymentOperations (org-first workspace)", () =
     const claim = await createApprovedClaim(tenantId, "BR1", 120, { clinicId: "clinic_br", clinicName: "BR Clinic" });
     await queueForPayment(tenantId, claim.reimbursementId, ACTOR);
 
-    await processPayments({ tenantId, actorId: ACTOR, bankReference: "TRF-2026-000123" });
+    await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR, bankReference: "TRF-2026-000123" });
 
     const after = await listPaymentOperations({ tenantId });
     assert.equal(after.paymentHistory.length, 1);
@@ -405,13 +535,14 @@ describe("Payment Service — listPaymentOperations (org-first workspace)", () =
       amount: 300,
       description: "Invoice-linked payout",
       serviceDate: "2026-07-12",
+      bankAccountNumber: "ACCT-INV-1",
+      bankName: "Invoice Bank",
     });
     await approveClaim(tenantId, claim.reimbursementId);
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: ACTOR,
     });
     const issued = await issueInvoice(invoice.invoiceId, ACTOR);
@@ -435,7 +566,7 @@ describe("Payment Service — listPaymentOperations (org-first workspace)", () =
     assert.equal(detail.invoiceNumber, invoice.invoiceNumber);
     assert.equal(detail.claim?.amount, 300);
 
-    await processPayments({ tenantId, actorId: ACTOR });
+    await processPayments({ claimIds: [claim.reimbursementId], actorId: ACTOR });
 
     const after = await listPaymentOperations({ tenantId });
     assert.equal(after.paymentHistory.length, 1);

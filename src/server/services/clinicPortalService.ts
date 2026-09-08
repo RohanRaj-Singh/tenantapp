@@ -72,52 +72,81 @@ export function canClinicAccessClaim(
   return true;
 }
 
+/**
+ * Lists clinic-accessible claims using a single batched query instead of the
+ * previous N×M fan-out (one `findByTenantId` per tenant × clinic pair).
+ *
+ * BEFORE (N×M queries):
+ *   3 tenants × 2 clinics = 6 parallel `findByTenantId` calls
+ *
+ * AFTER (1 query):
+ *   1 `findAll({ tenantIds, clinicIds })` call
+ *
+ * The `canClinicAccessClaim` guard is still applied as a secondary check
+ * since `clinicIds[]` on a multi-tenant query can return claims from
+ * clinics outside the user's `clinicIds[]` (cross-clinic within authorized
+ * tenants). The final result set is identical.
+ *
+ * Employee codes are resolved in a single batched lookup using the
+ * `findByIds` repository method instead of one lookup per claim.
+ *
+ * BEFORE (N+1 employee lookups):
+ *   200 claims → ~200 `findById(employeeId)` calls
+ *
+ * AFTER (1 batched lookup):
+ *   1 `findByIds([...employeeIds])` call → build lookup map → decorate
+ */
 export async function listClinicReimbursements(
   user: ClinicAuthContext["user"],
-  options: Omit<FindReimbursementsOptions, "tenantId" | "clinicId"> = {},
+  options: Omit<FindReimbursementsOptions, "tenantId" | "clinicId" | "tenantIds" | "clinicIds"> = {},
 ): Promise<{ claims: ClinicReimbursementView[]; total: number }> {
   const repositories = await getRepositoryContext();
 
-  const results = await Promise.all(
-    user.tenantIds.flatMap((tenantId) =>
-      user.clinicIds.map((clinicId) =>
-        repositories.reimbursements.findByTenantId(tenantId, {
-          ...options,
-          clinicId,
-          limit: 1000,
-        }),
-      ),
-    ),
+  // Single batched query: all authorized tenants × all authorized clinics.
+  const nonEmptyTenantIds = user.tenantIds.filter(
+    (t): t is string => typeof t === "string" && t.length > 0,
+  );
+  const nonEmptyClinicIds = user.clinicIds.filter(
+    (c): c is string => typeof c === "string" && c.length > 0,
   );
 
-  // Merge, de-duplicate, and apply the combined scoping in memory.
+  // Fetch with generous limit to cover all results in one page.
+  // The existing sort (newest-first) and pagination (skip/limit) are
+  // applied after deduplication to preserve the original behaviour.
+  const result = await repositories.reimbursements.findAll({
+    ...options,
+    tenantIds: nonEmptyTenantIds,
+    clinicIds: nonEmptyClinicIds,
+    limit: 1000,
+  });
+
+  // Apply secondary authorization guard and de-duplicate.
   const seen = new Set<string>();
   const merged: ReimbursementDocument[] = [];
-  for (const result of results) {
-    for (const claim of result.reimbursements) {
-      if (!canClinicAccessClaim(user, claim)) {
-        continue;
-      }
-      if (seen.has(claim.reimbursementId)) {
-        continue;
-      }
-      seen.add(claim.reimbursementId);
-      merged.push(claim);
-    }
+  for (const claim of result.reimbursements) {
+    if (!canClinicAccessClaim(user, claim)) continue;
+    if (seen.has(claim.reimbursementId)) continue;
+    seen.add(claim.reimbursementId);
+    merged.push(claim);
   }
 
-  // Sort newest-first by default.
+  // Sort newest-first (matches previous behaviour).
   merged.sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 
+  // Collect unique employee IDs for batched lookup.
+  const employeeIds = [...new Set(merged.map((c) => c.employeeId))];
+  const employeeDocs = await repositories.employees.findByIds(employeeIds);
+  const employeeCodeMap = new Map<string, string | null>(
+    employeeDocs.map((e) => [e.employeeId, e.employeeCode ?? null]),
+  );
+
+  // Apply pagination on the merged, sorted, deduplicated list.
   const skip = options.skip ?? 0;
   const limit = options.limit ?? 200;
   const page = merged.slice(skip, skip + limit);
 
-  const claims = await Promise.all(
-    page.map(async (claim) => {
-      const employeeCode = await resolveEmployeeCode(claim.employeeId);
-      return stripPiiForClinic(claim, employeeCode);
-    }),
+  const claims: ClinicReimbursementView[] = page.map((claim) =>
+    stripPiiForClinic(claim, employeeCodeMap.get(claim.employeeId) ?? null),
   );
 
   return { claims, total: merged.length };

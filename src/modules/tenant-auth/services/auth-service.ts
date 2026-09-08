@@ -383,6 +383,14 @@ export function createTenantAuthService(
       return toSessionValidationFailure("SESSION_EXPIRED");
     }
 
+    // PA6 optimization: when the request carries an expected tenant slug,
+    // we already have the resolved `TenantLookup` from the scope check.
+    // The user's tenant (loaded next) is guaranteed to match the session's
+    // tenant, which already matches `expectedTenant.tenantId` (otherwise we
+    // would have returned TENANT_SCOPE_MISMATCH above). Therefore the
+    // tenant we need for the lifecycle check is the same tenant we just
+    // loaded. Reuse it instead of issuing a second `getTenantById` read.
+    let tenant: TenantLookup | null = null;
     if (expectedTenantSlug) {
       const expectedTenant = await deps.getTenantBySlug(expectedTenantSlug);
       if (!expectedTenant) {
@@ -393,6 +401,7 @@ export function createTenantAuthService(
         await deps.repository.deleteTenantSessionByToken(session.sessionToken);
         return toSessionValidationFailure("TENANT_SCOPE_MISMATCH");
       }
+      tenant = expectedTenant;
     }
 
     const user = await deps.repository.getTenantUserById(session.tenantUserId);
@@ -406,10 +415,14 @@ export function createTenantAuthService(
       return toSessionValidationFailure("USER_DISABLED");
     }
 
-    const tenant = await deps.getTenantById(user.tenantId);
     if (!tenant) {
-      await deps.repository.deleteTenantSessionByToken(session.sessionToken);
-      return toSessionValidationFailure("TENANT_NOT_FOUND");
+      // No request-scope slug was provided, so we did not load the
+      // tenant above. Load it now by id (the user's tenant id).
+      tenant = await deps.getTenantById(user.tenantId);
+      if (!tenant) {
+        await deps.repository.deleteTenantSessionByToken(session.sessionToken);
+        return toSessionValidationFailure("TENANT_NOT_FOUND");
+      }
     }
 
     const lifecycleFailure = getTenantLifecycleFailure(tenant.status);

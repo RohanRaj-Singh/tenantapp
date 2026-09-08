@@ -71,6 +71,8 @@ export async function PUT(
       contactNumber: body.contactNumber,
       bankAccountNumber: body.bankAccountNumber,
       bankName: body.bankName,
+    }, {
+      resubmit: body.resubmit === true,
     });
 
     if (!reimbursement) {

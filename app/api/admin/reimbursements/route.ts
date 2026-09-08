@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiErrorResponse } from "@/src/server/api/responses";
 import { getRepositoryContext } from "@/src/server/repositories/context";
+import { getClaimInvoiceLinks } from "@/src/server/services/invoiceService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,8 +89,13 @@ export async function GET(request: NextRequest) {
       }
     }
 
+    // Read-time join: expose the invoice that currently references each claim
+    // (if any) as invoiceId / invoiceNumber / invoiceStatus.
+    const invoiceLinks = await getClaimInvoiceLinks(claims.map((c) => c.reimbursementId));
+
     // Map response — strip employeeName for Tenant Admin callers
     const mapped = claims.map((c) => {
+      const link = invoiceLinks.get(c.reimbursementId);
       const base = {
         reimbursementId: c.reimbursementId,
         claimNumber: c.claimNumber,
@@ -114,6 +120,10 @@ export async function GET(request: NextRequest) {
         history: c.history,
         createdAt: c.createdAt,
         updatedAt: c.updatedAt,
+        // Invoice relationship (derived at read time; null when not yet invoiced).
+        invoiceId: link?.invoiceId ?? null,
+        invoiceNumber: link?.invoiceNumber ?? null,
+        invoiceStatus: link?.status ?? null,
       };
 
       if (callerRole === "super_admin") {

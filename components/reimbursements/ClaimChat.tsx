@@ -2,6 +2,8 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { MessageSquare, Megaphone, Info, Loader2, Send } from "lucide-react";
+import { useSharedRealtimeStream as useRealtimeStream } from "@/components/realtime/RealtimeProvider";
+import type { RealtimeEvent } from "@/hooks/useRealtimeStream";
 
 interface ChatMessage {
   messageId: string;
@@ -42,34 +44,71 @@ export default function ClaimChat({ claimId, apiBase, readOnly = false, variant 
 
   const isPanel = variant === "panel";
 
+  // PA8: SSE-based realtime. The hook opens a single EventSource to
+  // `/api/realtime/stream`. We register a handler for `chat.message.created`
+  // events. When a message arrives for this claim, we append it to the
+  // messages list immediately — no polling delay.
+  const { connected, on } = useRealtimeStream();
+
+  // Initial fetch on mount to get the current message history. This is
+  // a one-time reconciliation, not a polling loop.
   const fetchMessages = useCallback(
     async (markRead: boolean) => {
       try {
         const res = await fetch(apiBase);
         if (res.ok) {
           const data = await res.json();
-          setMessages(data.messages ?? []);
+          const next = (data.messages ?? []) as ChatMessage[];
+          setMessages(next);
+          if (markRead && next.length > 0) {
+            try {
+              await fetch(`${apiBase}/read`, { method: "POST" });
+            } catch {
+              /* ignore */
+            }
+          }
         }
       } catch {
         /* ignore */
       }
       setLoading(false);
-      if (markRead) {
-        try {
-          await fetch(`${apiBase}/read`, { method: "POST" });
-        } catch {
-          /* ignore */
-        }
-      }
     },
     [apiBase],
   );
 
   useEffect(() => {
-    fetchMessages(true);
-    const interval = setInterval(() => fetchMessages(true), 30_000);
-    return () => clearInterval(interval);
+    void fetchMessages(true);
   }, [fetchMessages]);
+
+  // PA8: register the SSE handler for chat.message.created events.
+  // The handler appends the message to the list if it's for this claim
+  // and not already present (deduplication by messageId).
+  useEffect(() => {
+    return on("chat.message.created", (event: RealtimeEvent) => {
+      const data = event.data as {
+        claimId: string;
+        tenantId: string;
+        message: ChatMessage;
+      };
+      if (data.claimId !== claimId) return;
+      setMessages((prev) => {
+        if (prev.some((m) => m.messageId === data.message.messageId)) {
+          return prev;
+        }
+        return [...prev, data.message];
+      });
+    });
+  }, [on, claimId]);
+
+  // PA8: when the SSE connection reconnects after a drop, reconcile
+  // the message history from the server.
+  const wasConnectedRef = useRef(false);
+  useEffect(() => {
+    if (connected && !wasConnectedRef.current) {
+      void fetchMessages(true);
+    }
+    wasConnectedRef.current = connected;
+  }, [connected, fetchMessages]);
 
   // Keep the newest message in view
   useEffect(() => {
@@ -94,7 +133,9 @@ export default function ClaimChat({ claimId, apiBase, readOnly = false, variant 
         throw new Error(data.error ?? "Failed to send message.");
       }
       setText("");
-      await fetchMessages(true);
+      // Send-time reconciliation: pull the thread without forcing
+      // markRead (the new message is read by its author already).
+      await fetchMessages(false);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to send message.");
     } finally {
@@ -164,10 +205,10 @@ export default function ClaimChat({ claimId, apiBase, readOnly = false, variant 
       {!readOnly && (
         <div className={isPanel ? "border-t border-slate-200 bg-white p-3" : "mt-3"}>
           <textarea
+            data-claim-chat-composer="true"
             value={text}
             onChange={(e) => setText(e.target.value)}
             onKeyDown={(e) => {
-              // Enter sends; Shift+Enter inserts a newline
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 handleSend();

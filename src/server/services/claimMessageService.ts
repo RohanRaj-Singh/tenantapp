@@ -2,6 +2,7 @@ import { randomUUID } from "crypto";
 import { getRepositoryContext } from "@/src/server/repositories/context";
 import { getTenantUserById } from "@/src/modules/tenant-auth/repository/repository";
 import { notify, notifyTenantAdmins } from "@/src/server/services/notificationService";
+import { getHub } from "@/src/server/realtime/hub";
 import type {
   ClaimMessageDocument,
   ClaimMessageParticipant,
@@ -96,10 +97,48 @@ export async function postChatMessage(
   const repositories = await getRepositoryContext();
   await repositories.claimMessages.insert(message);
 
+  // PA8: instant push — broadcast the message to the tenant topic AND
+  // the claim topic. SSE subscribers reconcile the message on receipt.
+  broadcastChatMessage(message);
+
   // Notify the other party so new chat messages surface in their bell (best-effort)
   await fireMessageNotification(claim, context.participant, trimmed);
 
   return message;
+}
+
+/**
+ * Strip the in-memory `_id` (ObjectId) and any other internal-only
+ * fields before serializing the message into the realtime payload.
+ * The Mongo ObjectId is not JSON-serializable in all Next.js runtimes.
+ */
+function stripMessageForBroadcast(
+  message: ClaimMessageDocument,
+): Record<string, unknown> {
+  const { ...rest } = message;
+  // Strip the raw mongo `_id` if it sneaks in. Claim messages are
+  // created with `projection: { _id: 0 }` in the repository, but be
+  // defensive.
+  return rest as Record<string, unknown>;
+}
+
+function broadcastChatMessage(message: ClaimMessageDocument): void {
+  const hub = getHub();
+  const payload = {
+    claimId: message.claimId,
+    tenantId: message.tenantId,
+    message: stripMessageForBroadcast(message),
+  };
+  hub.publish(
+    `tenant:${message.tenantId}` as `tenant:${string}`,
+    "chat.message.created",
+    payload,
+  );
+  hub.publish(
+    `claim:${message.claimId}` as `claim:${string}`,
+    "chat.message.created",
+    payload,
+  );
 }
 
 /**
@@ -194,7 +233,38 @@ export async function markThreadRead(
   }
 
   const repositories = await getRepositoryContext();
-  return repositories.claimMessages.markThreadRead(claimId, context.participant.key);
+  const count = await repositories.claimMessages.markThreadRead(
+    claimId,
+    context.participant.key,
+  );
+
+  // PA8: instant push — broadcast the read-state change so the
+  // other party (employee/tenantAdmin/clinic) sees their unread
+  // count drop without polling.
+  if (count !== null && count > 0) {
+    getHub().publish(
+      `tenant:${claim.tenantId}` as `tenant:${string}`,
+      "chat.message.read",
+      {
+        claimId,
+        tenantId: claim.tenantId,
+        readerKey: context.participant.key,
+        markedCount: count,
+      },
+    );
+    getHub().publish(
+      `claim:${claimId}` as `claim:${string}`,
+      "chat.message.read",
+      {
+        claimId,
+        tenantId: claim.tenantId,
+        readerKey: context.participant.key,
+        markedCount: count,
+      },
+    );
+  }
+
+  return count;
 }
 
 /**
@@ -231,6 +301,10 @@ export async function postOfficialUpdate(input: {
   };
 
   await repositories.claimMessages.insert(message);
+
+  // PA8: instant push — broadcast the official update to the
+  // tenant + claim topics.
+  broadcastChatMessage(message);
 }
 
 const SYSTEM_PARTICIPANT: ClaimMessageParticipant = {
@@ -272,5 +346,10 @@ export async function postSystemMessage(input: {
   };
 
   await repositories.claimMessages.insert(message);
+
+  // PA8: instant push — broadcast the system message to the
+  // tenant + claim topics.
+  broadcastChatMessage(message);
+
   return message;
 }

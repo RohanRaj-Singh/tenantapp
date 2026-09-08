@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
 import { getRepositoryContext } from "@/src/server/repositories/context";
+import { ApiError } from "@/src/server/api/errors";
 import { createEmployee } from "@/src/server/services/employeeService";
 import {
   createReimbursement,
@@ -13,6 +14,7 @@ import {
   exportInvoiceCsv,
   generateInvoice,
   getArLedger,
+  getClaimInvoiceLinks,
   getInvoice,
   issueInvoice,
   listInvoices,
@@ -52,8 +54,8 @@ async function createApprovedClaim(
   return claim;
 }
 
-describe("Invoice Generation — Phase 4", () => {
-  it("generates one consolidated invoice per organization with total = Σ approved amounts", async () => {
+describe("Invoice Generation", () => {
+  it("generates one consolidated invoice from an explicit claim selection", async () => {
     const tenantId = "tenant-invoice-consolidated";
     const claimA = await createApprovedClaim(tenantId, "A", 100, "2026-07-05");
     const claimB = await createApprovedClaim(tenantId, "B", 250, "2026-07-10");
@@ -61,33 +63,45 @@ describe("Invoice Generation — Phase 4", () => {
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claimA.reimbursementId, claimB.reimbursementId, claimC.reimbursementId],
       generatedBy: GENERATED_BY,
     });
 
     assert.equal(invoice.status, "draft");
     assert.equal(invoice.tenantId, tenantId);
-    assert.equal(invoice.period.from, "2026-07-01");
-    assert.equal(invoice.period.to, "2026-07-31");
-    assert.equal(invoice.totalAmount, 500, "total must equal the sum of approved amounts");
+    assert.equal(invoice.totalAmount, 500, "total must equal the sum of selected amounts");
     assert.equal(invoice.lineItems.length, 3);
     assert.equal(invoice.lineItems.length, new Set(invoice.lineItems.map((i) => i.claimId)).size);
 
-    const claimIds = new Set([claimA.reimbursementId, claimB.reimbursementId, claimC.reimbursementId]);
     assert.deepEqual(
       new Set(invoice.lineItems.map((i) => i.claimId)),
-      claimIds,
-      "all approved claims in the period must be line items",
+      new Set([claimA.reimbursementId, claimB.reimbursementId, claimC.reimbursementId]),
+      "selected claims must all become line items",
     );
     assert.ok(invoice.invoiceNumber.startsWith("INV-"), "invoice number must have INV- prefix");
   });
 
-  it("only approved claims are included (pending and rejected excluded)", async () => {
+  it("derives the billing period from selected claims' service dates (no date inputs)", async () => {
+    const tenantId = "tenant-invoice-period-derived";
+    const early = await createApprovedClaim(tenantId, "E", 50, "2026-06-28");
+    const late = await createApprovedClaim(tenantId, "L", 50, "2026-08-20");
+    const mid = await createApprovedClaim(tenantId, "M", 50, "2026-07-12");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      claimIds: [mid.reimbursementId, early.reimbursementId, late.reimbursementId],
+      generatedBy: GENERATED_BY,
+    });
+
+    assert.equal(invoice.period.from, "2026-06-28");
+    assert.equal(invoice.period.to, "2026-08-20");
+  });
+
+  it("rejects non-approved claims atomically with a structured result", async () => {
     const tenantId = "tenant-invoice-status-filter";
     const approved = await createApprovedClaim(tenantId, "OK", 200, "2026-07-10");
 
-    // Pending claim in the same period.
+    // Pending claim.
     const pendingEmp = await seedEmployee(tenantId, "PEND");
     const pending = await createReimbursement(tenantId, {
       employeeId: pendingEmp.employeeId,
@@ -98,7 +112,7 @@ describe("Invoice Generation — Phase 4", () => {
       serviceDate: "2026-07-12",
     });
 
-    // Rejected claim in the same period.
+    // Rejected claim.
     const rejectedEmp = await seedEmployee(tenantId, "REJ");
     const rejected = await createReimbursement(tenantId, {
       employeeId: rejectedEmp.employeeId,
@@ -110,30 +124,47 @@ describe("Invoice Generation — Phase 4", () => {
     });
     await rejectReimbursement(tenantId, rejected.reimbursementId, GENERATED_BY);
 
+    await assert.rejects(
+      () =>
+        generateInvoice({
+          tenantId,
+          claimIds: [approved.reimbursementId, pending.reimbursementId, rejected.reimbursementId],
+          generatedBy: GENERATED_BY,
+        }),
+      (err: unknown) => {
+        assert.ok(err instanceof ApiError);
+        const api = err as ApiError;
+        assert.equal(api.code, "INVALID_CLAIMS");
+        const rejectedIds = (api.details.rejected as Array<{ claimId: string }>).map((r) => r.claimId);
+        assert.deepEqual(
+          new Set(rejectedIds),
+          new Set([pending.reimbursementId, rejected.reimbursementId]),
+        );
+        assert.deepEqual(api.details.validClaimIds, [approved.reimbursementId]);
+        return true;
+      },
+    );
+
+    // Atomicity: nothing was written — selecting only the valid claim now succeeds.
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [approved.reimbursementId],
       generatedBy: GENERATED_BY,
     });
-
-    assert.equal(invoice.lineItems.length, 1, "only the approved claim may be invoiced");
+    assert.equal(invoice.lineItems.length, 1);
     assert.equal(invoice.lineItems[0]!.claimId, approved.reimbursementId);
     assert.equal(invoice.totalAmount, 200);
-    assert.ok(!invoice.lineItems.some((i) => i.claimId === pending.reimbursementId));
-    assert.ok(!invoice.lineItems.some((i) => i.claimId === rejected.reimbursementId));
   });
 
   it("sessionCount is informational and does not affect the total", async () => {
     const tenantId = "tenant-invoice-sessions";
-    await createApprovedClaim(tenantId, "S1", 120, "2026-07-05", { sessionCount: 5 });
-    await createApprovedClaim(tenantId, "S2", 180, "2026-07-08", { sessionCount: 2 });
-    await createApprovedClaim(tenantId, "S3", 50, "2026-07-12");
+    const s1 = await createApprovedClaim(tenantId, "S1", 120, "2026-07-05", { sessionCount: 5 });
+    const s2 = await createApprovedClaim(tenantId, "S2", 180, "2026-07-08", { sessionCount: 2 });
+    const s3 = await createApprovedClaim(tenantId, "S3", 50, "2026-07-12");
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [s1.reimbursementId, s2.reimbursementId, s3.reimbursementId],
       generatedBy: GENERATED_BY,
     });
 
@@ -143,104 +174,108 @@ describe("Invoice Generation — Phase 4", () => {
     assert.equal(sessions!.amount, 120);
   });
 
-  it("guards against double-invoicing — claims on an existing invoice are excluded", async () => {
+  it("guards against double-invoicing — claims already on an invoice are rejected", async () => {
     const tenantId = "tenant-invoice-double-invoice";
-    await createApprovedClaim(tenantId, "D1", 100, "2026-07-05");
-    await createApprovedClaim(tenantId, "D2", 200, "2026-07-10");
-    await createApprovedClaim(tenantId, "D3", 300, "2026-07-15");
+    const d1 = await createApprovedClaim(tenantId, "D1", 100, "2026-07-05");
+    const d2 = await createApprovedClaim(tenantId, "D2", 200, "2026-07-10");
+    const d3 = await createApprovedClaim(tenantId, "D3", 300, "2026-07-15");
 
     const first = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [d1.reimbursementId, d2.reimbursementId, d3.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     assert.equal(first.lineItems.length, 3);
     assert.equal(first.totalAmount, 600);
 
-    // Re-generating for the same period must fail — every claim is already invoiced.
+    // Re-selecting an already-invoiced claim rejects the whole operation.
     await assert.rejects(
       () =>
         generateInvoice({
           tenantId,
-          from: "2026-07-01",
-          to: "2026-07-31",
+          claimIds: [d1.reimbursementId, d2.reimbursementId, d3.reimbursementId],
           generatedBy: GENERATED_BY,
         }),
-      { code: "NO_CLAIMS_TO_INVOICE" },
+      (err: unknown) => (err as ApiError).code === "INVALID_CLAIMS",
     );
 
-    // A newly approved claim becomes the only eligible line item.
-    await createApprovedClaim(tenantId, "D4", 400, "2026-07-20");
+    // A newly approved claim invoices cleanly on its own.
+    const d4 = await createApprovedClaim(tenantId, "D4", 400, "2026-07-20");
     const second = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [d4.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     assert.equal(second.lineItems.length, 1, "only the never-invoiced claim may be included");
     assert.equal(second.totalAmount, 400);
-    assert.ok(
-      second.lineItems.every((i) => i.claimId !== first.lineItems[0]!.claimId),
-      "claims already on an existing invoice must be excluded",
+  });
+
+  it("rejects claims that belong to a different organization", async () => {
+    const tenantA = "tenant-invoice-wrong-org-a";
+    const tenantB = "tenant-invoice-wrong-org-b";
+    const claim = await createApprovedClaim(tenantA, "X", 100, "2026-07-05");
+
+    await assert.rejects(
+      () =>
+        generateInvoice({
+          tenantId: tenantB,
+          claimIds: [claim.reimbursementId],
+          generatedBy: GENERATED_BY,
+        }),
+      (err: unknown) => (err as ApiError).code === "INVALID_CLAIMS",
     );
   });
 
-  it("rejects an empty period and throws when no eligible claims exist", async () => {
-    const tenantId = "tenant-invoice-empty";
-
+  it("rejects an empty selection and a missing tenant", async () => {
     await assert.rejects(
       () =>
         generateInvoice({
-          tenantId,
-          from: "2026-07-20",
-          to: "2026-07-01",
+          tenantId: "tenant-invoice-empty",
+          claimIds: [],
           generatedBy: GENERATED_BY,
         }),
-      { code: "INVALID_PERIOD" },
+      { code: "NO_CLAIMS_SELECTED" },
     );
 
     await assert.rejects(
-      () =>
-        generateInvoice({
-          tenantId,
-          from: "2026-07-01",
-          to: "2026-07-31",
-          generatedBy: GENERATED_BY,
-        }),
-      { code: "NO_CLAIMS_TO_INVOICE" },
+      () => generateInvoice({ tenantId: "", claimIds: ["any"], generatedBy: GENERATED_BY }),
+      { code: "MISSING_TENANT" },
     );
+  });
+
+  it("is date-independent: any serviceDate is eligible when explicitly selected", async () => {
+    const tenantId = "tenant-invoice-date-independent";
+    const ancient = await createApprovedClaim(tenantId, "OLD", 75, "2020-01-01");
+    const future = await createApprovedClaim(tenantId, "NEW", 125, "2099-12-31");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      claimIds: [ancient.reimbursementId, future.reimbursementId],
+      generatedBy: GENERATED_BY,
+    });
+
+    assert.equal(invoice.lineItems.length, 2, "serviceDate must not restrict eligibility");
+    assert.equal(invoice.period.from, "2020-01-01");
+    assert.equal(invoice.period.to, "2099-12-31");
   });
 });
 
 describe("Invoice Lifecycle", () => {
-  it("transitions draft → generated → issued → paid", async () => {
+  it("transitions draft → issued → paid", async () => {
     const tenantId = "tenant-invoice-lifecycle";
-    await createApprovedClaim(tenantId, "L1", 250, "2026-07-10");
+    const claim = await createApprovedClaim(tenantId, "L1", 250, "2026-07-10");
 
     const draft = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     assert.equal(draft.status, "draft");
 
-    const repositories = await getRepositoryContext();
-
-    // Draft → generated (finalizing a draft for issue).
-    const generated = await repositories.invoices.update(draft.invoiceId, {
-      status: "generated",
-      updatedAt: new Date().toISOString(),
-    });
-    assert.equal(generated!.status, "generated");
-
-    // Generated → issued.
     const issued = await issueInvoice(draft.invoiceId, GENERATED_BY);
     assert.equal(issued.status, "issued");
     assert.ok(issued.issuedAt, "issuedAt must be set");
 
-    // Issued → paid.
     const paid = await markInvoicePaid(draft.invoiceId, GENERATED_BY);
     assert.equal(paid.status, "paid");
     assert.ok(paid.paidAt, "paidAt must be set");
@@ -248,12 +283,11 @@ describe("Invoice Lifecycle", () => {
 
   it("rejects invalid lifecycle transitions", async () => {
     const tenantId = "tenant-invoice-lifecycle-invalid";
-    await createApprovedClaim(tenantId, "LI", 100, "2026-07-10");
+    const claim = await createApprovedClaim(tenantId, "LI", 100, "2026-07-10");
 
     const draft = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
 
@@ -283,12 +317,11 @@ describe("Invoice Lifecycle", () => {
     const claim = await createApprovedClaim(tenantId, "C1", 75, "2026-07-06", {
       sessionCount: 3,
     });
-    await createApprovedClaim(tenantId, "C2", 125, "2026-07-09");
+    const claim2 = await createApprovedClaim(tenantId, "C2", 125, "2026-07-09");
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId, claim2.reimbursementId],
       generatedBy: GENERATED_BY,
     });
 
@@ -309,8 +342,7 @@ describe("Invoice Financial Flow — paid invoice triggers payout queue", () => 
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     assert.equal(invoice.status, "draft");
@@ -326,8 +358,7 @@ describe("Invoice Financial Flow — paid invoice triggers payout queue", () => 
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
@@ -349,16 +380,45 @@ describe("Invoice Financial Flow — paid invoice triggers payout queue", () => 
   });
 });
 
-describe("Invoice A/R Ledger", () => {
-  it("reports issued invoices as outstanding and paid invoices as cleared", async () => {
-    const tenantId = "tenant-invoice-ledger";
-    await createApprovedClaim(tenantId, "A1", 100, "2026-07-05");
-    await createApprovedClaim(tenantId, "A2", 250, "2026-07-10");
+describe("Claim → Invoice Traceability", () => {
+  it("exposes the invoice relationship for a claim via read-time join across the lifecycle", async () => {
+    const tenantId = "tenant-invoice-traceability";
+    const claim = await createApprovedClaim(tenantId, "T1", 150, "2026-07-05");
+
+    // Before invoicing: no link.
+    const empty = await getClaimInvoiceLinks([claim.reimbursementId]);
+    assert.equal(empty.size, 0);
 
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
+      generatedBy: GENERATED_BY,
+    });
+
+    const links = await getClaimInvoiceLinks([claim.reimbursementId]);
+    const link = links.get(claim.reimbursementId);
+    assert.ok(link, "claim must resolve to its invoice");
+    assert.equal(link!.invoiceId, invoice.invoiceId);
+    assert.equal(link!.invoiceNumber, invoice.invoiceNumber);
+    assert.equal(link!.status, "draft");
+
+    // The link persists across the lifecycle (draft → issued → paid).
+    await issueInvoice(invoice.invoiceId, GENERATED_BY);
+    await markInvoicePaid(invoice.invoiceId, GENERATED_BY);
+    const paidLinks = await getClaimInvoiceLinks([claim.reimbursementId]);
+    assert.equal(paidLinks.get(claim.reimbursementId)!.status, "paid");
+  });
+});
+
+describe("Invoice A/R Ledger", () => {
+  it("reports issued invoices as outstanding and paid invoices as cleared", async () => {
+    const tenantId = "tenant-invoice-ledger";
+    const a1 = await createApprovedClaim(tenantId, "A1", 100, "2026-07-05");
+    const a2 = await createApprovedClaim(tenantId, "A2", 250, "2026-07-10");
+
+    const invoice = await generateInvoice({
+      tenantId,
+      claimIds: [a1.reimbursementId, a2.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
@@ -382,8 +442,7 @@ describe("Invoice A/R Ledger", () => {
     const claim = await createApprovedClaim(tenantId, "AR1", 80, "2026-07-05");
     const invoice = await generateInvoice({
       tenantId,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
     const issued = await issueInvoice(invoice.invoiceId, GENERATED_BY);
@@ -404,11 +463,10 @@ describe("Invoice Scoping", () => {
     const tenantA = "tenant-invoice-scope-a";
     const tenantB = "tenant-invoice-scope-b";
 
-    await createApprovedClaim(tenantA, "A1", 100, "2026-07-05");
+    const claim = await createApprovedClaim(tenantA, "A1", 100, "2026-07-05");
     const invoiceA = await generateInvoice({
       tenantId: tenantA,
-      from: "2026-07-01",
-      to: "2026-07-31",
+      claimIds: [claim.reimbursementId],
       generatedBy: GENERATED_BY,
     });
 

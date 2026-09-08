@@ -36,10 +36,6 @@ export const dashboardCopy: Record<AppLanguage, DashboardCopySection> = {
           description:
             "Measure of employee satisfaction with colleagues, personal fulfillment, and workplace environment.",
         },
-        "email-invitations": {
-          name: "Employee Onboarding",
-          description: "Import employees, send invitations, and track registration progress.",
-        },
         reports: {
           name: "Reports",
           description: "Protected reporting surfaces for downloadable and review-ready summaries.",
@@ -62,6 +58,12 @@ reimbursements: {
            headerTitle: "Claims Management",
            description: "Review and manage employee claims.",
          },
+        requests: {
+          name: "Requests",
+          headerTitle: "Requests",
+          description:
+            "Questions from employees and clinics before they file a claim. Answering a request does not change any claim, invoice, or payment.",
+        },
       },
       shell: {
         badge: "Organization Dashboard",
@@ -431,11 +433,6 @@ reimbursements: {
           description:
             "قياس رضا الموظفين عن الزملاء والتحقق الذاتي وبيئة العمل.",
         },
-        "email-invitations": {
-          name: "إدارة الموظفين",
-          description:
-            "استيراد الموظفين وإرسال الدعوات وتتبع التسجيل.",
-        },
         reports: {
           name: "التقارير",
           description: "واجهات تقارير محمية للملخصات القابلة للتنزيل والمراجعة.",
@@ -458,6 +455,12 @@ reimbursements: {
            headerTitle: "إدارة المطالبات",
            description: "مراجعة وإدارة مطالبات الموظفين.",
          },
+        requests: {
+          name: "الطلبات",
+          headerTitle: "الطلبات",
+          description:
+            "أسئلة من الموظفين والعيادات قبل تقديم المطالبة. الرد على الطلب لا يغيّر أي مطالبة أو فاتورة أو دفعة.",
+        },
        },
       shell: {
         badge: "لوحة المؤسسة",

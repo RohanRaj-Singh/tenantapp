@@ -32,6 +32,10 @@ export class InvoicesRepository implements InvoicesRepositoryContract {
         key: { tenantId: 1, status: 1 },
         name: "invoice_tenant_status",
       },
+      {
+        key: { "lineItems.claimId": 1 },
+        name: "invoice_lineitems_claimid",
+      },
     ]);
   }
 
@@ -45,6 +49,28 @@ export class InvoicesRepository implements InvoicesRepositoryContract {
       { projection: { _id: 0 } },
     );
     return record as InvoiceDocument | null;
+  }
+
+  async findByIds(ids: string[]): Promise<InvoiceDocument[]> {
+    if (ids.length === 0) return [];
+    const records = await this.collection()
+      .find(
+        { invoiceId: { $in: ids } },
+        { projection: { _id: 0 } },
+      )
+      .toArray();
+    return records as unknown as InvoiceDocument[];
+  }
+
+  async findByClaimIds(claimIds: string[]): Promise<InvoiceDocument[]> {
+    if (claimIds.length === 0) return [];
+    const records = await this.collection()
+      .find(
+        { "lineItems.claimId": { $in: claimIds } },
+        { projection: { _id: 0 } },
+      )
+      .toArray();
+    return records as unknown as InvoiceDocument[];
   }
 
   async listByTenant(

@@ -1,6 +1,7 @@
 import { randomUUID } from "crypto";
 import { getRepositoryContext } from "@/src/server/repositories/context";
-import type { PaymentRecordDocument } from "@/src/server/db/documents";
+import { ApiError } from "@/src/server/api/errors";
+import type { PaymentRecordDocument, InvoiceDocument, ReimbursementDocument } from "@/src/server/db/documents";
 import {
   payReimbursement as reimbPayReimbursement,
   queueForPayment as reimbQueueForPayment,
@@ -108,12 +109,31 @@ export async function queueForPayment(
 }
 
 /**
+ * A claim that was excluded from a payout and why.
+ */
+export interface PaymentRejection {
+  claimId: string;
+  reason:
+    | "not_found"
+    | "wrong_organization"
+    | "not_to_be_paid"
+    | "missing_bank";
+}
+
+/**
  * Process payouts for `to_be_paid` claims.
  *
- * With no `claimIds`, every `to_be_paid` claim (optionally scoped to a tenant)
- * is paid. Otherwise only the supplied claim IDs that are currently
- * `to_be_paid` are processed. Each claim transitions `to_be_paid → paid` via
- * `payReimbursement` and its `PaymentRecord` is finalized with `paidAt`/`paidBy`.
+ * Selection is explicit and mandatory: an empty or absent `claimIds` throws
+ * `NO_CLAIMS_SELECTED` — it never means "pay every eligible claim" (a super
+ * admin must not accidentally pay the entire queue through an empty selection).
+ *
+ * Claim ids are normalized and de-duplicated (first-seen order) so a duplicated
+ * id cannot cause a mid-batch abort. Each distinct id is then classified:
+ * claims that are missing, belong to another organization, are not `to_be_paid`,
+ * or lack a complete claim-level bank snapshot are rejected (surfaced in
+ * `rejected`, never silently paid). The remaining claims each transition
+ * `to_be_paid → paid` via `payReimbursement` and their `PaymentRecord` is
+ * finalized with `paidAt`/`paidBy`.
  */
 export async function processPayments(options: {
   tenantId?: string;
@@ -123,33 +143,51 @@ export async function processPayments(options: {
   bankReference?: string;
   /** Optional note for the payout run. */
   notes?: string;
-}): Promise<{ processed: number }> {
-  const { tenantId, claimIds, actorId, bankReference, notes } = options;
+  /** Operator-entered transfer date (the actual payout date). Defaults to the record time when absent. */
+  paymentDate?: string;
+  /** Payment method (e.g. "Bank transfer"). Free text, optional — captured for the record. */
+  method?: string;
+}): Promise<{ processed: number; rejected: PaymentRejection[] }> {
+  const { tenantId, claimIds, actorId, bankReference, notes, paymentDate, method } = options;
   const repositories = await getRepositoryContext();
 
-  const targets: Array<{ tenantId: string; reimbursementId: string }> = [];
+  if (!claimIds || claimIds.length === 0) {
+    throw new ApiError(
+      400,
+      "NO_CLAIMS_SELECTED",
+      "Select at least one claim to pay. An empty selection never processes all eligible claims.",
+    );
+  }
 
-  if (claimIds && claimIds.length > 0) {
-    for (const id of claimIds) {
-      const claim = await repositories.reimbursements.findById(id);
-      if (
-        claim &&
-        claim.status === "to_be_paid" &&
-        (!tenantId || claim.tenantId === tenantId)
-      ) {
-        targets.push({ tenantId: claim.tenantId, reimbursementId: id });
-      }
+  const uniqueIds = Array.from(
+    new Set(claimIds.map((id) => String(id).trim()).filter(Boolean)),
+  );
+
+  const targets: Array<{ tenantId: string; reimbursementId: string }> = [];
+  const rejected: PaymentRejection[] = [];
+
+  for (const id of uniqueIds) {
+    const claim = await repositories.reimbursements.findById(id);
+    if (!claim) {
+      rejected.push({ claimId: id, reason: "not_found" });
+      continue;
     }
-  } else {
-    const result = await repositories.reimbursements.findAll({
-      status: "to_be_paid",
-      tenantId,
-      skip: 0,
-      limit: 100_000,
-    });
-    for (const claim of result.reimbursements) {
-      targets.push({ tenantId: claim.tenantId, reimbursementId: claim.reimbursementId });
+    if (tenantId && claim.tenantId !== tenantId) {
+      rejected.push({ claimId: id, reason: "wrong_organization" });
+      continue;
     }
+    if (claim.status !== "to_be_paid") {
+      rejected.push({ claimId: id, reason: "not_to_be_paid" });
+      continue;
+    }
+    // Bank-completeness guard: the claim's own bank snapshot is the sole source
+    // of truth. A `to_be_paid` claim without BOTH account and bank name is
+    // rejected — never silently funded from an employee profile or clinic.
+    if (!(claim.bankAccountNumber?.trim() && claim.bankName?.trim())) {
+      rejected.push({ claimId: id, reason: "missing_bank" });
+      continue;
+    }
+    targets.push({ tenantId: claim.tenantId, reimbursementId: id });
   }
 
   let processed = 0;
@@ -174,6 +212,8 @@ export async function processPayments(options: {
         paymentReference: record.paymentReference ?? paymentReference,
         ...(bankReference !== undefined ? { bankReference } : {}),
         ...(notes !== undefined ? { notes } : {}),
+        ...(paymentDate !== undefined ? { paymentDate } : {}),
+        ...(method !== undefined ? { method } : {}),
         paidAt: now,
         paidBy: actorId,
         updatedAt: now,
@@ -191,6 +231,8 @@ export async function processPayments(options: {
         paymentReference,
         ...(bankReference !== undefined ? { bankReference } : {}),
         ...(notes !== undefined ? { notes } : {}),
+        ...(paymentDate !== undefined ? { paymentDate } : {}),
+        ...(method !== undefined ? { method } : {}),
         paidAt: now,
         paidBy: actorId,
         createdAt: now,
@@ -200,7 +242,7 @@ export async function processPayments(options: {
     processed += 1;
   }
 
-  return { processed };
+  return { processed, rejected };
 }
 
 export interface PaymentDetailResult {
@@ -339,14 +381,14 @@ export interface PaymentWorkspaceClaim {
   bankAccountNumber?: string;
   bankName?: string;
   /**
-   * Effective payout bank details after legacy fallback resolution.
-   * `bankSource === "claim"` → used the claim snapshot.
-   * `bankSource === "employee_fallback"` → claim lacked bank; fell back to the
-   *   employee profile (legacy compatibility only — new claims never need this).
+   * Effective payout bank details. The claim's own snapshot is the only source
+   * of truth — there is no employee-profile fallback. `bankSource === "claim"`
+   * → the claim snapshot is usable; `bankSource === "missing"` → no usable bank
+   * and the claim is blocked from payout.
    */
   effectiveBankAccountNumber?: string;
   effectiveBankName?: string;
-  bankSource?: "claim" | "employee_fallback" | "missing";
+  bankSource?: "claim" | "missing";
 }
 
 export interface PaymentWorkspaceClinic {
@@ -378,21 +420,21 @@ export interface PaymentWorkspaceHistoryEntry {
   paymentReference?: string;
   bankReference?: string;
   paidAt?: string;
+  /** Operator-entered transfer date (the actual payout date). */
+  paymentDate?: string;
   paidBy?: string;
+  method?: string;
   status: PaymentRecordDocument["status"];
 }
 
 export interface PaymentWorkspaceResult {
   summary: {
     outstanding: { count: number; amount: number };
-    overdue: { count: number; amount: number };
     paidToday: { count: number; amount: number };
   };
   organizations: PaymentWorkspaceOrg[];
   paymentHistory: PaymentWorkspaceHistoryEntry[];
 }
-
-const OVERDUE_DAYS = 14;
 
 /**
  * Build the org-first Payment Operations workspace:
@@ -400,9 +442,9 @@ const OVERDUE_DAYS = 14;
  *
  * The default view surfaces organizations with totals; clinics and claims are
  * progressively disclosed on drill-down. Payment history (with payment
- * reference / bank reference / paid by / paid date) powers the reconciliation
- * trail. Payment batches are intentionally NOT part of Version 1 — the data
- * model keeps the extension point, but no batch workflows exist yet.
+ * reference / bank reference / paid by / paid date / method) powers the
+ * reconciliation trail. Payment batches are intentionally NOT part of Version 1
+ * — the data model keeps the extension point, but no batch workflows exist yet.
  */
 export async function listPaymentOperations(
   options: { tenantId?: string } = {},
@@ -428,14 +470,23 @@ export async function listPaymentOperations(
   // Resolve the funding invoice per queued claim (the PaymentRecord carries the
   // invoiceId from `markInvoicePaid`). Surfaced on the workspace so finance can
   // see which invoice funded each payout before processing.
+  //
+  // PA7: previously a per-invoiceId `findById` issued N Mongo reads. Use
+  // a single `findByIds` fan-out so a workspace with N queued claims
+  // makes one read instead of N.
   const queuedRecords = await repositories.paymentRecords.listByStatus("to_be_paid");
-  const invoiceByRecord = new Map<string, { invoiceId?: string; invoiceNumber?: string }>();
-  const fundingInvoiceIds = [...new Set(queuedRecords.map((r) => r.invoiceId).filter(Boolean) as string[])];
+  const fundingInvoiceIds = [
+    ...new Set(queuedRecords.map((r) => r.invoiceId).filter(Boolean) as string[]),
+  ];
+  const fundingInvoices =
+    fundingInvoiceIds.length > 0
+      ? await repositories.invoices.findByIds(fundingInvoiceIds)
+      : [];
   const fundingInvoiceNumberById = new Map<string, string | undefined>();
-  for (const invoiceId of fundingInvoiceIds) {
-    const invoice = await repositories.invoices.findById(invoiceId);
-    if (invoice) fundingInvoiceNumberById.set(invoiceId, invoice.invoiceNumber);
+  for (const inv of fundingInvoices) {
+    fundingInvoiceNumberById.set(inv.invoiceId, inv.invoiceNumber);
   }
+  const invoiceByRecord = new Map<string, { invoiceId?: string; invoiceNumber?: string }>();
   for (const record of queuedRecords) {
     invoiceByRecord.set(record.claimId, {
       invoiceId: record.invoiceId,
@@ -491,27 +542,11 @@ export async function listPaymentOperations(
     });
   }
 
-  // Resolve effective payout bank per claim. The claim's own bank snapshot is
-  // the source of truth. For legacy claims that predate bank capture on claims,
-  // fall back to the employee profile (marked `employee_fallback`) so payout is
-  // not blocked by historical data. New claims always carry their own snapshot.
+  // Resolve effective payout bank per claim. The claim's own bank snapshot is the
+  // sole source of truth — there is no employee-profile fallback. A claim without
+  // a usable snapshot is marked `missing` (blocked from payout), never silently
+  // funded by a different bank source.
   {
-    const employeeIds = new Set<string>();
-    for (const org of orgMap.values()) {
-      for (const clinic of org.clinics) {
-        for (const c of clinic.claims) {
-          if (!c.bankAccountNumber && !c.bankName && c.employeeName) {
-            const claimDoc = queue.reimbursements.find((r) => r.reimbursementId === c.reimbursementId);
-            if (claimDoc?.employeeId) employeeIds.add(claimDoc.employeeId);
-          }
-        }
-      }
-    }
-    const employeeById = new Map<string, { bankAccountNumber?: string; bankName?: string }>();
-    for (const empId of employeeIds) {
-      const emp = await repositories.employees.findById(empId);
-      if (emp) employeeById.set(empId, { bankAccountNumber: emp.bankAccountNumber, bankName: emp.bankName });
-    }
     for (const org of orgMap.values()) {
       for (const clinic of org.clinics) {
         for (const c of clinic.claims) {
@@ -520,14 +555,6 @@ export async function listPaymentOperations(
             c.effectiveBankAccountNumber = c.bankAccountNumber;
             c.effectiveBankName = c.bankName;
             c.bankSource = "claim";
-            continue;
-          }
-          const claimDoc = queue.reimbursements.find((r) => r.reimbursementId === c.reimbursementId);
-          const emp = claimDoc?.employeeId ? employeeById.get(claimDoc.employeeId) : undefined;
-          if (emp?.bankAccountNumber && emp.bankName) {
-            c.effectiveBankAccountNumber = emp.bankAccountNumber;
-            c.effectiveBankName = emp.bankName;
-            c.bankSource = "employee_fallback";
           } else {
             c.bankSource = "missing";
           }
@@ -550,17 +577,6 @@ export async function listPaymentOperations(
   }
 
   // Summary KPIs.
-  const now = Date.now();
-  let overdueCount = 0;
-  let overdueAmount = 0;
-  for (const claim of queue.reimbursements) {
-    const queuedMs = new Date(claim.updatedAt).getTime();
-    if (now - queuedMs > OVERDUE_DAYS * 86400000) {
-      overdueCount += 1;
-      overdueAmount += claim.amount;
-    }
-  }
-
   const today = new Date().toISOString().slice(0, 10);
   const paidToday = paidRecords.filter((r) =>
     r.paidAt?.slice(0, 10) === today && (!tenantId || r.tenantId === tenantId));
@@ -568,30 +584,53 @@ export async function listPaymentOperations(
 
   // Payment history (lightweight reconciliation trail).
   // Resolve invoice numbers for per-payout invoice linkage (which invoice funded each payout).
-  const invoiceIds = [...new Set(paidRecords.map((r) => r.invoiceId).filter(Boolean) as string[])];
+  //
+  // PA7: replace per-invoiceId and per-claimId lookups with a single
+  // `findByIds` fan-out for both collections. The history loop then
+  // becomes pure in-memory map lookups, dropping 2N+1 reads to 2 reads.
+  const historyClaimIds = [
+    ...new Set(paidRecords.map((r) => r.claimId).filter(Boolean) as string[]),
+  ];
+  const historyInvoiceIds = [
+    ...new Set(paidRecords.map((r) => r.invoiceId).filter(Boolean) as string[]),
+  ];
+  const [historyClaims, historyInvoices] = await Promise.all([
+    historyClaimIds.length > 0
+      ? repositories.reimbursements.findByIds(historyClaimIds)
+      : Promise.resolve([] as ReimbursementDocument[]),
+    historyInvoiceIds.length > 0
+      ? repositories.invoices.findByIds(historyInvoiceIds)
+      : Promise.resolve([] as InvoiceDocument[]),
+  ]);
+  const claimNumberById = new Map<string, string | undefined>();
+  const claimClinicNameById = new Map<string, string | undefined>();
+  for (const claim of historyClaims) {
+    claimNumberById.set(claim.reimbursementId, claim.claimNumber);
+    claimClinicNameById.set(claim.reimbursementId, claim.clinicName);
+  }
   const invoiceNumberById = new Map<string, string | undefined>();
-  for (const invoiceId of invoiceIds) {
-    const invoice = await repositories.invoices.findById(invoiceId);
-    if (invoice) invoiceNumberById.set(invoiceId, invoice.invoiceNumber);
+  for (const inv of historyInvoices) {
+    invoiceNumberById.set(inv.invoiceId, inv.invoiceNumber);
   }
 
   const history: PaymentWorkspaceHistoryEntry[] = [];
   for (const record of paidRecords) {
     if (tenantId && record.tenantId !== tenantId) continue;
-    const claim = await repositories.reimbursements.findById(record.claimId);
     history.push({
       paymentRecordId: record.paymentRecordId,
       claimId: record.claimId,
-      claimNumber: claim?.claimNumber,
+      claimNumber: claimNumberById.get(record.claimId),
       invoiceId: record.invoiceId,
       invoiceNumber: record.invoiceId ? invoiceNumberById.get(record.invoiceId) : undefined,
       tenantName: tenantLookup.get(record.tenantId) ?? record.tenantId,
-      clinicName: record.clinicName ?? claim?.clinicName ?? null,
+      clinicName: record.clinicName ?? claimClinicNameById.get(record.claimId) ?? null,
       amount: record.amount,
       paymentReference: record.paymentReference,
       bankReference: record.bankReference,
       paidAt: record.paidAt,
+      paymentDate: record.paymentDate,
       paidBy: record.paidBy,
+      method: record.method,
       status: record.status,
     });
   }
@@ -603,7 +642,6 @@ export async function listPaymentOperations(
         count: queue.reimbursements.length,
         amount: queue.reimbursements.reduce((sum, c) => sum + c.amount, 0),
       },
-      overdue: { count: overdueCount, amount: overdueAmount },
       paidToday: { count: paidToday.length, amount: paidTodayAmount },
     },
     organizations: Array.from(orgMap.values()),

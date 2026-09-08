@@ -6,6 +6,7 @@ import {
   postChatMessage,
   type ChatAccessContext,
 } from "@/src/server/services/claimMessageService";
+import { getHub } from "@/src/server/realtime/hub";
 import type {
   ClaimRequestDocument,
   ClaimRequestParticipant,
@@ -19,6 +20,29 @@ export interface CreateClaimRequestInput {
 
 export interface ListClaimRequestsResult {
   requests: ClaimRequestDocument[];
+}
+
+/**
+ * Tenant-wide Requests listing used by the `/requests` inbox. Read-only —
+ * returns existing claimRequest documents scoped to the caller's tenantId.
+ * Only the organization (tenant admin) of the same tenant may list.
+ */
+export async function listClaimRequestsForTenant(
+  context: ChatAccessContext,
+  options?: { status?: ClaimRequestStatus; limit?: number },
+): Promise<ListClaimRequestsResult | null> {
+  if (context.participant.role !== "tenantAdmin") {
+    return null;
+  }
+  if (!context.tenantId) {
+    return null;
+  }
+  const repositories = await getRepositoryContext();
+  const requests = await repositories.claimRequests.listByTenantId(
+    context.tenantId,
+    options,
+  );
+  return { requests };
 }
 
 /**
@@ -79,8 +103,44 @@ export async function createClaimRequest(
       type: "claim_request",
       title: "New request",
       body: `${requester.name} asked on ${subject}: ${body}`,
+      requestId: request.requestId,
     }),
   );
+
+  // Additive — also fan-out to the platform-wide Super Admin identity so the
+  // Super Admin Requests workspace can deep-link from the bell.
+  // Existing tenant-admin recipient is preserved unchanged.
+  await fireSideEffect(() =>
+    notify({
+      tenantId: "",
+      claimId: claim.reimbursementId,
+      claimNumber: claim.claimNumber,
+      recipientType: "superAdmin",
+      recipientId: "super-admin",
+      type: "claim_request",
+      title: "New request",
+      body: `${requester.name} asked on ${subject}: ${body}`,
+      requestId: request.requestId,
+    }),
+  );
+
+  // PA8: broadcast request.updated on creation so any open admin/employee UI
+  // showing a request list refreshes instantly.
+  const hub = getHub();
+  const requestCreatedPayload = {
+    requestId: request.requestId,
+    claimId: claim.reimbursementId,
+    tenantId: claim.tenantId,
+    status: "pending" as const,
+    decision: null,
+    requester,
+  };
+  hub.publish(
+    `tenant:${claim.tenantId}` as `tenant:${string}`,
+    "request.updated",
+    requestCreatedPayload,
+  );
+  hub.publish("superadmin", "request.updated", requestCreatedPayload);
 
   return request;
 }
@@ -117,12 +177,18 @@ export async function decideClaimRequest(
     return null;
   }
 
-  // Only a tenant admin of the same tenant can decide.
+  // Only the organization (tenant admin of the same tenant) OR the platform-wide
+  // Super Admin can decide. assertClaimAccess already gates both roles for the
+  // underlying claim (see claimMessageService.assertClaimAccess — superAdmin is
+  // granted cross-tenant access). The whitelist below matches that contract.
   const claim = await assertClaimAccess(context, request.claimId);
   if (!claim) {
     return null;
   }
-  if (context.participant.role !== "tenantAdmin") {
+  if (
+    context.participant.role !== "tenantAdmin" &&
+    context.participant.role !== "superAdmin"
+  ) {
     return null;
   }
   if (request.status !== "pending") {
@@ -169,8 +235,45 @@ export async function decideClaimRequest(
         title: `Request ${decisionLabel(decision)}`,
         body: `Your request "${request.subject}" was ${decisionLabel(decision)}`
           + (resolutionNote?.trim() ? `: ${resolutionNote.trim()}` : ""),
+        requestId: requestId,
       }),
     );
+
+    // Additive — also notify the platform-wide Super Admin so the bell can
+    // deep-link the Super Admin Requests workspace. Existing employee
+    // recipient is preserved unchanged.
+    await fireSideEffect(() =>
+      notify({
+        tenantId: "",
+        claimId: claim.reimbursementId,
+        claimNumber: claim.claimNumber,
+        recipientType: "superAdmin",
+        recipientId: "super-admin",
+        type: "claim_request",
+        title: `Request ${decisionLabel(decision)}`,
+        body: `Request "${request.subject}" was ${decisionLabel(decision)}`
+          + (resolutionNote?.trim() ? `: ${resolutionNote.trim()}` : ""),
+        requestId: requestId,
+      }),
+    );
+
+    // PA8: broadcast request.updated so any open employee/admin UI that lists
+    // requests can refresh instantly without polling.
+    const hub = getHub();
+    const requestUpdatedPayload = {
+      requestId,
+      claimId: claim.reimbursementId,
+      tenantId: claim.tenantId,
+      status,
+      decision,
+      responder,
+    };
+    hub.publish(
+      `tenant:${claim.tenantId}` as `tenant:${string}`,
+      "request.updated",
+      requestUpdatedPayload,
+    );
+    hub.publish("superadmin", "request.updated", requestUpdatedPayload);
   }
 
   return updated;

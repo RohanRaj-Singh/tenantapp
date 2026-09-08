@@ -173,6 +173,10 @@ export default function ReimbursementDetailPage({ reimbursementId }: Reimburseme
         description: editFields.description.trim(),
       };
       if (editFields.notes.trim()) body.notes = editFields.notes.trim();
+      // Resubmit rejected claims back to pending for review
+      if (reimbursement.status === "rejected") {
+        body.resubmit = true;
+      }
 
       const res = await fetch(`/api/reimbursements/${reimbursementId}`, {
         method: "PUT",

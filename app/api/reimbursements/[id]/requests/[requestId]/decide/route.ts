@@ -19,6 +19,10 @@ const VALID_DECISIONS: ClaimRequestDecision[] = [
 /**
  * The organization (tenant admin) responds to a pending Request (FR-074):
  * approve, reject, ask for more info, or convert the discussion to chat.
+ *
+ * The platform-wide Super Admin (authenticated via x-admin-api-key in
+ * resolveChatParticipant) may also respond — Super Admin cross-tenant
+ * access is already granted by assertClaimAccess.
  */
 export async function POST(
   request: NextRequest,
@@ -30,10 +34,12 @@ export async function POST(
       return resolved.response;
     }
 
-    // Only a tenant admin may decide a request.
-    if (resolved.context.participant.role !== "tenantAdmin") {
+    // Only the organization (tenant admin) OR the platform-wide Super Admin
+    // may decide a request. The underlying service enforces the same gate.
+    const role = resolved.context.participant.role;
+    if (role !== "tenantAdmin" && role !== "superAdmin") {
       return NextResponse.json(
-        { error: "Only the organization can respond to requests." },
+        { error: "Only the organization or platform admin can respond to requests." },
         { status: 403 },
       );
     }

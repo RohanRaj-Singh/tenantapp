@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from "next/server";
 import { apiErrorResponse } from "@/src/server/api/responses";
 import { getRepositoryContext } from "@/src/server/repositories/context";
+import { getClaimInvoiceLinks } from "@/src/server/services/invoiceService";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
@@ -88,6 +89,13 @@ export async function GET(
     if (auth.callerRole === "super_admin") {
       mapped.employeeName = claim.employeeName;
     }
+
+    // Read-time join: expose the invoice that currently references this claim.
+    const links = await getClaimInvoiceLinks([claim.reimbursementId]);
+    const link = links.get(claim.reimbursementId);
+    mapped.invoiceId = link?.invoiceId ?? null;
+    mapped.invoiceNumber = link?.invoiceNumber ?? null;
+    mapped.invoiceStatus = link?.status ?? null;
 
     return NextResponse.json(mapped, { status: 200 });
   } catch (error) {

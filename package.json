@@ -3,12 +3,12 @@
   "version": "1.0.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
+    "dev": "next dev -p 3100",
     "build": "next build",
     "start": "next start",
     "lint": "eslint . --max-warnings=0",
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test \"src/modules/tenant-auth/tests/**/*.test.ts\" \"src/server/services/__tests__/**/*.test.ts\"",
+    "test": "tsx --test \"src/modules/tenant-auth/tests/**/*.test.ts\" \"src/server/services/__tests__/**/*.test.ts\" \"lib/realtime/__tests__/**/*.test.ts\"",
     "seed": "tsx --env-file=.env.local scripts/seed-dev.ts",
     "backfill": "tsx --env-file=.env.local scripts/backfill-claim-numbers.ts"
   },

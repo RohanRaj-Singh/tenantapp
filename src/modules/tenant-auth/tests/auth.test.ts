@@ -202,6 +202,73 @@ describe("Tenant Runtime Auth Service", () => {
     assert.equal(validation.reason, "TENANT_SCOPE_MISMATCH");
     assert.equal(context.sessions.has(loginResult.session!.sessionToken), false);
   });
+
+  // PA6 — optimization assertion. When the request provides the expected
+  // tenant slug, validateTenantSession must reuse the already-resolved
+  // tenant lookup rather than issuing a second getTenantById read. The
+  // happy-path count is 1 (the getTenantBySlug call); the no-slug path
+  // still requires the getTenantById call (count 1, different code path).
+  it("does not re-look-up the tenant by id when the request provides the slug", async () => {
+    const context = await createTenantAuthTestContext();
+
+    const loginResult = await context.service.loginTenantUser("active", {
+      identifier: "active.owner",
+      password: "OwnerPass1234",
+    });
+    assert.equal(loginResult.success, true);
+    const sessionToken = loginResult.session!.sessionToken;
+
+    // Re-instantiate the service with instrumented dependency wrappers
+    // so we can count the lookup calls. The fixture's tenants/tenantBySlug
+    // maps back the underlying lookups.
+    const realTenants = context.tenants;
+    const realTenantBySlug = context.tenantBySlug;
+    const getByIdCalls = { count: 0 };
+    const getBySlugCalls = { count: 0 };
+
+    const counterService = (
+      await import("../services/auth-service")
+    ).createTenantAuthService({
+      getNow: () => context.now,
+      getTenantById: async (tenantId) => {
+        getByIdCalls.count += 1;
+        const found = realTenants.get(tenantId);
+        return found ? JSON.parse(JSON.stringify(found)) : null;
+      },
+      getTenantBySlug: async (slug) => {
+        getBySlugCalls.count += 1;
+        const found = realTenantBySlug.get(slug);
+        return found ? JSON.parse(JSON.stringify(found)) : null;
+      },
+      comparePassword: (value, hash) => import("bcryptjs").then((b) => b.compare(value, hash)),
+      hashPassword: (value) => import("bcryptjs").then((b) => b.hash(value, 12)),
+      createSessionToken: () => `tds_${String(Date.now()).padStart(64, "0")}`,
+      rateLimiter: {
+        buildKey: () => "",
+        getState: () => ({ allowed: true, retryAfterSeconds: 0, remainingAttempts: 999 }),
+        recordFailure: () => ({ allowed: true, retryAfterSeconds: 0, remainingAttempts: 0 }),
+        clear: () => undefined,
+      },
+      repository: context.repository,
+    });
+
+    // Happy path with slug → expect getTenantById 0 times.
+    const validationWithSlug = await counterService.validateTenantSession(
+      sessionToken,
+      "active",
+    );
+    assert.equal(validationWithSlug.success, true);
+    assert.equal(getByIdCalls.count, 0, "PA6: getTenantById must not be called when the slug resolves the same tenant");
+    assert.equal(getBySlugCalls.count, 1);
+
+    // No-slug path → expect getTenantById 1 time.
+    getByIdCalls.count = 0;
+    getBySlugCalls.count = 0;
+    const validationNoSlug = await counterService.validateTenantSession(sessionToken);
+    assert.equal(validationNoSlug.success, true);
+    assert.equal(getByIdCalls.count, 1, "no-slug path requires the getTenantById lookup");
+    assert.equal(getBySlugCalls.count, 0);
+  });
 });
 
 describe("Tenant Runtime Route Protection Helpers", () => {
